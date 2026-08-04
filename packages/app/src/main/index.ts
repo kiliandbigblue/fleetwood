@@ -7,13 +7,14 @@ import {
   config as configModule,
   github,
   hooks,
+  limits as limitsApi,
   paths,
   prSession,
   repoIndex,
   spool,
   task as taskApi,
 } from '@fleetwood/core';
-import type { PrLists, Task } from '@fleetwood/core';
+import type { PlanLimits, PrLists, Task } from '@fleetwood/core';
 import { repairPath } from './path.ts';
 import { CHANNELS } from '../shared/ipc.ts';
 import type { Request, Response, Snapshot } from '../shared/ipc.ts';
@@ -38,6 +39,15 @@ let collector: Awaited<ReturnType<typeof spool.Collector.start>> | undefined;
 let prs: PrLists | undefined;
 /** Cached: listing tasks runs a `git status` per repo, too costly for the 1s poll. */
 let taskCache: { at: number; tasks: Task[] } = { at: 0, tasks: [] };
+/**
+ * Plan quota, on its own slow clock.
+ *
+ * Kept across failures and flagged `stale` rather than dropped: a five-hour
+ * window barely moves, so yesterday's bar still says roughly where you stand,
+ * and a bar that vanishes on one flaky request is worse than a dated one.
+ */
+let planLimits: PlanLimits | undefined;
+let limitsAt = 0;
 let fleetTimer: NodeJS.Timeout | undefined;
 let prTimer: NodeJS.Timeout | undefined;
 
@@ -86,11 +96,28 @@ async function getTasks(force = false): Promise<Task[]> {
   return taskCache.tasks;
 }
 
+async function refreshLimits(settings: Awaited<ReturnType<typeof configModule.loadConfig>>): Promise<void> {
+  if (!settings.limits.tokenCommand.trim()) {
+    planLimits = undefined;
+    return;
+  }
+  const now = Date.now();
+  if (now - limitsAt < settings.limits.pollSeconds * 1_000) return;
+  limitsAt = now;
+  const fetched = await limitsApi.fetchLimits({ tokenCommand: settings.limits.tokenCommand });
+  if (fetched) planLimits = fetched;
+  else if (planLimits) planLimits = { ...planLimits, stale: true };
+}
+
 async function buildSnapshot(): Promise<Snapshot> {
   const settings = await configModule.loadConfig();
+  await refreshLimits(settings);
   const fleet = await buildFleet({
     states: collector?.states,
     capture: settings.capture,
+    // Cheap on the 1s poll: each transcript is re-read only from the byte where
+    // the last read stopped.
+    usage: true,
   });
 
   // Which PR each session is working on, so the PR list can say "already open".
@@ -106,6 +133,7 @@ async function buildSnapshot(): Promise<Snapshot> {
     prs,
     prSessions,
     hooksInstalled: hookState.claude.installed > 0,
+    limits: planLimits,
   };
 }
 

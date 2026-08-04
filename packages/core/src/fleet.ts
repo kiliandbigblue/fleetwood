@@ -6,6 +6,8 @@ import { capturePane, snapshot } from './tmux.ts';
 import { peek } from './spool.ts';
 import { approvalKeys, readScreen } from './screen.ts';
 import type { PromptOption, ScreenRead } from './screen.ts';
+import { sumUsage, usageFor } from './usage.ts';
+import type { AgentUsage } from './usage.ts';
 import type { AgentState } from './events.ts';
 import type {
   AgentProcess,
@@ -58,12 +60,21 @@ export interface FleetAgent extends AgentState {
    */
   orphanReason?: 'pane-gone' | 'daemon-hosted' | 'outside-tmux';
   prompt?: { question?: string; options: PromptOption[]; approve?: string; deny?: string };
+  /**
+   * What this agent has spent, read from its own transcript.
+   *
+   * Absent rather than zero when we cannot know — an agent found only in `ps`
+   * never told us its session id, and "$0.00" would read as a claim.
+   */
+  usage?: AgentUsage;
 }
 
 export interface FleetSession extends SessionInfo {
   agents: FleetAgent[];
   /** True when any agent here is waiting on the human. */
   needsAttention: boolean;
+  /** Sum over this session's agents — what the branch is costing. */
+  usage?: AgentUsage;
 }
 
 export interface FleetState {
@@ -72,7 +83,7 @@ export interface FleetState {
   /** Agents with no pane: gone, hosted by the daemon, or never in tmux at all. */
   orphans: FleetAgent[];
   /** Every agent above — sessions *and* orphans — so the header matches the rows. */
-  counts: Record<AgentStatus, number> & { total: number };
+  counts: Record<AgentStatus, number> & { total: number; costUsd: number };
 }
 
 /** A hook state is only trustworthy for so long without corroboration. */
@@ -101,6 +112,7 @@ function emptyCounts(): FleetState['counts'] {
     error: 0,
     gone: 0,
     total: 0,
+    costUsd: 0,
   };
 }
 
@@ -112,6 +124,12 @@ export interface BuildOptions {
    * capture-pane per candidate pane, so it is opt-in for cheap callers.
    */
   capture?: boolean;
+  /**
+   * Read each agent's transcript for its token spend. Opt-in like `capture`,
+   * because a cold caller pays one file read per agent; the app's reads are
+   * incremental, so only what was appended since the last poll is parsed.
+   */
+  usage?: boolean;
   now?: number;
 }
 
@@ -125,6 +143,8 @@ interface Reconcile {
   nested: Set<string>;
   /** Daemon-hosted states, by key — the worker process is the real agent. */
   hosted: Map<string, DaemonWorker>;
+  /** Transcript-derived spend, by agent key. Empty unless `usage` was asked for. */
+  usage: Map<string, AgentUsage>;
   now: number;
   capture?: boolean;
 }
@@ -209,6 +229,23 @@ export async function buildFleet(options: BuildOptions = {}): Promise<FleetState
     }
   }
 
+  // Read every transcript once, up front and concurrently: a state can be
+  // reached twice below (its pane, then the orphan sweep), and the folding is
+  // cached per file anyway.
+  const usage = new Map<string, AgentUsage>();
+  if (options.usage) {
+    await Promise.all(
+      [...states.values()].map(async (state) => {
+        const found = await usageFor({
+          transcript: state.transcript,
+          sessionId: state.sessionId,
+          tool: state.tool,
+        });
+        if (found) usage.set(state.key, found);
+      }),
+    );
+  }
+
   const ctx: Reconcile = {
     table,
     processes,
@@ -216,6 +253,7 @@ export async function buildFleet(options: BuildOptions = {}): Promise<FleetState
     claimed: new Set<string>(),
     nested,
     hosted,
+    usage,
     now,
     capture: options.capture,
   };
@@ -230,6 +268,7 @@ export async function buildFleet(options: BuildOptions = {}): Promise<FleetState
       ...session,
       agents,
       needsAttention: agents.some((a) => isBlocked(a.status)),
+      usage: sumUsage(agents.map((a) => a.usage)),
     });
   }
 
@@ -263,6 +302,7 @@ export async function buildFleet(options: BuildOptions = {}): Promise<FleetState
       status: alive ? state.status : 'gone',
       orphanReason: reason,
       forSeconds: now - (alive ? state.since : state.lastEventAt),
+      usage: usage.get(state.key),
     });
   }
 
@@ -270,6 +310,7 @@ export async function buildFleet(options: BuildOptions = {}): Promise<FleetState
   for (const agent of [...fleetSessions.flatMap((s) => s.agents), ...orphans]) {
     counts[agent.status] += 1;
     counts.total += 1;
+    counts.costUsd += agent.usage?.costUsd ?? 0;
   }
 
   return { at: now, sessions: fleetSessions, orphans, counts };
@@ -400,6 +441,8 @@ async function agentsForPane(pane: PaneInfo, ctx: Reconcile): Promise<FleetAgent
         nested: ctx.nested.has(state.key),
         status: 'gone',
         forSeconds: now - state.since,
+        // A dead agent still spent what it spent; the transcript outlives it.
+        usage: ctx.usage.get(state.key),
       });
       continue;
     }
@@ -431,6 +474,7 @@ async function agentsForPane(pane: PaneInfo, ctx: Reconcile): Promise<FleetAgent
       pid: worker?.pid ?? match?.pid,
       forSeconds: now - since,
       prompt,
+      usage: ctx.usage.get(state.key),
     });
   }
 

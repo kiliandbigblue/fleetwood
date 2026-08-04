@@ -1,5 +1,54 @@
-import type { AgentStatus, FleetAgent, FleetState } from '@fleetwood/core';
+import { formatCost, formatMoney } from '@fleetwood/core';
+import type {
+  AgentStatus,
+  AgentUsage,
+  FleetAgent,
+  FleetState,
+  PlanLimits,
+} from '@fleetwood/core';
 import { c, pad, relativeAge, tildify, width } from './ui.ts';
+
+function durationShort(seconds: number): string {
+  if (seconds < 60) return `${Math.max(0, seconds)}s`;
+  const m = Math.floor(seconds / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return m % 60 === 0 ? `${h}h` : `${h}h${m % 60}m`;
+  return `${Math.floor(h / 24)}d`;
+}
+
+/**
+ * The plan's quota, as `/usage` shows it.
+ *
+ * Rendered as bars rather than bare percentages because the point is a glance:
+ * how much runway is left before the fleet stalls, not the exact figure.
+ */
+export function renderLimits(limits: PlanLimits): string {
+  if (limits.windows.length === 0) return '';
+  const now = Math.floor(Date.now() / 1000);
+  const titleWidth = Math.max(...limits.windows.map((w) => width(w.title)));
+  const lines: string[] = [];
+
+  for (const window of limits.windows) {
+    const percent = Math.round(window.utilization * 100);
+    const filled = Math.max(1, Math.round(window.utilization * 16));
+    const paint = percent >= 90 ? c.love : percent >= 75 ? c.gold : c.foam;
+    const bar = `${paint('█'.repeat(filled))}${c.dim('░'.repeat(16 - filled))}`;
+    const reset =
+      window.resetsAt === undefined
+        ? ''
+        : window.resetsAt - now <= 0
+          ? c.dim(' resetting')
+          : c.dim(` resets ${durationShort(window.resetsAt - now)}`);
+    lines.push(
+      `  ${c.muted(pad(window.title, titleWidth))}  ${bar} ${pad(`${percent}%`, 4)}${reset}`,
+    );
+  }
+  if (limits.stale) {
+    lines.push(c.dim(`  as of ${durationShort(now - limits.fetchedAt)} ago`));
+  }
+  return lines.join('\n');
+}
 
 interface Style {
   glyph: string;
@@ -58,6 +107,19 @@ function provenanceMark(agent: FleetAgent): string {
   }
 }
 
+/**
+ * Spend, or blank space where we have none.
+ *
+ * Cost rather than tokens: cache reads are the bulk of any token count, so the
+ * token figure is enormous for every busy agent and says nothing about which one
+ * is expensive. `~` marks a floor — some model had no published rate on file.
+ * The column is padded either way so the durations after it stay aligned.
+ */
+function costColumn(usage: AgentUsage | undefined): string {
+  if (!usage || usage.costUsd <= 0) return pad('', 8);
+  return c.muted(pad(formatCost(usage), 8));
+}
+
 export function renderAgentLine(agent: FleetAgent, indent = '    '): string {
   const style = STYLES[agent.status];
   const status = `${style.paint(style.glyph)} ${pad(style.paint(style.label), 11)}`;
@@ -70,10 +132,10 @@ export function renderAgentLine(agent: FleetAgent, indent = '    '): string {
   const subagents = agent.subagents > 0 ? c.iris(` +${agent.subagents}`) : '';
   const activity = agent.activity ? c.dim(` ${agent.activity}`) : '';
   const pane = c.muted(pad(agent.pane ?? '—', 4));
-  return `${indent}${status}${provenanceMark(agent)} ${pane} ${toolLabel(agent.tool)}${nested}${subagents} ${forTime}${activity}`;
+  return `${indent}${status}${provenanceMark(agent)} ${pane} ${toolLabel(agent.tool)}${nested}${subagents} ${forTime}${costColumn(agent.usage)}${activity}`;
 }
 
-export function renderFleet(fleet: FleetState): string {
+export function renderFleet(fleet: FleetState, limits?: PlanLimits): string {
   const lines: string[] = [];
   const { counts } = fleet;
 
@@ -83,6 +145,8 @@ export function renderFleet(fleet: FleetState): string {
       ? c.love(`${counts.blocked_permission + counts.blocked_input} blocked`)
       : '',
     counts.idle > 0 ? c.muted(`${counts.idle} idle`) : '',
+    // Summed over sessions and orphans alike, so the header agrees with the rows.
+    counts.costUsd > 0 ? c.gold(formatMoney(counts.costUsd)) : '',
   ].filter(Boolean);
 
   lines.push(
@@ -90,6 +154,12 @@ export function renderFleet(fleet: FleetState): string {
       summary.length > 0 ? summary.join(c.muted(' · ')) : c.muted('no agents')
     }`,
   );
+
+  // Quota sits directly under the summary: it constrains every count above it.
+  if (limits) {
+    const bars = renderLimits(limits);
+    if (bars) lines.push(bars);
+  }
   lines.push('');
 
   if (fleet.sessions.length === 0) {
@@ -106,8 +176,10 @@ export function renderFleet(fleet: FleetState): string {
     const pr = session.meta.pr ? c.gold(` ${session.meta.pr}`) : '';
     const branch = session.meta.branch ? c.rose(` ${session.meta.branch}`) : '';
 
+    const spend = session.usage?.costUsd ? ` ${c.muted(formatCost(session.usage))}` : '';
+
     lines.push(
-      `${attached} ${c.bold(pad(session.name, nameWidth))}${attention} ${kind}${branch}${pr} ${c.muted(tildify(session.path))} ${c.dim(relativeAge(session.createdAt))}`,
+      `${attached} ${c.bold(pad(session.name, nameWidth))}${attention} ${kind}${branch}${pr} ${c.muted(tildify(session.path))} ${c.dim(relativeAge(session.createdAt))}${spend}`,
     );
 
     if (session.agents.length === 0) {

@@ -1,4 +1,4 @@
-import type { ActionResult, FleetState, PrLists, Task } from '@fleetwood/core';
+import type { ActionResult, FleetState, PlanLimits, PrLists, Task } from '@fleetwood/core';
 
 /** Everything the renderer knows. Pushed whole; it is small and simplifies the UI. */
 export interface Snapshot {
@@ -10,6 +10,8 @@ export interface Snapshot {
   /** Session names that fleetwood stamped, keyed by PR key, for link badges. */
   prSessions: Record<string, string>;
   hooksInstalled: boolean;
+  /** Plan quota bars. Absent unless `limits.tokenCommand` is configured. */
+  limits?: PlanLimits;
 }
 
 export const CHANNELS = {

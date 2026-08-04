@@ -6,7 +6,8 @@ import { PrList } from './PrList.tsx';
 import { TaskList } from './TaskList.tsx';
 import { NewTask } from './NewTask.tsx';
 import { Palette } from './Palette.tsx';
-import { send } from './api.ts';
+import { LimitBars } from './LimitBars.tsx';
+import { money, send } from './api.ts';
 import { api } from './api.ts';
 
 type Tab = 'fleet' | 'tasks' | 'prs';
@@ -79,6 +80,13 @@ export function App(): React.JSX.Element {
             {blocked > 0 && <span className="pill blocked">✋ {blocked}</span>}
             {counts && counts.working > 0 && <span className="pill working">▶ {counts.working}</span>}
             {counts && <span className="pill">{counts.idle} idle</span>}
+            {/* Summed over sessions and orphans alike, so the header agrees with
+                the rows below it. */}
+            {counts && counts.costUsd > 0 && (
+              <span className="pill" title="what the whole fleet has spent, estimated at API rates">
+                {money(counts.costUsd)}
+              </span>
+            )}
           </div>
           <button
             className={`icon-button${pinned ? ' on' : ''}`}
@@ -102,6 +110,9 @@ export function App(): React.JSX.Element {
             ↻
           </button>
         </div>
+        {/* Above the tabs: quota is fleet-wide, not per-tab, and it belongs next
+            to the counts it constrains. */}
+        {snapshot?.limits && <LimitBars limits={snapshot.limits} />}
         <div className="tabs">
           <button className={`tab${tab === 'fleet' ? ' active' : ''}`} onClick={() => setTab('fleet')}>
             fleet<span className="count">{snapshot?.fleet.sessions.length ?? 0}</span>

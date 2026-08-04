@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { FleetSession } from '@fleetwood/core';
 import { AgentRow } from './AgentRow.tsx';
-import { send, shortenPath, tildify } from './api.ts';
+import { cost, send, shortenPath, tildify, usageTitle } from './api.ts';
 
 interface Props {
   session: FleetSession;
@@ -53,6 +53,13 @@ export function SessionCard({ session, onResult }: Props): React.JSX.Element {
         )}
         {!session.meta.branch && (
           <span className="head-path">{shortenPath(session.path, 22)}</span>
+        )}
+        {/* What this session has cost across its agents — the number you want
+            when the question is "is this branch worth what it's burning". */}
+        {session.usage && (
+          <span className="cost session-cost" title={usageTitle(session.usage)}>
+            {cost(session.usage)}
+          </span>
         )}
       </div>
 

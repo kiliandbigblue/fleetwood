@@ -36,6 +36,20 @@ export interface Config {
   };
   /** Read pane contents to resolve prompts and stale states. */
   capture: boolean;
+  /**
+   * The plan's quota bars — the same numbers Claude Code's `/usage` shows.
+   *
+   * Off until `tokenCommand` is set, because reading it means handing fleetwood
+   * an OAuth credential. There is deliberately no built-in default command:
+   * fleetwood does not ship a Keychain scraper of its own, so the operator says
+   * explicitly where the token comes from. On macOS that is usually
+   * `security find-generic-password -a "<your account>" -w -s "Claude Code-credentials"`.
+   */
+  limits: {
+    tokenCommand: string;
+    /** The window moves in hours; polling it hard would be rude and pointless. */
+    pollSeconds: number;
+  };
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -46,6 +60,7 @@ export const DEFAULT_CONFIG: Config = {
   github: { enabled: true, pollSeconds: 60, extraQualifiers: '' },
   poll: { tmuxMs: 1_000, processMs: 2_000 },
   capture: true,
+  limits: { tokenCommand: '', pollSeconds: 300 },
 };
 
 /** Shallow-merge on purpose: a partial config file must not lose new defaults. */
@@ -57,6 +72,7 @@ export async function loadConfig(): Promise<Config> {
       ...raw,
       github: { ...DEFAULT_CONFIG.github, ...raw.github },
       poll: { ...DEFAULT_CONFIG.poll, ...raw.poll },
+      limits: { ...DEFAULT_CONFIG.limits, ...raw.limits },
       repoGroups: { ...DEFAULT_CONFIG.repoGroups, ...raw.repoGroups },
     };
   } catch {

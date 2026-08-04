@@ -43,6 +43,26 @@ inferred ones are marked (`~` screen, `?` process-only, `…` stale) so an infer
 never looks as solid as a report. Durations say what they measure: a status nobody
 timed is shown as uptime (`up 18h`), never as time spent working.
 
+**Spend has two separate sources, and they answer different questions.** What an
+agent *cost* is folded from its own transcript — Claude Code records per-message
+`usage` there, and the hook already tells us the path. Two things make the naive
+reading wrong: one assistant turn is written as one line per content block, each
+repeating the same cumulative usage (measured: 738 lines for 377 real messages),
+so identity is the message id; and cache reads dominate any token count, which is
+why the row shows dollars. A session measured at 130M tokens cost $101, ~95% of
+those tokens being reads at a tenth of the input rate — "130M" reads as enormous
+whatever the agent actually did. Reads are incremental from a byte offset, so the
+1s poll re-parses only what was appended.
+
+How much *runway* is left is a different thing entirely, and it isn't on disk:
+the plan's usage windows come from the same endpoint `/usage` uses. That needs an
+OAuth credential, so **fleetwood ships no credential reader of its own** — you
+set `limits.tokenCommand` to a command that prints yours, and the feature is
+inert until you do. Neither source can take the panel down: an unknown model
+still counts tokens and marks the figure a floor with `~`, an endpoint that
+changed shape yields an empty gauge, and a failed poll keeps the last bars with
+an "as of" note rather than blanking them.
+
 **Daemon-hosted sessions get a fourth source.** Claude Code can run a session
 inside `claude daemon`'s own pty, with the tmux pane holding only a thin client
 attached to it — that's what a session launched from `/` does. Both usual bindings
@@ -61,6 +81,9 @@ guessed onto the wrong terminal. `fw doctor` reports both numbers.
 - **Live agent status per pane** — working / needs-permission / waiting / idle /
   compacting / gone, with what the agent is doing, how long it's been in that
   state, its subagent count and error count.
+- **What each agent has cost**, folded from its own transcript, with the plan's
+  usage windows above it — so "which pane is burning the budget" and "how much
+  runway is left" are both answerable at a glance.
 - **Approve or deny from the panel.** A blocked agent's actual prompt is read off
   the pane and rendered with buttons; clicking one sends the keystroke. This is the
   feature that makes the app worth keeping open.
@@ -217,6 +240,7 @@ fw                    the fleet (default)
 fw task ...           multi-repo tasks (see above)
 fw watch              the fleet, refreshed live
 fw agents             flat list, most urgent first
+fw limits             plan quota: how much of each usage window is spent
 fw prs                PRs awaiting your review, and your own
 fw open-pr <ref>      focus a PR's session, or build one on a fresh worktree
 fw approve [pane]     answer yes to a blocked agent

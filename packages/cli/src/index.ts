@@ -2,8 +2,10 @@
 import {
   actions,
   buildFleet,
+  config as configModule,
   github,
   hooks,
+  limits as limitsApi,
   prSession,
   proc,
   repoIndex,
@@ -11,9 +13,9 @@ import {
   task as taskApi,
   tmux,
 } from '@fleetwood/core';
-import type { FleetState, PullRequest } from '@fleetwood/core';
+import type { FleetState, PlanLimits, PullRequest } from '@fleetwood/core';
 import { c, pad, relativeAge, tildify, width } from './ui.ts';
-import { renderAgentLine, renderFleet } from './render.ts';
+import { renderAgentLine, renderFleet, renderLimits } from './render.ts';
 
 const HELP = `${c.bold('fleetwood')} — tmux-native cockpit for coding agents
 
@@ -23,6 +25,7 @@ ${c.bold('commands')}
   status            the fleet: sessions, agents, and what each is doing  ${c.dim('(default)')}
   watch             status, refreshed live
   agents            flat list of agents, most urgent first
+  limits            plan quota: how much of each usage window is spent
   sessions          tmux sessions and their fleetwood metadata
   panes             every pane and the agent process found in it
 
@@ -62,21 +65,50 @@ function jsonOut(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
 
+/** The rendering commands — status, watch, agents — all want spend shown. */
 async function fleet(capture: boolean): Promise<FleetState> {
-  return buildFleet({ capture });
+  return buildFleet({ capture, usage: true });
+}
+
+/**
+ * Plan quota, when the operator configured a way to read the token.
+ *
+ * Off by default and silent when it fails: `fw` must still print the fleet on a
+ * machine with no credential command, no network, or a changed endpoint.
+ */
+async function planLimits(): Promise<PlanLimits | undefined> {
+  const settings = await configModule.loadConfig();
+  if (!settings.limits.tokenCommand.trim()) return undefined;
+  return limitsApi.fetchLimits({ tokenCommand: settings.limits.tokenCommand });
 }
 
 async function cmdStatus(json: boolean, capture: boolean): Promise<void> {
-  const state = await fleet(capture);
-  if (json) return jsonOut(state);
-  process.stdout.write(`${renderFleet(state)}\n`);
+  const [state, limits] = await Promise.all([fleet(capture), planLimits()]);
+  if (json) return jsonOut({ ...state, limits });
+  process.stdout.write(`${renderFleet(state, limits)}\n`);
+}
+
+async function cmdLimits(json: boolean): Promise<void> {
+  const limits = await planLimits();
+  if (json) return jsonOut(limits ?? null);
+  if (!limits) {
+    process.stdout.write(
+      `${c.muted('no usage limits configured')}\n\n` +
+        `Set ${c.bold('limits.tokenCommand')} in ~/.fleetwood/config.json to a command that\n` +
+        `prints your Claude Code OAuth credential, e.g. on macOS:\n\n` +
+        `  ${c.dim('"limits": { "tokenCommand": "security find-generic-password -a \\"$USER\\" -w -s \\"Claude Code-credentials\\"" }')}\n\n` +
+        `${c.muted('fleetwood ships no credential reader of its own — you decide how the token is fetched.')}\n`,
+    );
+    return;
+  }
+  process.stdout.write(`${renderLimits(limits)}\n`);
 }
 
 async function cmdWatch(capture: boolean, intervalSeconds: number): Promise<void> {
   const draw = async (): Promise<void> => {
-    const state = await fleet(capture);
+    const [state, limits] = await Promise.all([fleet(capture), planLimits()]);
     // Clear and home, then paint. Cheaper and less flickery than full reset.
-    process.stdout.write(`\x1b[H\x1b[2J${renderFleet(state)}\n`);
+    process.stdout.write(`\x1b[H\x1b[2J${renderFleet(state, limits)}\n`);
   };
   await draw();
   const timer = setInterval(() => void draw(), Math.max(500, intervalSeconds * 1000));
@@ -694,6 +726,10 @@ async function main(): Promise<void> {
       break;
     case 'agents':
       await cmdAgents(json, capture);
+      break;
+    case 'limits':
+    case 'usage':
+      await cmdLimits(json);
       break;
     case 'sessions':
     case 'ls':

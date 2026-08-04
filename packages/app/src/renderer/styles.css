@@ -432,6 +432,28 @@ button {
   flex: none;
 }
 
+/* Deliberately the same weight as the duration beside it: spend is reference
+   information, not a status. The dot and the activity stay the loudest things
+   on the row. */
+.cost {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+/* Right edge of the card header — unless the path is there, having already
+   claimed the free space with its own auto margin, in which case cost trails it. */
+.session-cost {
+  margin-left: auto;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 10.5px;
+}
+
+.head-path + .session-cost {
+  margin-left: 0;
+}
+
 .nested {
   color: var(--muted);
   font-size: 10px;
@@ -478,6 +500,78 @@ button {
   color: var(--iris);
   font-size: 10px;
   flex: none;
+}
+
+/* --- plan quota bars ------------------------------------------------------ */
+
+.limits {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 2px 10px 6px;
+}
+
+.limit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--muted);
+  min-width: 0;
+}
+
+.limit-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.limit-track {
+  flex: 1 1 auto;
+  min-width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--overlay) 80%, var(--surface));
+  overflow: hidden;
+}
+
+/* A dated bar is still worth reading, but it should not look live. */
+.limit-track.stale {
+  opacity: 0.5;
+}
+
+.limit-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--foam);
+}
+
+.limit-fill.warn {
+  background: var(--gold);
+}
+
+.limit-fill.critical {
+  background: var(--love);
+}
+
+.limit-percent {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.limit-reset {
+  flex: none;
+  color: var(--subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.limit-stale {
+  font-size: 10px;
+  color: var(--subtle);
+  font-style: italic;
 }
 
 /* --- permission prompt --------------------------------------------------- */
