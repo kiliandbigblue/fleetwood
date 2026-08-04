@@ -14,10 +14,19 @@ export {
   formatTokens,
 } from './usageFormat.ts';
 
-/** Dollars per million tokens, input and output. */
+/** Dollars per million tokens. */
 interface Price {
   in: number;
   out: number;
+  /**
+   * Absolute $/MTok for cache reads when the publisher quotes one.
+   *
+   * Composer and Grok do not use Anthropic's 0.1× input rule, so an omitted
+   * value falls back to that multiplier and an explicit one wins.
+   */
+  cacheRead?: number;
+  /** Absolute $/MTok for cache writes; defaults to 1.25× input. */
+  cacheWrite?: number;
 }
 
 /**
@@ -26,6 +35,8 @@ interface Price {
  * A Claude Code subscription doesn't bill per token, so this is what the same
  * work would have cost through the API — a comparable number across agents,
  * which is what makes one row's spend worth looking at next to another's.
+ * Cursor's own models (Composer, Grok) are billed from Cursor's usage pools at
+ * these on-demand rates; third-party picks through Cursor use the provider row.
  */
 const PRICES: Record<string, Price> = {
   'claude-fable-5': { in: 10, out: 50 },
@@ -39,9 +50,20 @@ const PRICES: Record<string, Price> = {
   'claude-sonnet-4-6': { in: 3, out: 15 },
   'claude-sonnet-4-5': { in: 3, out: 15 },
   'claude-haiku-4-5': { in: 1, out: 5 },
+  // Composer Fast is the product default; Standard is the cheaper sibling.
+  'composer-2.5': { in: 3, out: 15, cacheRead: 0.2 },
+  'composer-2.5-fast': { in: 3, out: 15, cacheRead: 0.2 },
+  'composer-2.5-standard': { in: 0.5, out: 2.5, cacheRead: 0.2 },
+  'composer-2': { in: 1.5, out: 7.5, cacheRead: 0.35 },
+  'composer-2-fast': { in: 1.5, out: 7.5, cacheRead: 0.35 },
+  'composer-2-standard': { in: 0.5, out: 2.5, cacheRead: 0.2 },
+  'composer-1.5': { in: 3.5, out: 17.5 },
+  'composer-1': { in: 3.5, out: 17.5 },
+  'grok-4.5': { in: 2, out: 6, cacheRead: 0.3 },
+  'grok-4.5-fast': { in: 4, out: 18, cacheRead: 0.6 },
 };
 
-/** Cache multipliers, applied to the model's input rate. */
+/** Cache multipliers, applied to the model's input rate when no absolute. */
 const CACHE_WRITE_5M = 1.25;
 const CACHE_WRITE_1H = 2.0;
 const CACHE_READ = 0.1;
@@ -51,12 +73,24 @@ const CACHE_READ = 0.1;
  *
  * Bedrock prefixes the provider, dated snapshots suffix the release, and the
  * long-context variant carries a `[1m]` marker — none of which change the rate.
+ * Cursor sometimes prefixes its own brand (`cursor-grok-4.5`).
  */
 export function normalizeModel(model: string): string {
   return model
+    .trim()
+    .toLowerCase()
     .replace(/^anthropic\./, '')
+    .replace(/^cursor-/, '')
     .replace(/\[1m\]$/, '')
     .replace(/-\d{8}$/, '');
+}
+
+function cacheReadRate(price: Price): number {
+  return price.cacheRead ?? price.in * CACHE_READ;
+}
+
+function cacheWriteRate(price: Price): number {
+  return price.cacheWrite ?? price.in * CACHE_WRITE_5M;
 }
 
 function emptyUsage(): AgentUsage {
@@ -146,10 +180,68 @@ export function foldMessage(into: AgentUsage, model: string, usage: WireUsage): 
   into.costUsd +=
     (input * price.in +
       output * price.out +
-      write5m * price.in * CACHE_WRITE_5M +
+      write5m * cacheWriteRate(price) +
       write1h * price.in * CACHE_WRITE_1H +
-      read * price.in * CACHE_READ) /
+      read * cacheReadRate(price)) /
     1_000_000;
+}
+
+/**
+ * One Cursor agent-loop's token fields, as the `stop` hook reports them.
+ *
+ * Cursor's JSONL transcript carries no usage at all — these fields on `stop`
+ * are the only authoritative source. `inputTokens` is the *total* input
+ * (cache read + cache write + fresh), not the fresh portion alone.
+ */
+export interface CursorTurnUsage {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+}
+
+/**
+ * Fold one Cursor stop-hook turn into a running total.
+ *
+ * Fresh input is derived as `max(0, total − read − write)` so we do not bill
+ * cache traffic twice at the uncached rate. Cache writes have no 5m/1h split
+ * on this wire format, so they land at the flat write rate.
+ */
+export function foldCursorTurn(into: AgentUsage, turn: CursorTurnUsage): void {
+  const key = normalizeModel(turn.model);
+  const price = PRICES[key];
+
+  const read = Math.max(0, turn.cacheReadTokens);
+  const write = Math.max(0, turn.cacheWriteTokens);
+  const fresh = Math.max(0, turn.inputTokens - read - write);
+  const output = Math.max(0, turn.outputTokens);
+
+  into.inputTokens += fresh;
+  into.outputTokens += output;
+  into.cacheWriteTokens += write;
+  into.cacheReadTokens += read;
+  into.totalTokens += fresh + output + write + read;
+  into.messages += 1;
+  if (!into.models.includes(key)) into.models.push(key);
+
+  if (!price) {
+    into.unpriced = true;
+    return;
+  }
+  into.costUsd +=
+    (fresh * price.in +
+      output * price.out +
+      write * cacheWriteRate(price) +
+      read * cacheReadRate(price)) /
+    1_000_000;
+}
+
+/** Price a single Cursor turn as a standalone AgentUsage. */
+export function usageFromCursorTurn(turn: CursorTurnUsage): AgentUsage {
+  const into = emptyUsage();
+  foldCursorTurn(into, turn);
+  return into;
 }
 
 interface TranscriptLine {
@@ -294,10 +386,12 @@ export async function findTranscript(sessionId: string): Promise<string | undefi
 }
 
 /**
- * Usage for one agent, given whatever it told us about itself.
+ * Usage for one Claude agent, given whatever it told us about itself.
  *
- * A hook-reported transcript is used directly; otherwise the session id is
- * searched for. An agent found only in `ps` has neither, and gets nothing —
+ * Cursor (and Codex) leave no usage in their transcripts — their spend is
+ * folded from hook payloads onto agent state instead, so this path is Claude
+ * only. A hook-reported transcript is used directly; otherwise the session id
+ * is searched for. An agent found only in `ps` has neither, and gets nothing —
  * which the UI renders as an absent figure, not as zero spend.
  */
 export async function usageFor(args: {

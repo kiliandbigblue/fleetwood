@@ -8,12 +8,14 @@
  */
 
 /**
- * What an agent has spent, folded from its own transcript.
+ * What an agent has spent.
  *
- * Cost is the headline rather than a token count because cache reads dominate
- * the totals — a session measured at 130M tokens cost $101, ~95% of those tokens
- * being reads at a tenth of the input rate. "130M" reads as enormous whatever
- * the agent actually did; "$101" is the number you can act on.
+ * Claude folds this from its transcript; Cursor accumulates it from `stop`
+ * hook token fields (its transcript carries no usage). Cost is the headline
+ * rather than a token count because cache reads dominate the totals — a
+ * session measured at 130M tokens cost $101, ~95% of those tokens being reads
+ * at a tenth of the input rate. "130M" reads as enormous whatever the agent
+ * actually did; "$101" is the number you can act on.
  */
 export interface AgentUsage {
   inputTokens: number;

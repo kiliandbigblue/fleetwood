@@ -28,7 +28,7 @@ export type { Config } from './config.ts';
 export type { Task, TaskRepo, CreateTaskInput, TaskResult } from './task.ts';
 export type { ActionResult } from './actions.ts';
 export type { PromptOption, ScreenRead } from './screen.ts';
-export type { AgentUsage } from './usage.ts';
+export type { AgentUsage, CursorTurnUsage } from './usage.ts';
 export type { PlanLimits, LimitWindow } from './limits.ts';
 
 // Flat, because both renderers format spend and neither should reimplement it.

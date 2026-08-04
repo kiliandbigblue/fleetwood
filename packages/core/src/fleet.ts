@@ -61,7 +61,7 @@ export interface FleetAgent extends AgentState {
   orphanReason?: 'pane-gone' | 'daemon-hosted' | 'outside-tmux';
   prompt?: { question?: string; options: PromptOption[]; approve?: string; deny?: string };
   /**
-   * What this agent has spent, read from its own transcript.
+   * What this agent has spent — Claude transcript, or Cursor stop-hook totals.
    *
    * Absent rather than zero when we cannot know — an agent found only in `ps`
    * never told us its session id, and "$0.00" would read as a claim.
@@ -229,13 +229,17 @@ export async function buildFleet(options: BuildOptions = {}): Promise<FleetState
     }
   }
 
-  // Read every transcript once, up front and concurrently: a state can be
-  // reached twice below (its pane, then the orphan sweep), and the folding is
-  // cached per file anyway.
+  // Spend arrives two ways: Claude folds its transcript; Cursor accumulates
+  // stop-hook token fields onto the agent state. A state can be reached twice
+  // below (its pane, then the orphan sweep), so resolve once up front.
   const usage = new Map<string, AgentUsage>();
   if (options.usage) {
     await Promise.all(
       [...states.values()].map(async (state) => {
+        if (state.usage) {
+          usage.set(state.key, state.usage);
+          return;
+        }
         const found = await usageFor({
           transcript: state.transcript,
           sessionId: state.sessionId,

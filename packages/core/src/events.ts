@@ -1,4 +1,6 @@
 import type { AgentStatus, AgentTool, StatusProvenance } from './types.ts';
+import { addUsage, usageFromCursorTurn } from './usage.ts';
+import type { AgentUsage, CursorTurnUsage } from './usage.ts';
 
 /**
  * What a hook script writes into the spool. Deliberately dumb: the shell does no
@@ -35,6 +37,13 @@ export interface AgentEvent {
   toolName?: string;
   transcript?: string;
   /**
+   * Per-turn token fields from a Cursor `stop` hook.
+   *
+   * Cursor's transcript has no usage, so this is how spend reaches the panel.
+   * Absent on every other tool and on Cursor events that omit the fields.
+   */
+  turnUsage?: CursorTurnUsage;
+  /**
    * The agent process's own pid, when it tells us.
    *
    * This is the rescue path for agents whose hooks run without `$TMUX_PANE` —
@@ -65,12 +74,52 @@ export interface AgentState {
   toolCalls: number;
   errorCount: number;
   subagents: number;
+  /**
+   * Spend folded from Cursor `stop` hooks.
+   *
+   * Claude spend is read from the transcript at fleet-build time instead — that
+   * file already carries per-message usage, and re-folding it beats persisting
+   * a parallel running total. Cursor has no such file, so the total lives here.
+   */
+  usage?: AgentUsage;
   /** Filled in by process reconciliation, not by hooks. */
   pid?: number;
 }
 
 function str(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function numField(payload: Record<string, unknown>, ...keys: string[]): number {
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim() !== '') {
+      const n = Number(value);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Pull Cursor's per-turn token fields off a `stop` payload.
+ *
+ * Returns undefined when the payload has no usable counts — older Cursor
+ * builds and some hook variants omit them entirely, and "all zeros" must not
+ * look like a real turn.
+ */
+export function cursorTurnUsage(payload: Record<string, unknown>): CursorTurnUsage | undefined {
+  const inputTokens = numField(payload, 'input_tokens', 'inputTokens');
+  const outputTokens = numField(payload, 'output_tokens', 'outputTokens');
+  if (inputTokens === 0 && outputTokens === 0) return undefined;
+  return {
+    model: str(payload.model) ?? str(payload.model_id) ?? 'unknown',
+    inputTokens,
+    outputTokens,
+    cacheReadTokens: numField(payload, 'cache_read_tokens', 'cacheReadTokens'),
+    cacheWriteTokens: numField(payload, 'cache_write_tokens', 'cacheWriteTokens'),
+  };
 }
 
 function truncate(s: string, max = 72): string {
@@ -197,13 +246,18 @@ export function normalize(record: SpoolRecord): AgentEvent | undefined {
       sessionId:
         str(payload.conversation_id) ??
         str(payload.conversationId) ??
+        str(payload.session_id) ??
         str(payload.chat_id) ??
         str(payload.generation_id),
       pane,
       cwd: str(payload.cwd) ?? str(payload.workspace_root),
       activity: command ? `Shell: ${truncate(command, 60)}` : prompt ? truncate(prompt, 72) : undefined,
       toolName: command ? 'Shell' : undefined,
-      transcript: undefined,
+      // Present on most hooks when transcripts are enabled; unused for cost
+      // (no usage in the file) but kept so a future reader has the path.
+      transcript: str(payload.transcript_path) ?? str(payload.transcriptPath),
+      // Token fields only appear on `stop`, and only on builds that emit them.
+      turnUsage: event === 'Stop' ? cursorTurnUsage(payload) : undefined,
       hookPid,
     };
   }
@@ -301,6 +355,12 @@ export function reduce(prev: AgentState | undefined, e: AgentEvent): AgentState 
   if (e.transcript) state.transcript = e.transcript;
   if (e.sessionId) state.sessionId = e.sessionId;
   if (e.hookPid) state.hookPid = e.hookPid;
+  // Spend is counted even for out-of-order delivery: the tokens were spent
+  // regardless of when the event lands relative to a newer status change.
+  if (e.turnUsage) {
+    const delta = usageFromCursorTurn(e.turnUsage);
+    state.usage = state.usage ? addUsage(state.usage, delta) : delta;
+  }
 
   switch (e.event) {
     case 'UserPromptSubmit':

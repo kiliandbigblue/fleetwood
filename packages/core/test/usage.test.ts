@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import {
   addUsage,
   describeUsage,
+  foldCursorTurn,
   formatCost,
   formatMoney,
   formatTokens,
@@ -13,6 +14,7 @@ import {
   readTranscriptUsage,
   resetCache,
   sumUsage,
+  usageFromCursorTurn,
 } from '../src/usage.ts';
 
 /**
@@ -176,6 +178,73 @@ test('normalizes bedrock prefixes, dated snapshots and the 1m marker', () => {
   assert.equal(normalizeModel('claude-opus-4-5-20251101'), 'claude-opus-4-5');
   assert.equal(normalizeModel('claude-opus-5[1m]'), 'claude-opus-5');
   assert.equal(normalizeModel('claude-opus-5'), 'claude-opus-5');
+  assert.equal(normalizeModel('Cursor-Grok-4.5'), 'grok-4.5');
+});
+
+test('a Cursor stop turn derives fresh input and bills cache at published rates', () => {
+  // Grok 4.5: $2/$6, cache read $0.30. Total input 1M = 100k fresh + 800k read + 100k write.
+  // Write defaults to 1.25× input = $2.50/MTok.
+  // Cost: 0.1*2 + 1*6 + 0.1*2.5 + 0.8*0.3 = 0.2 + 6 + 0.25 + 0.24 = 6.69.
+  const usage = usageFromCursorTurn({
+    model: 'grok-4.5',
+    inputTokens: 1_000_000,
+    outputTokens: 1_000_000,
+    cacheReadTokens: 800_000,
+    cacheWriteTokens: 100_000,
+  });
+  assert.equal(usage.inputTokens, 100_000);
+  assert.equal(usage.cacheReadTokens, 800_000);
+  assert.equal(usage.cacheWriteTokens, 100_000);
+  assert.equal(usage.outputTokens, 1_000_000);
+  assert.equal(usage.costUsd, 6.69);
+  assert.equal(usage.unpriced, false);
+  assert.equal(usage.messages, 1);
+});
+
+test('Cursor input_tokens that under-count cache components clamp fresh to zero', () => {
+  const into = usageFromCursorTurn({
+    model: 'composer-2.5',
+    inputTokens: 50,
+    outputTokens: 10,
+    cacheReadTokens: 40,
+    cacheWriteTokens: 20,
+  });
+  assert.equal(into.inputTokens, 0);
+  assert.equal(into.cacheReadTokens, 40);
+  assert.equal(into.cacheWriteTokens, 20);
+});
+
+test('an unknown Cursor model still counts tokens and marks the figure a floor', () => {
+  const usage = usageFromCursorTurn({
+    model: 'brand-new-cursor-model',
+    inputTokens: 1_000,
+    outputTokens: 500,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  });
+  assert.equal(usage.unpriced, true);
+  assert.equal(usage.costUsd, 0);
+  assert.equal(usage.totalTokens, 1_500);
+
+  const into = {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheWriteTokens: 0,
+    cacheReadTokens: 0,
+    totalTokens: 0,
+    costUsd: 0,
+    unpriced: false,
+    models: [] as string[],
+    messages: 0,
+  };
+  foldCursorTurn(into, {
+    model: 'brand-new-cursor-model',
+    inputTokens: 1_000,
+    outputTokens: 500,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  });
+  assert.equal(into.unpriced, true);
 });
 
 test('a dated snapshot id is priced like its alias', async () => {
