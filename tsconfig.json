@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.base.json",
+  // The app is excluded on purpose: it needs DOM libs and bundler resolution, so
+  // it carries its own tsconfig. `pnpm typecheck` runs both.
+  "include": ["packages/core/**/*.ts", "packages/cli/**/*.ts"]
+}

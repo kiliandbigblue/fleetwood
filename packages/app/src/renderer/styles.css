@@ -1,0 +1,641 @@
+/*
+ * Rose Pine, matching the tmux theme. This panel sits next to the terminal all
+ * day; sharing its palette keeps the two from fighting each other.
+ */
+:root {
+  --base: #191724;
+  --surface: #1f1d2e;
+  --overlay: #26233a;
+  --muted: #6e6a86;
+  --subtle: #908caa;
+  --text: #e0def4;
+  --love: #eb6f92;
+  --gold: #f6c177;
+  --rose: #ebbcba;
+  --pine: #31748f;
+  --foam: #9ccfd8;
+  --iris: #c4a7e7;
+  --radius: 8px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--base);
+  color: var(--text);
+  font: 13px/1.45 ui-sans-serif, -apple-system, "SF Pro Text", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* --- header --------------------------------------------------------------- */
+
+.header {
+  /* Leaves room for the traffic lights under titleBarStyle: hiddenInset. */
+  padding: 26px 12px 8px;
+  -webkit-app-region: drag;
+  border-bottom: 1px solid var(--overlay);
+  background: var(--base);
+}
+
+.header-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header button,
+.tab {
+  -webkit-app-region: no-drag;
+}
+
+.brand {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  margin-right: auto;
+}
+
+.pills {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.pill {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--overlay);
+  color: var(--subtle);
+  white-space: nowrap;
+}
+
+.pill.blocked {
+  background: color-mix(in srgb, var(--love) 22%, var(--base));
+  color: var(--love);
+}
+.pill.working {
+  background: color-mix(in srgb, var(--foam) 18%, var(--base));
+  color: var(--foam);
+}
+
+.icon-button {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+}
+.icon-button:hover {
+  background: var(--overlay);
+  color: var(--text);
+}
+.icon-button.on {
+  color: var(--gold);
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  margin-top: 8px;
+}
+
+.tab {
+  padding: 4px 10px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.tab:hover {
+  color: var(--text);
+}
+.tab.active {
+  background: var(--overlay);
+  color: var(--text);
+}
+.tab .count {
+  color: var(--muted);
+  margin-left: 5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- scroll body --------------------------------------------------------- */
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.body::-webkit-scrollbar {
+  width: 8px;
+}
+.body::-webkit-scrollbar-thumb {
+  background: var(--overlay);
+  border-radius: 4px;
+}
+
+.empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 32px 16px;
+  font-size: 12px;
+}
+
+/* --- session card -------------------------------------------------------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--overlay);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.card.attention {
+  border-color: color-mix(in srgb, var(--love) 55%, var(--overlay));
+}
+
+.card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 8px 10px;
+  /* Without this, flex children refuse to shrink below their content width and
+     long branch names push straight through the card's right edge. */
+  min-width: 0;
+}
+
+.card-head > * {
+  min-width: 0;
+}
+
+.card-head {
+  cursor: pointer;
+}
+
+.card-head:hover {
+  background: color-mix(in srgb, var(--overlay) 45%, var(--surface));
+}
+
+.card-head:hover .session-name {
+  text-decoration: underline;
+  text-decoration-color: var(--muted);
+  text-underline-offset: 2px;
+}
+
+/* Second line, so the longest string on the card stops competing for the first. */
+.branch-line {
+  padding: 0 10px 6px 22px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 10.5px;
+  color: var(--rose);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.head-path {
+  margin-left: auto;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+@media (max-width: 400px) {
+  .head-path {
+    display: none;
+  }
+}
+
+.session-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+}
+
+.attached-dot {
+  color: var(--foam);
+  font-size: 9px;
+  align-self: center;
+}
+.attached-dot.detached {
+  color: var(--muted);
+}
+
+.badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--overlay);
+  color: var(--subtle);
+  white-space: nowrap;
+  flex: none;
+}
+.badge.kind {
+  color: var(--iris);
+}
+
+.badge.branch {
+  color: var(--rose);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  /* Branch names are the longest thing in a card head; let this one shrink. */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.badge.pr {
+  color: var(--gold);
+}
+
+.path {
+  color: var(--muted);
+  font-size: 11px;
+  margin-left: auto;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+  min-width: 0;
+  text-align: right;
+}
+
+/* In a genuinely narrow panel the path is the first thing worth dropping. */
+@media (max-width: 430px) {
+  .path {
+    display: none;
+  }
+}
+
+.card-actions {
+  display: flex;
+  gap: 2px;
+  padding: 0 6px 6px;
+}
+
+.chip {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  color: var(--muted);
+  /* Squeezed chips were being drawn on top of the row's text. */
+  flex: none;
+  white-space: nowrap;
+}
+.chip:hover {
+  background: var(--overlay);
+  color: var(--text);
+}
+.chip.danger:hover {
+  background: color-mix(in srgb, var(--love) 25%, var(--surface));
+  color: var(--love);
+}
+
+/* --- agent row ----------------------------------------------------------- */
+
+.agents {
+  border-top: 1px solid var(--overlay);
+}
+
+.agent {
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.agent.clickable {
+  cursor: pointer;
+}
+
+.agent.clickable:hover {
+  background: color-mix(in srgb, var(--overlay) 45%, var(--surface));
+}
+
+.agent + .agent {
+  border-top: 1px solid color-mix(in srgb, var(--overlay) 50%, var(--surface));
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+.status-working {
+  background: var(--foam);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+.status-blocked_permission {
+  background: var(--love);
+}
+.status-blocked_input {
+  background: var(--gold);
+}
+.status-compacting {
+  background: var(--iris);
+}
+.status-idle,
+.status-starting {
+  background: var(--muted);
+}
+.status-error {
+  background: var(--love);
+}
+.status-gone {
+  background: transparent;
+  border: 1px solid var(--muted);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.tool {
+  font-weight: 600;
+  font-size: 11px;
+  flex: none;
+}
+.tool-claude {
+  color: var(--iris);
+}
+.tool-cursor {
+  color: var(--foam);
+}
+.tool-codex {
+  color: var(--gold);
+}
+.tool-unknown {
+  color: var(--muted);
+}
+
+.activity {
+  color: var(--subtle);
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.since {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.nested {
+  color: var(--muted);
+  font-size: 10px;
+  flex: none;
+}
+
+.subagents {
+  color: var(--iris);
+  font-size: 10px;
+  flex: none;
+}
+
+/* --- permission prompt --------------------------------------------------- */
+
+.prompt {
+  margin: 0 10px 8px;
+  padding: 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--love) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--love) 30%, var(--overlay));
+}
+
+.prompt-question {
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.prompt-options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.prompt-option {
+  font-size: 11px;
+  color: var(--subtle);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+}
+.prompt-option.selected {
+  color: var(--text);
+}
+
+.prompt-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.button {
+  padding: 4px 12px;
+  border-radius: 5px;
+  font-size: 12px;
+  background: var(--overlay);
+}
+.button:hover {
+  background: color-mix(in srgb, var(--text) 12%, var(--overlay));
+}
+.button.approve {
+  background: color-mix(in srgb, var(--foam) 22%, var(--surface));
+  color: var(--foam);
+}
+.button.approve:hover {
+  background: color-mix(in srgb, var(--foam) 34%, var(--surface));
+}
+.button.deny {
+  background: color-mix(in srgb, var(--love) 20%, var(--surface));
+  color: var(--love);
+}
+.button.deny:hover {
+  background: color-mix(in srgb, var(--love) 32%, var(--surface));
+}
+
+/* --- PR list ------------------------------------------------------------ */
+
+.section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 4px 2px 0;
+}
+
+.pr {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 10px;
+  background: var(--surface);
+  border: 1px solid var(--overlay);
+  border-radius: var(--radius);
+  min-width: 0;
+}
+
+.pr-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.pr-top > .checks-passing,
+.pr-top > .checks-failing,
+.pr-top > .checks-pending,
+.pr-top > .checks-none {
+  flex: none;
+}
+
+.pr:hover {
+  border-color: color-mix(in srgb, var(--iris) 40%, var(--overlay));
+}
+
+.pr-number {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.pr-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pr-title {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pr-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  align-items: center;
+  font-size: 10px;
+  color: var(--muted);
+  min-width: 0;
+}
+
+/* Each fact stays on one line; the row wraps between them instead of mid-word. */
+.pr-meta > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.checks-passing {
+  color: var(--foam);
+}
+.checks-failing {
+  color: var(--love);
+}
+.checks-pending {
+  color: var(--gold);
+}
+.checks-none {
+  color: var(--muted);
+}
+
+.review-APPROVED {
+  color: var(--foam);
+}
+.review-CHANGES_REQUESTED {
+  color: var(--love);
+}
+.review-REVIEW_REQUIRED {
+  color: var(--gold);
+}
+
+.linked {
+  color: var(--foam);
+}
+
+/* --- toast -------------------------------------------------------------- */
+
+.toast {
+  position: fixed;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--overlay);
+  color: var(--text);
+  font-size: 11.5px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 45%);
+}
+.toast.error {
+  background: color-mix(in srgb, var(--love) 30%, var(--overlay));
+}
+
+/* --- banner ------------------------------------------------------------- */
+
+.banner {
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--gold) 15%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--gold) 35%, var(--overlay));
+  font-size: 11.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

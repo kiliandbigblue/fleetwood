@@ -1,0 +1,10 @@
+node_modules/
+dist/
+out/
+*.tsbuildinfo
+.DS_Store
+.agents/
+
+# Packaged app and the generated icon
+release/
+packages/app/build/

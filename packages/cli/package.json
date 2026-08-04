@@ -1,0 +1,12 @@
+{
+  "name": "@fleetwood/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "fw": "./src/index.ts"
+  },
+  "dependencies": {
+    "@fleetwood/core": "workspace:*"
+  }
+}

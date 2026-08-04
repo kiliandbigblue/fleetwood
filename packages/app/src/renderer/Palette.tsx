@@ -1,0 +1,145 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { send, tildify } from './api.ts';
+
+interface Project {
+  path: string;
+  name: string;
+  repo?: string;
+}
+
+interface Props {
+  open: boolean;
+  onClose: () => void;
+  sessions: string[];
+  onResult: (message: string, ok: boolean) => void;
+}
+
+/**
+ * ⌘K entry point: jump to a session, or open a project.
+ *
+ * Projects come from the same roots the existing tmux-sessionizer scans, and
+ * opening one is find-or-create by the same session name — so this and
+ * `prefix+g` always land in the same session rather than making two.
+ */
+export function Palette({ open, onClose, sessions, onResult }: Props): React.JSX.Element | null {
+  const [query, setQuery] = useState('');
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [cursor, setCursor] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setQuery('');
+    setCursor(0);
+    inputRef.current?.focus();
+    void send({ kind: 'listProjects' }).then((result) => {
+      if ('projects' in result) setProjects(result.projects);
+    });
+  }, [open]);
+
+  const items = useMemo(() => {
+    const needle = query.toLowerCase().trim();
+    const sessionItems = sessions.map((name) => ({ kind: 'session' as const, name, path: '' }));
+    const projectItems = projects
+      // A project with a live session is already offered above.
+      .filter((p) => !sessions.includes(p.name.replaceAll('.', '_')))
+      .map((p) => ({ kind: 'project' as const, name: p.name, path: p.path }));
+    const all = [...sessionItems, ...projectItems];
+    if (needle.length === 0) return all.slice(0, 40);
+    return all
+      .filter((i) => i.name.toLowerCase().includes(needle) || i.path.toLowerCase().includes(needle))
+      .slice(0, 40);
+  }, [query, projects, sessions]);
+
+  if (!open) return null;
+
+  const choose = async (index: number): Promise<void> => {
+    const item = items[index];
+    if (!item) return;
+    onClose();
+    const result =
+      item.kind === 'session'
+        ? await send({ kind: 'focusSession', session: item.name })
+        : await send({ kind: 'openProject', path: item.path });
+    onResult(result.detail, result.ok);
+  };
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgb(0 0 0 / 55%)',
+        padding: '40px 12px 12px',
+        zIndex: 10,
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: 'var(--surface)',
+          border: '1px solid var(--overlay)',
+          borderRadius: 'var(--radius)',
+          overflow: 'hidden',
+          maxHeight: '80%',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <input
+          ref={inputRef}
+          value={query}
+          placeholder="jump to a session, or open a project…"
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setCursor(0);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') onClose();
+            else if (event.key === 'ArrowDown') setCursor((c) => Math.min(c + 1, items.length - 1));
+            else if (event.key === 'ArrowUp') setCursor((c) => Math.max(c - 1, 0));
+            else if (event.key === 'Enter') void choose(cursor);
+          }}
+          style={{
+            padding: '10px 12px',
+            background: 'transparent',
+            border: 0,
+            borderBottom: '1px solid var(--overlay)',
+            color: 'var(--text)',
+            font: 'inherit',
+            outline: 'none',
+          }}
+        />
+        <div style={{ overflowY: 'auto' }}>
+          {items.length === 0 && <div className="empty">no match</div>}
+          {items.map((item, index) => (
+            <div
+              key={`${item.kind}:${item.name}:${item.path}`}
+              onMouseEnter={() => setCursor(index)}
+              onClick={() => void choose(index)}
+              style={{
+                display: 'flex',
+                gap: 8,
+                alignItems: 'baseline',
+                padding: '6px 12px',
+                background: index === cursor ? 'var(--overlay)' : 'transparent',
+                cursor: 'pointer',
+              }}
+            >
+              <span style={{ color: item.kind === 'session' ? 'var(--foam)' : 'var(--muted)', fontSize: 10 }}>
+                {item.kind === 'session' ? 'session' : 'project'}
+              </span>
+              <span>{item.name}</span>
+              {item.path && (
+                <span className="path" style={{ marginLeft: 'auto', maxWidth: '55%' }}>
+                  {tildify(item.path)}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

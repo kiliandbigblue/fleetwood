@@ -1,0 +1,26 @@
+{
+  "name": "fleetwood-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "tmux-native cockpit for coordinating coding agents",
+  "engines": {
+    "node": ">=23.6"
+  },
+  "scripts": {
+    "fw": "node packages/cli/src/index.ts",
+    "test": "node --test 'packages/*/test/**/*.test.ts'",
+    "typecheck": "tsc -p tsconfig.json && tsc -p packages/app/tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  },
+  "pnpm": {
+    "//": "pnpm 10 blocks postinstall scripts by default; electron needs its to download the binary.",
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild"
+    ]
+  }
+}
