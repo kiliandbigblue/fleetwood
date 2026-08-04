@@ -3,7 +3,14 @@ dist/
 out/
 *.tsbuildinfo
 .DS_Store
+
+# Worktrees, wherever they get created: .agents/ is fleetwood's own convention,
+# .claude/worktrees/ is where Claude Code's EnterWorktree puts them.
 .agents/
+.claude/worktrees/
+
+# Per-machine permission state, not worth sharing.
+.claude/settings.local.json
 
 # Packaged app and the generated icon
 release/
