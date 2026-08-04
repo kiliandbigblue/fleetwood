@@ -90,6 +90,18 @@ export async function readRoster(file: string = ROSTER_FILE): Promise<Map<string
 }
 
 /**
+ * Does a command line belong to Claude Code at all?
+ *
+ * Looser than `procScan`'s agent matchers on purpose: those exclude
+ * `bg-pty-host`, because counting it would report a second agent in the pane —
+ * but that is exactly what a daemon worker *is*, so it needs a check that admits
+ * it. Used to rule out a recycled pid, not to classify an agent.
+ */
+export function looksLikeClaude(command: string): boolean {
+  return /(?:^|\/)claude\b|\/\.local\/share\/claude\/versions\//.test(command);
+}
+
+/**
  * Is a rostered worker still the process it claims to be?
  *
  * The roster keeps entries for workers that have exited, so the pid alone would
@@ -98,6 +110,5 @@ export async function readRoster(file: string = ROSTER_FILE): Promise<Map<string
  */
 export function workerAlive(table: ProcTable, worker: DaemonWorker): boolean {
   const row = table.byPid.get(worker.pid);
-  if (!row) return false;
-  return /(?:^|\/)claude\b|\/\.local\/share\/claude\/versions\//.test(row.command);
+  return row ? looksLikeClaude(row.command) : false;
 }

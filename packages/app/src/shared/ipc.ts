@@ -24,6 +24,8 @@ export type Request =
   | { kind: 'focusSession'; session: string }
   | { kind: 'focusPane'; pane: string }
   | { kind: 'killSession'; session: string }
+  /** Close one agent by its fleet key — pids are resolved in main, never sent from a snapshot. */
+  | { kind: 'killAgent'; key: string }
   | { kind: 'archiveSession'; session: string; force?: boolean }
   | { kind: 'openPr'; repo: string; number: number; branch?: string }
   | { kind: 'answerPrompt'; pane: string; key: string }

@@ -131,6 +131,32 @@ async function refreshPrs(): Promise<void> {
   await pushSnapshot();
 }
 
+/**
+ * Close a single agent, named by its fleet key.
+ *
+ * The key, not the pid: the renderer's snapshot can be a second old, and a stale
+ * pid is the one input this action must not take — by the time a click arrives
+ * that number may belong to something else entirely. So the key is resolved
+ * against a fresh read here, which also means the button is a no-op on an agent
+ * that has already exited.
+ */
+async function killAgent(key: string): Promise<Response> {
+  // No `capture`: this needs pids, not pane contents.
+  const fleet = await buildFleet({ states: collector?.states });
+  const agent = [...fleet.sessions.flatMap((s) => s.agents), ...fleet.orphans].find(
+    (a) => a.key === key,
+  );
+  if (!agent) return { ok: false, detail: 'that agent is no longer listed' };
+
+  const result = await actions.killAgent(agent);
+  // We are the collector, so we own the state file: record the death ourselves,
+  // since the agent cannot report it.
+  if (result.ok && collector && spool.markGone(collector.states, key)) {
+    await spool.saveState(collector.states);
+  }
+  return result;
+}
+
 async function handle(request: Request): Promise<Response> {
   switch (request.kind) {
     case 'refresh':
@@ -150,6 +176,12 @@ async function handle(request: Request): Promise<Response> {
 
     case 'killSession': {
       const result = await actions.killSession(request.session);
+      await pushSnapshot();
+      return result;
+    }
+
+    case 'killAgent': {
+      const result = await killAgent(request.key);
       await pushSnapshot();
       return result;
     }

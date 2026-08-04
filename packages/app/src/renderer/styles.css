@@ -438,6 +438,42 @@ button {
   flex: none;
 }
 
+/*
+ * Close one agent. Dim rather than hidden until hover: a control you can only
+ * find by accident may as well not exist, but this one destroys context and has
+ * no business competing with the status for attention.
+ */
+.agent-kill {
+  flex: none;
+  padding: 0 3px;
+  font-size: 13px;
+  line-height: 1;
+  border-radius: 4px;
+  color: var(--muted);
+  opacity: 0.45;
+}
+.agent:hover .agent-kill,
+.agent-kill:focus-visible {
+  opacity: 1;
+}
+.agent-kill:hover {
+  background: color-mix(in srgb, var(--love) 25%, var(--surface));
+  color: var(--love);
+}
+.agent-kill.confirming {
+  opacity: 1;
+  /* Now a word, not a glyph — a second click must be a deliberate one. */
+  font-size: 10px;
+  padding: 2px 6px;
+  background: color-mix(in srgb, var(--love) 22%, var(--surface));
+  color: var(--love);
+  white-space: nowrap;
+}
+.agent-kill:disabled {
+  cursor: default;
+  opacity: 0.3;
+}
+
 .subagents {
   color: var(--iris);
   font-size: 10px;

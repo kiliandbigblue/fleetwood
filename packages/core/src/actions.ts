@@ -1,5 +1,7 @@
 import { basename } from 'node:path';
 import { run } from './exec.ts';
+import { looksLikeClaude } from './claudeDaemon.ts';
+import { classify, scanProcesses } from './procScan.ts';
 import * as tmux from './tmux.ts';
 import type { AgentTool, SessionMeta } from './types.ts';
 
@@ -192,6 +194,180 @@ export async function interruptAgent(paneId: string): Promise<ActionResult> {
   return ok
     ? { ok: true, detail: `sent Escape to ${paneId}` }
     : { ok: false, detail: `could not interrupt ${paneId}` };
+}
+
+/**
+ * What we know about an agent we've been asked to close.
+ *
+ * A structural subset of `FleetAgent`, so a caller passes the agent it already
+ * has — declared here rather than imported so this module stays independent of
+ * the fleet builder.
+ */
+export interface AgentTarget {
+  tool: AgentTool;
+  /** What process reconciliation matched: the daemon worker, or the pane's outermost agent. */
+  pid?: number;
+  /** The pid the agent's own hooks reported (`$CLAUDE_PID`). */
+  hookPid?: number;
+  nested?: boolean;
+  hosted?: 'daemon';
+  pane?: string;
+}
+
+export interface KillPlan {
+  /** Pids worth signalling, most trustworthy first. */
+  candidates: number[];
+  /** Set when nothing here is safe to signal, in the words the UI should show. */
+  refusal?: string;
+}
+
+/**
+ * Which pid actually *is* a given agent.
+ *
+ * This is the whole risk in closing one agent out of several: every case has a
+ * plausible-looking pid that belongs to a different agent, and killing it would
+ * take down the wrong session.
+ *
+ * - A **daemon-hosted** agent runs in the roster's worker. Its `$CLAUDE_PID` is
+ *   the pooled `bg-spare` helper — spawned early, outliving the session — so the
+ *   hook's pid is refused outright here, never used as a fallback.
+ * - A **nested** agent shares its pane with the agent that spawned it, and the
+ *   pane's outermost process is that parent. Only the pid it reported itself will
+ *   do; with none, there is nothing safe to signal.
+ * - Otherwise the agent's own report is preferred — it is the one thing that
+ *   distinguishes two agents sharing a pane — with the pane match behind it for
+ *   agents that never sent a hook at all.
+ *
+ * Pure so the precedence can be tested without processes to kill; the caller
+ * still has to confirm a candidate is that agent before signalling it.
+ */
+export function planKillAgent(agent: AgentTarget): KillPlan {
+  const real = (pid: number | undefined): pid is number => pid !== undefined && pid > 1;
+
+  if (agent.hosted === 'daemon') {
+    return real(agent.pid)
+      ? { candidates: [agent.pid] }
+      : { candidates: [], refusal: `no worker process known for this ${agent.tool} session` };
+  }
+
+  if (agent.nested) {
+    return real(agent.hookPid)
+      ? { candidates: [agent.hookPid] }
+      : {
+          candidates: [],
+          refusal: `this ${agent.tool} never reported its own pid — closing it would risk killing the agent that spawned it`,
+        };
+  }
+
+  const candidates = [agent.hookPid, agent.pid].filter(real);
+  return candidates.length > 0
+    ? { candidates: [...new Set(candidates)] }
+    : { candidates: [], refusal: `no process known for this ${agent.tool}` };
+}
+
+/** Is `pid` still running? EPERM means yes — running, just not ours to poke. */
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+function signal(pid: number, sig: NodeJS.Signals): boolean {
+  try {
+    process.kill(pid, sig);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Is the process at a candidate pid still the agent we recorded, and not a recycled pid? */
+function stillTheAgent(command: string, agent: AgentTarget): boolean {
+  // A daemon worker runs as `claude bg-pty-host …`, which the agent matchers
+  // deliberately exclude — it must not read as a second agent in a pane — so it
+  // gets the looser check the roster reconciliation uses.
+  if (agent.hosted === 'daemon') return looksLikeClaude(command);
+  return classify(command) === agent.tool;
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+export interface KillAgentOptions {
+  /** How long SIGTERM gets to work before SIGKILL. */
+  graceMs?: number;
+}
+
+/**
+ * Close one agent, leaving its pane, its session and its neighbours alone.
+ *
+ * Killing the *process* rather than the pane is what makes this usable on a
+ * session running several agents: the pane keeps its shell and its scrollback,
+ * so the transcript of what the agent did is still there to read. It is also the
+ * only thing that works for the two cases where pane and agent aren't the same
+ * thing — a daemon-hosted agent, whose pane holds a thin client, and a nested
+ * one, which shares its parent's pane.
+ *
+ * SIGTERM first so the agent can flush its transcript and remove its own roster
+ * entry, then SIGKILL if it ignores that. A UI action that reports success while
+ * the agent keeps running would be worse than one that admits to forcing it.
+ */
+export async function killAgent(
+  agent: AgentTarget,
+  options: KillAgentOptions = {},
+): Promise<ActionResult> {
+  const plan = planKillAgent(agent);
+  if (plan.refusal) return { ok: false, detail: plan.refusal };
+
+  const table = await scanProcesses();
+  const candidates = plan.candidates.filter((pid) => pid !== process.pid);
+  const target = candidates.find((pid) => {
+    const row = table.byPid.get(pid);
+    return row ? stillTheAgent(row.command, agent) : false;
+  });
+
+  const what =
+    agent.hosted === 'daemon'
+      ? `${agent.tool}'s daemon worker`
+      : agent.nested
+        ? `nested ${agent.tool}`
+        : agent.tool;
+
+  if (target === undefined) {
+    // Either it exited on its own between the snapshot and this click, or the pid
+    // has been reused by something unrelated. Both mean: don't send a signal.
+    const running = candidates.some((pid) => table.byPid.has(pid));
+    return {
+      ok: false,
+      detail: running
+        ? `pid ${candidates.join('/')} is no longer ${agent.tool} — refusing to kill it`
+        : `${what} is already gone`,
+    };
+  }
+
+  if (!signal(target, 'SIGTERM')) {
+    return { ok: false, detail: `could not signal pid ${target} — it may not be yours to kill` };
+  }
+
+  const graceMs = options.graceMs ?? 2_000;
+  const deadline = Date.now() + graceMs;
+  while (Date.now() < deadline) {
+    await sleep(100);
+    if (!pidAlive(target)) {
+      return { ok: true, detail: `closed ${what} (pid ${target})${agent.pane ? ` in ${agent.pane}` : ''}` };
+    }
+  }
+
+  signal(target, 'SIGKILL');
+  await sleep(150);
+  return pidAlive(target)
+    ? { ok: false, detail: `${what} (pid ${target}) survived SIGTERM and SIGKILL` }
+    : {
+        ok: true,
+        detail: `closed ${what} (pid ${target}) — SIGKILL, it ignored SIGTERM for ${Math.round(graceMs / 1000)}s`,
+      };
 }
 
 export async function killSession(name: string): Promise<ActionResult> {

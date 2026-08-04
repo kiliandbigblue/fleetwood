@@ -37,6 +37,8 @@ ${c.bold('commands')}
   focus <session>   point the terminal at a session
   approve [pane]    answer yes to a blocked agent's permission prompt
   deny [pane]       answer no
+  kill-agent [pane|key]
+                    close one agent, leaving its pane and session alone
   repos             local checkouts and the GitHub repos they map to
 
   install-hooks     register fleetwood's hooks with claude / cursor ${c.dim('(append-only, backs up first)')}
@@ -460,6 +462,48 @@ async function cmdAnswer(target: string | undefined, kind: 'approve' | 'deny'): 
   process.stdout.write(`${result.ok ? c.foam('✓') : c.love('✗')} ${result.detail}\n`);
 }
 
+/**
+ * Close one agent, named by pane or by key.
+ *
+ * A pane is the handle you have in front of you, but it stops identifying an
+ * agent as soon as a pane holds two — a nested agent shares its parent's — so the
+ * key works too, and an ambiguous pane prints the candidates rather than picking.
+ */
+async function cmdKillAgent(target: string | undefined, json: boolean): Promise<void> {
+  const state = await buildFleet({ capture: false });
+  const agents = [...state.sessions.flatMap((s) => s.agents), ...state.orphans].filter(
+    (a) => a.status !== 'gone',
+  );
+  const matches = target ? agents.filter((a) => a.pane === target || a.key === target) : agents;
+
+  if (matches.length === 0) {
+    process.stderr.write(
+      `${c.love('no live agent')} ${c.muted(target ? `matching ${target}` : 'to close')}\n`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+  if (matches.length > 1) {
+    process.stderr.write(
+      `${c.love('ambiguous')} ${matches.length} agents match — name one by key:\n`,
+    );
+    for (const a of matches) {
+      process.stderr.write(`  ${c.iris(pad(a.tool, 7))} ${c.muted(pad(a.pane ?? '—', 5))} ${c.dim(a.key)}\n`,
+      );
+    }
+    process.exitCode = 2;
+    return;
+  }
+
+  const agent = matches[0] as (typeof matches)[number];
+  const result = await actions.killAgent(agent);
+  if (json) return jsonOut(result);
+  process.stdout.write(`${result.ok ? c.foam('✓') : c.love('✗')} ${result.detail}\n`);
+  // The state file belongs to the collector (the app), so we don't write `gone`
+  // into it from here — a dead process is enough for every case it reconciles.
+  if (!result.ok) process.exitCode = 1;
+}
+
 async function cmdRepos(json: boolean): Promise<void> {
   const index = await repoIndex.buildIndex();
   if (json) return jsonOut(index);
@@ -676,6 +720,9 @@ async function main(): Promise<void> {
       break;
     case 'deny':
       await cmdAnswer(arg, 'deny');
+      break;
+    case 'kill-agent':
+      await cmdKillAgent(arg, json);
       break;
     case 'repos':
       await cmdRepos(json);

@@ -64,6 +64,16 @@ guessed onto the wrong terminal. `fw doctor` reports both numbers.
 - **Approve or deny from the panel.** A blocked agent's actual prompt is read off
   the pane and rendered with buttons; clicking one sends the keystroke. This is the
   feature that makes the app worth keeping open.
+- **Close one agent, not its session.** A session that holds several agents — a
+  task root plus its per-repo agents, or an agent and the background one it spawned
+  — has no single kill switch that means the right thing, so every agent row has
+  its own. It ends the agent's *process*, so the pane keeps its shell and its
+  scrollback: the transcript of what it did is still there to read. Which process
+  that is differs per case, and getting it wrong would close somebody else's
+  agent: a daemon-hosted agent dies with its worker (its `$CLAUDE_PID` is a pooled
+  helper that outlives it), and a nested one only by the pid it reported itself
+  (the pane's outermost process is its parent). SIGTERM first, SIGKILL if it's
+  ignored — and the toast says which.
 - **PR → session in one click.** Find-or-create: an existing session for that PR is
   focused, otherwise a dedicated git worktree and tmux session are built and stamped.
   Clicking twice never gives you two sessions.
@@ -211,6 +221,7 @@ fw prs                PRs awaiting your review, and your own
 fw open-pr <ref>      focus a PR's session, or build one on a fresh worktree
 fw approve [pane]     answer yes to a blocked agent
 fw deny [pane]        answer no
+fw kill-agent <pane|key>  close one agent, leaving its pane and session alone
 fw focus <session>    point the terminal at a session
 fw sessions | panes | repos | doctor | install-hooks
 ```
@@ -254,5 +265,6 @@ pnpm typecheck
 
 Covers the tmux format parsers, the process matcher (against real argv from live
 sessions, decoys included), the event folder (one case per agent event, with
-out-of-order delivery), the screen parser (against real box-drawn prompts), and the
-git/GitHub plumbing.
+out-of-order delivery), the screen parser (against real box-drawn prompts), the
+kill-target precedence (each case has a plausible pid belonging to another agent),
+and the git/GitHub plumbing.

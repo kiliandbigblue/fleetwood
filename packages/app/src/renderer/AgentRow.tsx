@@ -31,8 +31,22 @@ const PROVENANCE_NOTE: Record<string, string> = {
   stale: 'last reported a while ago, unconfirmed',
 };
 
+/**
+ * What closing this agent will actually do, since it isn't the same act in every
+ * case — and on a session running several agents the difference is the whole
+ * point of the button.
+ */
+function killNote(agent: FleetAgent): string {
+  if (agent.hosted === 'daemon') {
+    return 'close this agent — kills the worker it runs in, not the pane showing it';
+  }
+  if (agent.nested) return 'close this agent — the one that spawned it keeps running';
+  return 'close this agent — its pane, scrollback and session stay';
+}
+
 export function AgentRow({ agent, onResult }: Props): React.JSX.Element {
   const [busy, setBusy] = useState(false);
+  const [confirmingKill, setConfirmingKill] = useState(false);
 
   const act = async (request: Parameters<typeof send>[0]): Promise<void> => {
     setBusy(true);
@@ -86,6 +100,30 @@ export function AgentRow({ agent, onResult }: Props): React.JSX.Element {
         >
           {agent.ageIsUptime ? `up ${duration(agent.forSeconds)}` : duration(agent.forSeconds)}
         </span>
+        {/* Per-agent, because killing the session is the wrong instrument once more
+            than one agent is in it. Two-step for the same reason `archive` is: an
+            agent's context dies with it and there is no undo. Nothing to close on
+            an agent that is already gone, so the control isn't there. */}
+        {agent.status !== 'gone' && (
+          <button
+            className={`agent-kill${confirmingKill ? ' confirming' : ''}`}
+            disabled={busy}
+            title={confirmingKill ? `${killNote(agent)} — click again to confirm` : killNote(agent)}
+            onClick={(event) => {
+              // The row itself focuses the pane; this button must not do both.
+              event.stopPropagation();
+              if (!confirmingKill) {
+                setConfirmingKill(true);
+                setTimeout(() => setConfirmingKill(false), 4_000);
+                return;
+              }
+              setConfirmingKill(false);
+              void act({ kind: 'killAgent', key: agent.key });
+            }}
+          >
+            {confirmingKill ? 'close — sure?' : '×'}
+          </button>
+        )}
       </div>
 
       {prompt && agent.pane && (

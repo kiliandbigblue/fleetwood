@@ -96,6 +96,30 @@ export function pruneStates(states: Map<string, AgentState>, now = Math.floor(Da
   return removed;
 }
 
+/**
+ * Record that we ended an agent ourselves.
+ *
+ * An agent we killed sends no closing event — hooks can't report their own death
+ * — so its last hook state would stand until it ages out. For most agents that
+ * corrects itself, because process reconciliation sees the pid is gone. Not for a
+ * daemon-hosted one: the pid its hooks reported is a pooled helper that outlives
+ * the session, so the state keeps looking alive. Writing `gone` here is what
+ * makes the row disappear the moment the kill succeeds, in every case.
+ *
+ * Returns false for an agent the store never knew (one we only ever found in
+ * `ps`), which needs no marking: nothing will list it once its process is gone.
+ */
+export function markGone(
+  states: Map<string, AgentState>,
+  key: string,
+  now = Math.floor(Date.now() / 1000),
+): boolean {
+  const state = states.get(key);
+  if (!state) return false;
+  states.set(key, { ...state, status: 'gone', since: now, lastEventAt: now, lastEvent: 'killed' });
+  return true;
+}
+
 export function foldInto(states: Map<string, AgentState>, events: AgentEvent[]): Map<string, AgentState> {
   for (const e of events) {
     const key = e.sessionId
