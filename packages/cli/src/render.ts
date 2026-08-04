@@ -8,26 +8,21 @@ import type {
 } from '@fleetwood/core';
 import { c, pad, relativeAge, tildify, width } from './ui.ts';
 
-function durationShort(seconds: number): string {
-  if (seconds < 60) return `${Math.max(0, seconds)}s`;
-  const m = Math.floor(seconds / 60);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return m % 60 === 0 ? `${h}h` : `${h}h${m % 60}m`;
-  return `${Math.floor(h / 24)}d`;
-}
-
 /**
- * The plan's quota, as `/usage` shows it.
+ * The Claude plan's quota, as `/usage` shows it.
  *
  * Rendered as bars rather than bare percentages because the point is a glance:
  * how much runway is left before the fleet stalls, not the exact figure.
+ *
+ * Labelled `claude` in that tool's own colour: a fleet also running cursor-agent
+ * or codex would otherwise read this as covering all of them, when those have
+ * separate quotas fleetwood has no way to see.
  */
 export function renderLimits(limits: PlanLimits): string {
   if (limits.windows.length === 0) return '';
   const now = Math.floor(Date.now() / 1000);
   const titleWidth = Math.max(...limits.windows.map((w) => width(w.title)));
-  const lines: string[] = [];
+  const lines: string[] = [`  ${c.iris('claude')} ${c.muted('plan usage')}`];
 
   for (const window of limits.windows) {
     const percent = Math.round(window.utilization * 100);
@@ -39,13 +34,13 @@ export function renderLimits(limits: PlanLimits): string {
         ? ''
         : window.resetsAt - now <= 0
           ? c.dim(' resetting')
-          : c.dim(` resets ${durationShort(window.resetsAt - now)}`);
+          : c.dim(` resets ${duration(window.resetsAt - now)}`);
     lines.push(
       `  ${c.muted(pad(window.title, titleWidth))}  ${bar} ${pad(`${percent}%`, 4)}${reset}`,
     );
   }
   if (limits.stale) {
-    lines.push(c.dim(`  as of ${durationShort(now - limits.fetchedAt)} ago`));
+    lines.push(c.dim(`  as of ${duration(now - limits.fetchedAt)} ago`));
   }
   return lines.join('\n');
 }
@@ -154,12 +149,6 @@ export function renderFleet(fleet: FleetState, limits?: PlanLimits): string {
       summary.length > 0 ? summary.join(c.muted(' · ')) : c.muted('no agents')
     }`,
   );
-
-  // Quota sits directly under the summary: it constrains every count above it.
-  if (limits) {
-    const bars = renderLimits(limits);
-    if (bars) lines.push(bars);
-  }
   lines.push('');
 
   if (fleet.sessions.length === 0) {
@@ -209,7 +198,12 @@ export function renderFleet(fleet: FleetState, limits?: PlanLimits): string {
     lines.push('');
   }
 
-  return lines.join('\n').replace(/\n+$/, '\n');
+  const body = lines.join('\n').replace(/\n+$/, '\n');
+
+  // Quota last: it is standing context for one agent tool, not a per-agent fact,
+  // so it reads as a footer rather than competing with the fleet for the top.
+  const bars = limits ? renderLimits(limits) : '';
+  return bars ? `${body}\n${bars}\n` : body;
 }
 
 function rank(agent: FleetAgent): number {

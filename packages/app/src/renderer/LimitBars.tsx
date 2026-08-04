@@ -21,11 +21,16 @@ function resetLabel(resetsAt: number | undefined, now: number): string {
 }
 
 /**
- * The plan's quota, as `/usage` shows it.
+ * The Claude plan's quota, as `/usage` shows it.
  *
  * Separate from the cost figures on the rows: those say what the work was worth,
  * this says how much runway is left. An agent can be cheap and still be one turn
  * from stalling for four hours.
+ *
+ * Attributed to claude explicitly, in the same iris the agent rows use for that
+ * tool. A fleet mixing claude with cursor-agent and codex would otherwise read
+ * this as a fleet-wide gauge, when it only covers one of them — the others have
+ * their own quotas that fleetwood cannot see.
  */
 export function LimitBars({ limits }: Props): React.JSX.Element | null {
   if (limits.windows.length === 0) return null;
@@ -33,6 +38,12 @@ export function LimitBars({ limits }: Props): React.JSX.Element | null {
 
   return (
     <div className="limits">
+      <div className="limits-head">
+        <span className="tool tool-claude">claude</span>
+        <span className="limits-label" title="quota for your Claude plan — cursor and codex have their own, which fleetwood can't read">
+          plan usage
+        </span>
+      </div>
       {limits.windows.map((window) => {
         const percent = Math.round(window.utilization * 100);
         return (

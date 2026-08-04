@@ -110,9 +110,6 @@ export function App(): React.JSX.Element {
             ↻
           </button>
         </div>
-        {/* Above the tabs: quota is fleet-wide, not per-tab, and it belongs next
-            to the counts it constrains. */}
-        {snapshot?.limits && <LimitBars limits={snapshot.limits} />}
         <div className="tabs">
           <button className={`tab${tab === 'fleet' ? ' active' : ''}`} onClick={() => setTab('fleet')}>
             fleet<span className="count">{snapshot?.fleet.sessions.length ?? 0}</span>
@@ -199,6 +196,10 @@ export function App(): React.JSX.Element {
           />
         )}
       </div>
+
+      {/* Pinned below the scrolling body: it is ambient context, not something
+          you act on, and it belongs to one agent tool rather than to the fleet. */}
+      {snapshot?.limits && <LimitBars limits={snapshot.limits} />}
 
       <NewTask open={newTaskOpen} onClose={() => setNewTaskOpen(false)} onResult={onResult} />
 

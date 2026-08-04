@@ -504,11 +504,30 @@ button {
 
 /* --- plan quota bars ------------------------------------------------------ */
 
+/* Pinned under the scrolling body, so it reads as a footer rather than as one
+   more thing in the fleet list. */
 .limits {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  padding: 2px 10px 6px;
+  padding: 6px 12px 8px;
+  border-top: 1px solid color-mix(in srgb, var(--overlay) 60%, var(--surface));
+  background: color-mix(in srgb, var(--overlay) 20%, var(--surface));
+  flex: none;
+}
+
+.limits-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 1px;
+}
+
+.limits-label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: lowercase;
+  letter-spacing: 0.03em;
 }
 
 .limit {
