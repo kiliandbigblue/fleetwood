@@ -31,30 +31,36 @@ export interface PlanLimits {
   stale?: boolean;
 }
 
-/** Titles Claude Code uses, so the panel and `/usage` agree. */
-const TITLES: Record<string, string> = {
-  five_hour: 'Current session',
-  seven_day: 'Current week (all models)',
-  seven_day_sonnet: 'Current week (Sonnet only)',
-  seven_day_opus: 'Current week (Opus only)',
-  seven_day_overage_included: 'Current week (Fable 5)',
-  overage: 'Usage credits',
-};
-
-/** The order the bars should read in, coarsest window last. */
-const ORDER = ['five_hour', 'seven_day', 'seven_day_sonnet', 'seven_day_opus'];
+/**
+ * The quota windows we render, in reading order, with the titles `/usage` uses.
+ *
+ * An allowlist rather than "whatever the payload holds". The response also
+ * carries `spend` (a credits object), `extra_usage`, and a set of unrelated
+ * codenames — `tangelo`, `iguana_necktie`, `nimbus_quill` — and several of those
+ * have a `percent` or `utilization` field of their own. Surfacing unknown keys
+ * put a bogus "spend 0%" bar on screen, so a new window not showing up until
+ * it's listed here is the cheaper failure.
+ */
+const WINDOWS: [key: string, title: string][] = [
+  ['five_hour', 'Current session'],
+  ['seven_day', 'Current week (all models)'],
+  ['seven_day_opus', 'Current week (Opus only)'],
+  ['seven_day_sonnet', 'Current week (Sonnet only)'],
+  ['seven_day_cowork', 'Current week (Cowork)'],
+  ['seven_day_oauth_apps', 'Current week (OAuth apps)'],
+];
 
 /**
- * Utilization as a 0..1 fraction, which is what the endpoint reports.
+ * Utilization as a 0..1 fraction.
  *
- * No "looks like a percentage" rescaling: `1.4` is 140% of a blown limit, not
- * 1.4%, and nothing in the payload distinguishes those two readings. Guessing
- * would silently mis-scale a real bar by 100×; clamping means that if the wire
- * format ever does change to 0..100, every bar pins at full and someone notices.
+ * The endpoint reports whole percents — `{"five_hour": {"utilization": 77}}` is
+ * 77% — so this divides by 100. Verified against a live response next to the
+ * desktop app's own numbers; an earlier reading of this as a 0..1 fraction
+ * pinned every bar at 100%.
  */
 function fraction(value: unknown): number | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
-  return Math.min(1, Math.max(0, value));
+  return Math.min(1, Math.max(0, value / 100));
 }
 
 function epoch(value: unknown): number | undefined {
@@ -87,38 +93,33 @@ export function parseLimits(body: unknown, now: number): PlanLimits {
   const root = (body ?? {}) as Record<string, unknown>;
   const windows: LimitWindow[] = [];
 
-  const push = (key: string, wire: WireWindow, title?: string): void => {
+  const push = (key: string, wire: WireWindow, title: string): void => {
     const utilization = fraction(wire.utilization ?? wire.percent);
     if (utilization === undefined) return;
-    windows.push({
-      key,
-      title: title ?? TITLES[key] ?? key.replace(/_/g, ' '),
-      utilization,
-      resetsAt: epoch(wire.resets_at),
-    });
+    windows.push({ key, title, utilization, resetsAt: epoch(wire.resets_at) });
   };
 
-  for (const [key, value] of Object.entries(root)) {
-    if (key === 'limits' || value === null || typeof value !== 'object') continue;
-    push(key, value as WireWindow);
+  // Most windows are null on any given plan — an account with no Opus-specific
+  // cap reports `"seven_day_opus": null` rather than omitting the key.
+  for (const [key, title] of WINDOWS) {
+    const value = root[key];
+    if (value === null || typeof value !== 'object') continue;
+    push(key, value as WireWindow, title);
   }
 
-  // Per-model weekly windows arrive as a list rather than named keys.
+  // Per-model weekly caps arrive in a list instead of as named keys. Only the
+  // scoped ones: the same array also repeats the session and all-models windows
+  // (`kind: "session"` / `"weekly_all"`, `scope: null`), which are already above.
   const scoped = root.limits;
   if (Array.isArray(scoped)) {
     for (const entry of scoped as Record<string, unknown>[]) {
-      const scope = entry.scope as { model?: { display_name?: unknown } } | undefined;
+      if (entry.kind !== 'weekly_scoped') continue;
+      const scope = entry.scope as { model?: { display_name?: unknown } } | null | undefined;
       const name = scope?.model?.display_name;
       if (typeof name !== 'string') continue;
       push(`weekly_scoped:${name}`, entry as WireWindow, `Current week (${name})`);
     }
   }
-
-  windows.sort((a, b) => {
-    const ai = ORDER.indexOf(a.key);
-    const bi = ORDER.indexOf(b.key);
-    return (ai === -1 ? ORDER.length : ai) - (bi === -1 ? ORDER.length : bi);
-  });
 
   return { windows, fetchedAt: now };
 }

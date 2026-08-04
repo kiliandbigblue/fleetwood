@@ -5,101 +5,149 @@ import { extractToken, fetchLimits, parseLimits } from '../src/limits.ts';
 const NOW = 1_800_000_000;
 
 /**
- * The shape `/api/oauth/usage` returns: named windows plus a `limits` array for
- * per-model weekly caps. Read off Claude Code's own parsing, so it is what the
- * endpoint actually sends rather than a guess.
+ * A real `/api/oauth/usage` response, trimmed but otherwise verbatim.
+ *
+ * Recorded from a live call and checked against the desktop app showing "77%
+ * used" and "40% used" at the same moment. An earlier version of this fixture
+ * was written from a guess at the shape — `utilization` as a 0..1 fraction —
+ * and every test passed while the UI rendered every bar at 100%. Keep this
+ * honest: it is the only thing standing between a plausible parse and a wrong one.
  */
 const RESPONSE = {
-  five_hour: { utilization: 0.57, resets_at: '2027-01-15T18:40:00.000Z' },
-  seven_day: { utilization: 0.22, resets_at: '2027-01-18T00:00:00.000Z' },
-  seven_day_sonnet: { utilization: 0.05, resets_at: '2027-01-18T00:00:00.000Z' },
+  five_hour: {
+    utilization: 77,
+    resets_at: '2026-08-04T23:09:59.573248+00:00',
+    limit_dollars: null,
+    used_dollars: null,
+  },
+  seven_day: {
+    utilization: 40,
+    resets_at: '2026-08-06T13:00:00.573269+00:00',
+    limit_dollars: null,
+  },
+  // Windows that don't apply to the plan are present and null, not omitted.
+  seven_day_opus: null,
+  seven_day_sonnet: null,
+  seven_day_cowork: null,
+  // Unrelated codenames that share the payload.
+  tangelo: null,
+  iguana_necktie: null,
+  nimbus_quill: null,
+  extra_usage: { is_enabled: false, utilization: null, user_disabled: true },
   limits: [
-    {
-      kind: 'weekly_scoped',
-      percent: 0.31,
-      resets_at: '2027-01-18T00:00:00.000Z',
-      scope: { model: { display_name: 'Opus 5' } },
-    },
+    { kind: 'session', group: 'session', percent: 77, scope: null, is_active: true },
+    { kind: 'weekly_all', group: 'weekly', percent: 40, scope: null, is_active: false },
   ],
+  // A credits object, not a quota window — it has a `percent` all the same.
+  spend: { used: { amount_minor: 0, currency: 'USD' }, percent: 0, enabled: false },
+  member_dashboard_available: false,
 };
 
-test('reads the named windows and names them as /usage does', () => {
+test('utilization is a whole percent, not a fraction', () => {
+  // The bug this exists to prevent: reading 77 as a 0..1 fraction clamped every
+  // bar to 100% while the desktop app showed 77% and 40%.
   const limits = parseLimits(RESPONSE, NOW);
-  const session = limits.windows[0];
+  assert.equal(limits.windows.find((w) => w.key === 'five_hour')?.utilization, 0.77);
+  assert.equal(limits.windows.find((w) => w.key === 'seven_day')?.utilization, 0.4);
+});
 
-  // five_hour sorts first: it is the window that stalls you soonest.
-  assert.equal(session?.key, 'five_hour');
-  assert.equal(session?.title, 'Current session');
-  assert.equal(session?.utilization, 0.57);
-  assert.equal(session?.resetsAt, Math.floor(Date.parse('2027-01-15T18:40:00.000Z') / 1000));
-
+test('reads the applicable windows, in reading order, titled as /usage does', () => {
+  const limits = parseLimits(RESPONSE, NOW);
   assert.deepEqual(
     limits.windows.map((w) => w.title),
-    [
-      'Current session',
-      'Current week (all models)',
-      'Current week (Sonnet only)',
-      'Current week (Opus 5)',
-    ],
+    ['Current session', 'Current week (all models)'],
+  );
+  // The window that stalls you soonest reads first.
+  assert.equal(limits.windows[0]?.key, 'five_hour');
+  assert.equal(
+    limits.windows[0]?.resetsAt,
+    Math.floor(Date.parse('2026-08-04T23:09:59.573248+00:00') / 1000),
   );
   assert.equal(limits.fetchedAt, NOW);
   assert.equal(limits.stale, undefined);
 });
 
-test('per-model weekly caps come off the limits array, not a named key', () => {
-  const scoped = parseLimits(RESPONSE, NOW).windows.find((w) => w.key.startsWith('weekly_scoped:'));
+test('non-window objects that happen to carry a percent are not rendered as bars', () => {
+  const keys = parseLimits(RESPONSE, NOW).windows.map((w) => w.key);
+  // `spend` is a credits object with `percent: 0`; it put a bogus "spend 0%" bar
+  // on screen when unknown keys were surfaced generically.
+  assert.ok(!keys.includes('spend'));
+  assert.ok(!keys.includes('extra_usage'));
+  assert.ok(!keys.some((k) => ['tangelo', 'iguana_necktie', 'nimbus_quill'].includes(k)));
+});
+
+test('windows that do not apply to the plan are null, and stay off the panel', () => {
+  const keys = parseLimits(RESPONSE, NOW).windows.map((w) => w.key);
+  assert.ok(!keys.includes('seven_day_opus'));
+  assert.ok(!keys.includes('seven_day_sonnet'));
+});
+
+test('a window that does apply is picked up once populated', () => {
+  const limits = parseLimits(
+    { ...RESPONSE, seven_day_opus: { utilization: 12, resets_at: '2026-08-06T13:00:00Z' } },
+    NOW,
+  );
+  const opus = limits.windows.find((w) => w.key === 'seven_day_opus');
+  assert.equal(opus?.title, 'Current week (Opus only)');
+  assert.equal(opus?.utilization, 0.12);
+});
+
+test('the limits array contributes only per-model caps, never duplicates', () => {
+  // It repeats session and weekly_all with `scope: null`; those are already
+  // rendered from the named keys, so counting them again would double the panel.
+  assert.equal(parseLimits(RESPONSE, NOW).windows.length, 2);
+
+  const withScoped = parseLimits(
+    {
+      ...RESPONSE,
+      limits: [
+        ...RESPONSE.limits,
+        {
+          kind: 'weekly_scoped',
+          percent: 31,
+          resets_at: '2026-08-06T13:00:00Z',
+          scope: { model: { display_name: 'Opus 5' } },
+        },
+      ],
+    },
+    NOW,
+  );
+  const scoped = withScoped.windows.find((w) => w.key === 'weekly_scoped:Opus 5');
   assert.equal(scoped?.title, 'Current week (Opus 5)');
   // That branch reads `percent` where the named windows use `utilization`.
   assert.equal(scoped?.utilization, 0.31);
 });
 
-test('an unrecognised window still shows up, under its raw name', () => {
-  // The endpoint is internal and can add windows; a new one appearing must not
-  // cost us the ones we do understand.
-  const limits = parseLimits({ ...RESPONSE, some_new_window: { utilization: 0.4 } }, NOW);
-  const added = limits.windows.find((w) => w.key === 'some_new_window');
-  assert.equal(added?.title, 'some new window');
-  assert.equal(added?.utilization, 0.4);
-  // And it sorts after the windows we have an opinion about.
-  assert.equal(limits.windows[0]?.key, 'five_hour');
-});
-
-test('utilization is clamped to a fraction, never rescaled', () => {
+test('utilization is clamped to the 0..100 the endpoint promises', () => {
   const limits = parseLimits(
-    { over: { utilization: 1.4 }, under: { utilization: -0.2 }, exact: { utilization: 0.57 } },
+    { five_hour: { utilization: 140 }, seven_day: { utilization: -5 } },
     NOW,
   );
   const by = (key: string): number | undefined =>
     limits.windows.find((w) => w.key === key)?.utilization;
-  // 1.4 is 140% of a blown limit, not 1.4% — it must not be divided by 100.
-  assert.equal(by('over'), 1);
-  assert.equal(by('under'), 0);
-  assert.equal(by('exact'), 0.57);
+  assert.equal(by('five_hour'), 1);
+  assert.equal(by('seven_day'), 0);
 });
 
 test('reset timestamps are accepted as ISO, seconds, or milliseconds', () => {
-  const limits = parseLimits(
-    {
-      iso: { utilization: 0.1, resets_at: '2027-01-15T18:40:00.000Z' },
-      secs: { utilization: 0.1, resets_at: 1_800_000_500 },
-      millis: { utilization: 0.1, resets_at: 1_800_000_500_000 },
-      absent: { utilization: 0.1 },
-      junk: { utilization: 0.1, resets_at: 'not a date' },
-    },
-    NOW,
+  // The endpoint sends offset-suffixed ISO; the numeric forms are tolerated in
+  // case that changes, since a wrong unit here reads as "resets in 55 years".
+  const at = (resets: unknown): number | undefined =>
+    parseLimits({ five_hour: { utilization: 10, resets_at: resets } }, NOW).windows[0]?.resetsAt;
+
+  assert.equal(
+    at('2026-08-04T23:09:59.573248+00:00'),
+    Math.floor(Date.parse('2026-08-04T23:09:59.573248+00:00') / 1000),
   );
-  const at = (key: string): number | undefined =>
-    limits.windows.find((w) => w.key === key)?.resetsAt;
-  assert.equal(at('iso'), Math.floor(Date.parse('2027-01-15T18:40:00.000Z') / 1000));
-  assert.equal(at('secs'), 1_800_000_500);
-  assert.equal(at('millis'), 1_800_000_500);
-  assert.equal(at('absent'), undefined);
-  assert.equal(at('junk'), undefined);
+  assert.equal(at(1_800_000_500), 1_800_000_500);
+  assert.equal(at(1_800_000_500_000), 1_800_000_500);
+  assert.equal(at(undefined), undefined);
+  assert.equal(at('not a date'), undefined);
 });
 
 test('a window with no usable utilization is dropped, not rendered as empty', () => {
   const limits = parseLimits(
-    { five_hour: { resets_at: 1_800_000_500 }, seven_day: { utilization: 0.5 } },
+    { five_hour: { resets_at: 1_800_000_500 }, seven_day: { utilization: 50 } },
     NOW,
   );
   assert.deepEqual(
@@ -114,7 +162,8 @@ test('garbage in gives an empty panel rather than a crash', () => {
   for (const body of [null, undefined, 'nonsense', 42, [], { limits: 'not an array' }]) {
     assert.deepEqual(parseLimits(body, NOW).windows, []);
   }
-  assert.deepEqual(parseLimits({ limits: [{ percent: 0.5 }] }, NOW).windows, []);
+  // A scoped entry with no model name is unrenderable, so it is skipped.
+  assert.deepEqual(parseLimits({ limits: [{ kind: 'weekly_scoped', percent: 50 }] }, NOW).windows, []);
 });
 
 test('extracts a token whether the command prints JSON or a bare string', () => {
