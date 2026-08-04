@@ -64,13 +64,28 @@ export function AgentRow({ agent, onResult }: Props): React.JSX.Element {
             ⤶
           </span>
         )}
+        {agent.hosted === 'daemon' && (
+          <span
+            className="nested"
+            title="runs in the claude daemon, not in this pane — matched to it by working directory and version"
+          >
+            ⇢
+          </span>
+        )}
         {agent.subagents > 0 && (
           <span className="subagents" title={`${agent.subagents} subagents running`}>
             +{agent.subagents}
           </span>
         )}
         <span className="activity">{label}</span>
-        <span className="since">{duration(agent.forSeconds)}</span>
+        {/* "up 6h" reads as uptime. A bare "6h" against a status nothing timed —
+            a process we only found in `ps` — claims it has been working that long. */}
+        <span
+          className="since"
+          title={agent.ageIsUptime ? 'how long the process has been up' : 'how long in this status'}
+        >
+          {agent.ageIsUptime ? `up ${duration(agent.forSeconds)}` : duration(agent.forSeconds)}
+        </span>
       </div>
 
       {prompt && agent.pane && (

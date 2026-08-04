@@ -37,9 +37,24 @@ launched in — that is what binds an agent session to a pane.
 **Three sources, reconciled.** Hooks are precise but can go stale (an agent killed
 with `SIGKILL` never reports it). So fleetwood also polls tmux, walks the process
 tree, and reads pane contents. Precedence is explicit: **a dead process beats any
-hook state, a hook beats the screen, and the screen beats a stale hook.** Every
-status carries its provenance, and inferred ones are marked (`~` screen, `?`
-process-only, `…` stale) so an inference never looks as solid as a report.
+hook state, a hook beats the screen, the screen beats a stale hook, and an
+unreadable screen beats nothing at all.** Every status carries its provenance, and
+inferred ones are marked (`~` screen, `?` process-only, `…` stale) so an inference
+never looks as solid as a report. Durations say what they measure: a status nobody
+timed is shown as uptime (`up 18h`), never as time spent working.
+
+**Daemon-hosted sessions get a fourth source.** Claude Code can run a session
+inside `claude daemon`'s own pty, with the tmux pane holding only a thin client
+attached to it — that's what a session launched from `/` does. Both usual bindings
+fail there: `$TMUX_PANE` is stripped from the worker's environment, and the worker
+is reparented to init so the process tree stops at pid 1. Left at that, one agent
+reads as two: a phantom in the pane, and a session apparently running nowhere. So
+fleetwood reads the daemon's own roster (`~/.claude/daemon/roster.json`), which
+maps a session id onto the process the agent really runs in, and matches it to the
+pane displaying it by launch directory and CLI version — marked `⇢`, because that
+pane was inferred rather than reported. A match counts only when it is the only
+candidate on both sides; an ambiguous one is listed without a pane instead of
+guessed onto the wrong terminal. `fw doctor` reports both numbers.
 
 ## What it gives you
 

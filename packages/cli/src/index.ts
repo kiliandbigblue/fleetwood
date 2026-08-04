@@ -261,6 +261,26 @@ async function cmdDoctor(json: boolean): Promise<void> {
             .join(', ')}`,
   });
 
+  // Sessions `claude daemon` hosts are bound to a pane by inference, not by
+  // report, so say out loud when one couldn't be placed — that is the difference
+  // between "agent missing" and "agent listed without a terminal".
+  const daemonBound = state.sessions
+    .flatMap((s) => s.agents)
+    .filter((a) => a.hosted === 'daemon');
+  const daemonLoose = state.orphans.filter((a) => a.orphanReason === 'daemon-hosted');
+  checks.push({
+    name: 'claude daemon',
+    ok: daemonLoose.length === 0 ? true : 'warn',
+    detail:
+      daemonBound.length + daemonLoose.length === 0
+        ? 'no daemon-hosted sessions'
+        : `${daemonBound.length} matched to a pane${
+            daemonLoose.length > 0
+              ? `, ${daemonLoose.length} without one (listed under "no terminal matched")`
+              : ''
+          }`,
+  });
+
   const pending = await spool.readSpool();
   checks.push({
     name: 'spool',

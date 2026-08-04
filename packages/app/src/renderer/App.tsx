@@ -129,13 +129,13 @@ export function App(): React.JSX.Element {
             {sessions.map((session) => (
               <SessionCard key={session.sessionId} session={session} onResult={onResult} />
             ))}
-            {/* Two different situations, so don't file them under one scary label:
-                an agent in an IDE was never in tmux and isn't a problem. */}
-            {(['outside-tmux', 'pane-gone'] as const).map((reason) => {
-              const group = snapshot.fleet.orphans.filter((a) =>
-                reason === 'outside-tmux'
-                  ? a.orphanReason === 'outside-tmux'
-                  : a.orphanReason !== 'outside-tmux',
+            {/* Three different situations, so don't file them under one scary label:
+                an agent in an IDE was never in tmux and isn't a problem, and a
+                daemon-hosted one is running fine — we just couldn't tell which
+                terminal is showing it. */}
+            {(['daemon-hosted', 'outside-tmux', 'pane-gone'] as const).map((reason) => {
+              const group = snapshot.fleet.orphans.filter(
+                (a) => (a.orphanReason ?? 'pane-gone') === reason,
               );
               if (group.length === 0) return null;
               return (
@@ -143,7 +143,9 @@ export function App(): React.JSX.Element {
                   <div className="section-title">
                     {reason === 'outside-tmux'
                       ? `not in tmux (${group.length}) — running in an editor`
-                      : `pane gone (${group.length}) — ended without a closing event`}
+                      : reason === 'daemon-hosted'
+                        ? `no terminal matched (${group.length}) — running in the claude daemon`
+                        : `pane gone (${group.length}) — ended without a closing event`}
                   </div>
                   <div className="card" style={{ marginTop: 6 }}>
                     <div className="agents">

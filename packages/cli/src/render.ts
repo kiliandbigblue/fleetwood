@@ -61,8 +61,12 @@ function provenanceMark(agent: FleetAgent): string {
 export function renderAgentLine(agent: FleetAgent, indent = '    '): string {
   const style = STYLES[agent.status];
   const status = `${style.paint(style.glyph)} ${pad(style.paint(style.label), 11)}`;
-  const forTime = c.muted(pad(duration(agent.forSeconds), 5));
-  const nested = agent.nested ? c.dim('⤶') : ' ';
+  // "up 6h" reads as uptime; a bare "6h" would claim the agent has been in this
+  // status that long, which nothing measured.
+  const age = agent.ageIsUptime ? `up ${duration(agent.forSeconds)}` : duration(agent.forSeconds);
+  const forTime = c.muted(pad(age, 8));
+  // ⤶ a nested agent, ⇢ one hosted by the claude daemon and matched to this pane.
+  const nested = agent.nested ? c.dim('⤶') : agent.hosted ? c.dim('⇢') : ' ';
   const subagents = agent.subagents > 0 ? c.iris(` +${agent.subagents}`) : '';
   const activity = agent.activity ? c.dim(` ${agent.activity}`) : '';
   const pane = c.muted(pad(agent.pane ?? '—', 4));
@@ -117,9 +121,20 @@ export function renderFleet(fleet: FleetState): string {
     lines.push('');
   }
 
-  if (fleet.orphans.length > 0) {
-    lines.push(c.muted(`orphaned (pane gone, no SessionEnd):`));
-    for (const agent of fleet.orphans) lines.push(renderAgentLine(agent));
+  // Three different situations, so don't file them under one scary label: an
+  // agent in an editor was never in tmux, and a daemon-hosted one is running fine
+  // — we just couldn't tell which terminal is showing it.
+  const ORPHAN_LABELS = {
+    'pane-gone': 'pane gone (ended without a closing event):',
+    'daemon-hosted': 'hosted by the claude daemon (no terminal matched):',
+    'outside-tmux': 'not in tmux (running in an editor):',
+  } as const;
+  for (const [reason, label] of Object.entries(ORPHAN_LABELS)) {
+    const group = fleet.orphans.filter((a) => (a.orphanReason ?? 'pane-gone') === reason);
+    if (group.length === 0) continue;
+    lines.push(c.muted(label));
+    for (const agent of group) lines.push(renderAgentLine(agent));
+    lines.push('');
   }
 
   return lines.join('\n').replace(/\n+$/, '\n');
