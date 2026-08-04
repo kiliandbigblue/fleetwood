@@ -198,6 +198,33 @@ export async function fetchPrs(options: { limit?: number; enrich?: boolean } = {
   };
 }
 
+/**
+ * Every open PR whose head branch is `branch`, across the whole org.
+ *
+ * This is what makes a task's pull requests findable as a set: the convention
+ * reuses one branch name in every repo a change touches, so a single search
+ * returns the lot — including PRs opened by a teammate or from another machine,
+ * which no local bookkeeping could know about.
+ */
+export async function fetchPrsForBranch(branch: string, limit = 30): Promise<PullRequest[]> {
+  const config = await loadConfig();
+  const args = ['search', 'prs', `head:${branch}`, '--state=open', `--limit=${limit}`, '--json', SEARCH_FIELDS];
+  if (config.github.extraQualifiers.trim().length > 0) {
+    args.push(...config.github.extraQualifiers.trim().split(/\s+/));
+  }
+  const { code, stdout } = await run('gh', args, { timeoutMs: 20_000 });
+  if (code !== 0) return [];
+  try {
+    const rows = JSON.parse(stdout) as SearchRow[];
+    return rows
+      .map((row) => toPr(row, 'mine'))
+      .filter((pr): pr is PullRequest => pr !== undefined)
+      .map((pr) => ({ ...pr, roles: [] as PullRequest['roles'] }));
+  } catch {
+    return [];
+  }
+}
+
 /** Identifier stamped onto a tmux session so a PR maps to exactly one session. */
 export function prKey(repo: string, number: number): string {
   return `${repo}#${number}`;

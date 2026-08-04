@@ -7,7 +7,7 @@ const row = (...fields: string[]): string => fields.join(SEP);
 
 test('parseSessions reads fleetwood metadata from user options', () => {
   const stdout = [
-    row('$0', 'HOME', '0', '1785781023', '/Users/k', '', '', '', '', ''),
+    row('$0', 'HOME', '0', '1785781023', '/Users/k', '', '', '', '', '', '', ''),
     row(
       '$1',
       'atlas-pr-1234',
@@ -19,11 +19,28 @@ test('parseSessions reads fleetwood metadata from user options', () => {
       'feat/foo',
       'bigbluedisco/atlas#1234',
       '/Users/k/projects/atlas/.agents/worktrees/pr-1234',
+      '',
+      '',
+    ),
+    // A multi-repo task session: several repos, one branch, one task folder.
+    row(
+      '$2',
+      'flow-execution-labels',
+      '1',
+      '1785790000',
+      '/Users/k/projects/.agents/tasks/flow-execution-labels',
+      'task',
+      'bigbluedisco/proto,bigbluedisco/graphy',
+      'fix/flow-execution-labels',
+      '',
+      '',
+      'flow-execution-labels',
+      '/Users/k/projects/.agents/tasks/flow-execution-labels',
     ),
   ].join('\n');
 
   const sessions = parseSessions(stdout);
-  assert.equal(sessions.length, 2);
+  assert.equal(sessions.length, 3);
 
   // Unset user options come back as empty strings; they must not become "".
   assert.deepEqual(sessions[0]?.meta, {
@@ -32,6 +49,8 @@ test('parseSessions reads fleetwood metadata from user options', () => {
     branch: undefined,
     pr: undefined,
     worktree: undefined,
+    task: undefined,
+    taskdir: undefined,
   });
   assert.equal(sessions[0]?.attached, 0);
 
@@ -40,6 +59,22 @@ test('parseSessions reads fleetwood metadata from user options', () => {
   assert.equal(sessions[1]?.meta.kind, 'pr');
   assert.equal(sessions[1]?.meta.pr, 'bigbluedisco/atlas#1234');
   assert.equal(sessions[1]?.meta.branch, 'feat/foo');
+
+  // Task sessions carry the slug, the shared branch, and every repo involved.
+  assert.equal(sessions[2]?.meta.kind, 'task');
+  assert.equal(sessions[2]?.meta.task, 'flow-execution-labels');
+  assert.equal(sessions[2]?.meta.branch, 'fix/flow-execution-labels');
+  assert.equal(sessions[2]?.meta.repo, 'bigbluedisco/proto,bigbluedisco/graphy');
+  assert.equal(sessions[2]?.meta.taskdir, '/Users/k/projects/.agents/tasks/flow-execution-labels');
+  assert.equal(sessions[2]?.meta.pr, undefined);
+});
+
+test('a row missing the newer fields still parses (older tmux state)', () => {
+  // Sessions stamped before task support existed have only the first five options.
+  const sessions = parseSessions(row('$9', 'legacy', '0', '100', '/tmp', 'project'));
+  assert.equal(sessions[0]?.meta.kind, 'project');
+  assert.equal(sessions[0]?.meta.task, undefined);
+  assert.equal(sessions[0]?.name, 'legacy');
 });
 
 test('parsePanes handles the version-string command Claude Code reports', () => {

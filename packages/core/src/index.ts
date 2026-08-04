@@ -15,6 +15,7 @@ export * as github from './github.ts';
 export * as repoIndex from './repoIndex.ts';
 export * as worktree from './worktree.ts';
 export * as prSession from './prSession.ts';
+export * as task from './task.ts';
 
 // Types consumers need by name (namespace re-exports don't surface them).
 export type { PullRequest, ChecksState, PrLists } from './github.ts';
@@ -22,6 +23,7 @@ export type { AgentState, AgentEvent, SpoolRecord } from './events.ts';
 export type { LocalRepo, RepoIndex } from './repoIndex.ts';
 export type { Worktree } from './worktree.ts';
 export type { Config } from './config.ts';
+export type { Task, TaskRepo, CreateTaskInput, TaskResult } from './task.ts';
 export type { ActionResult } from './actions.ts';
 export type { PromptOption, ScreenRead } from './screen.ts';
 export type { DaemonWorker } from './claudeDaemon.ts';

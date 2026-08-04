@@ -11,8 +11,9 @@ import {
   prSession,
   repoIndex,
   spool,
+  task as taskApi,
 } from '@fleetwood/core';
-import type { PrLists } from '@fleetwood/core';
+import type { PrLists, Task } from '@fleetwood/core';
 import { repairPath } from './path.ts';
 import { CHANNELS } from '../shared/ipc.ts';
 import type { Request, Response, Snapshot } from '../shared/ipc.ts';
@@ -35,6 +36,8 @@ let win: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let collector: Awaited<ReturnType<typeof spool.Collector.start>> | undefined;
 let prs: PrLists | undefined;
+/** Cached: listing tasks runs a `git status` per repo, too costly for the 1s poll. */
+let taskCache: { at: number; tasks: Task[] } = { at: 0, tasks: [] };
 let fleetTimer: NodeJS.Timeout | undefined;
 let prTimer: NodeJS.Timeout | undefined;
 
@@ -74,6 +77,15 @@ async function saveWindowState(): Promise<void> {
   }
 }
 
+const TASK_TTL_MS = 5_000;
+
+async function getTasks(force = false): Promise<Task[]> {
+  const now = Date.now();
+  if (!force && now - taskCache.at < TASK_TTL_MS) return taskCache.tasks;
+  taskCache = { at: now, tasks: await taskApi.listTasks() };
+  return taskCache.tasks;
+}
+
 async function buildSnapshot(): Promise<Snapshot> {
   const settings = await configModule.loadConfig();
   const fleet = await buildFleet({
@@ -90,6 +102,7 @@ async function buildSnapshot(): Promise<Snapshot> {
   const hookState = await hooks.hookStatus();
   return {
     fleet,
+    tasks: await getTasks(),
     prs,
     prSessions,
     hooksInstalled: hookState.claude.installed > 0,
@@ -200,8 +213,41 @@ async function handle(request: Request): Promise<Response> {
           path: r.path,
           name: r.path.split('/').pop() ?? r.path,
           repo: r.nameWithOwner,
+          isRepo: r.isRepo,
         })),
       };
+    }
+
+    case 'listTasks':
+      return { ok: true, detail: 'tasks', tasks: await getTasks(true) };
+
+    case 'createTask': {
+      const result = await taskApi.createTask({
+        type: request.type,
+        microservice: request.microservice,
+        summary: request.summary,
+        goal: request.goal,
+        repos: request.repos,
+        branchOverrides: request.branchOverrides,
+        agent: request.agent ?? 'claude',
+      });
+      await getTasks(true);
+      await pushSnapshot();
+      return { ok: result.ok, detail: result.detail };
+    }
+
+    case 'addRepoToTask': {
+      const result = await taskApi.addRepoToTask(request.slug, request.repo, request.branch);
+      await getTasks(true);
+      await pushSnapshot();
+      return { ok: result.ok, detail: result.detail };
+    }
+
+    case 'archiveTask': {
+      const result = await taskApi.archiveTask(request.slug, request.force ?? false);
+      await getTasks(true);
+      await pushSnapshot();
+      return { ok: result.ok, detail: result.detail };
     }
 
     case 'openExternal':

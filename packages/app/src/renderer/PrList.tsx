@@ -1,8 +1,10 @@
-import type { PrLists, PullRequest } from '@fleetwood/core';
+import type { PrLists, PullRequest, Task } from '@fleetwood/core';
 import { relativeIso, send } from './api.ts';
 
 interface Props {
   prs: PrLists | undefined;
+  /** Used to recognise a PR as part of a task, by its head branch. */
+  tasks: Task[];
   /** PR key → session name, for PRs already being worked on. */
   prSessions: Record<string, string>;
   onResult: (message: string, ok: boolean) => void;
@@ -24,10 +26,12 @@ const REVIEW_LABEL: Record<string, string> = {
 function PrRow({
   pr,
   session,
+  task,
   onResult,
 }: {
   pr: PullRequest;
   session: string | undefined;
+  task: Task | undefined;
   onResult: Props['onResult'];
 }): React.JSX.Element {
   const act = async (request: Parameters<typeof send>[0]): Promise<void> => {
@@ -76,7 +80,13 @@ function PrRow({
         )}
         {pr.isDraft && <span>draft</span>}
         <span>{relativeIso(pr.updatedAt)}</span>
-        {session && (
+        {/* A task's PRs share one head branch, so this recognises the whole set. */}
+        {task && (
+          <span className="linked" title={`part of task ${task.slug} (${task.repos.length} repos)`}>
+            ⇄ {task.slug}
+          </span>
+        )}
+        {session && !task && (
           <span className="linked" title={`session ${session}`}>
             ⇄ {session}
           </span>
@@ -86,7 +96,8 @@ function PrRow({
   );
 }
 
-export function PrList({ prs, prSessions, onResult }: Props): React.JSX.Element {
+export function PrList({ prs, tasks, prSessions, onResult }: Props): React.JSX.Element {
+  const taskByBranch = new Map(tasks.map((t) => [t.branch, t]));
   if (!prs) {
     return <div className="empty">loading pull requests…</div>;
   }
@@ -115,6 +126,7 @@ export function PrList({ prs, prSessions, onResult }: Props): React.JSX.Element 
             key={`${pr.repo}#${pr.number}`}
             pr={pr}
             session={prSessions[`${pr.repo}#${pr.number}`]}
+            task={pr.branch ? taskByBranch.get(pr.branch) : undefined}
             onResult={onResult}
           />
         ))

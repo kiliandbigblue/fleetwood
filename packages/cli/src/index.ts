@@ -8,6 +8,7 @@ import {
   proc,
   repoIndex,
   spool,
+  task as taskApi,
   tmux,
 } from '@fleetwood/core';
 import type { FleetState, PullRequest } from '@fleetwood/core';
@@ -24,6 +25,12 @@ ${c.bold('commands')}
   agents            flat list of agents, most urgent first
   sessions          tmux sessions and their fleetwood metadata
   panes             every pane and the agent process found in it
+
+  task new <type> <service> <summary> [--repo r]...
+                    create a task: one branch, a worktree per repo, one session
+  task add <slug> <repo> [--branch b]   add a repo to a live task
+  task ls           tasks, their repos, branches and dirty state
+  task archive <slug> [--force]         remove every worktree and the session
 
   prs               pull requests awaiting your review, and your own
   open-pr <ref>     focus the session for a PR, or build one on a fresh worktree
@@ -43,6 +50,8 @@ ${c.bold('options')}
   --background      create without stealing focus ${c.dim('(open-pr)')}
 
 ${c.bold('examples')}
+  fw task new fix flow "execution labels" --repo proto --repo graphy
+  fw task add flow-execution-labels api-scripts
   fw open-pr bigbluedisco/atlas#3671
   fw open-pr https://github.com/bigbluedisco/atlas/pull/3671
 `;
@@ -469,6 +478,157 @@ async function cmdRepos(json: boolean): Promise<void> {
   }
 }
 
+/**
+ * Flags that consume the next token.
+ *
+ * Needed because a naive "not starting with -" filter treats a flag's *value* as a
+ * positional argument — which quietly turned `--repo proto` into part of a task
+ * summary.
+ */
+const VALUE_FLAGS = new Set(['--repo', '--branch', '--goal', '--agent', '--interval']);
+
+function positionalArgs(argv: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i] as string;
+    if (arg.startsWith('-')) {
+      if (VALUE_FLAGS.has(arg)) i += 1;
+      continue;
+    }
+    out.push(arg);
+  }
+  return out;
+}
+
+function repoFlags(argv: string[]): string[] {
+  const repos: string[] = [];
+  argv.forEach((arg, index) => {
+    if (arg === '--repo' && argv[index + 1]) repos.push(argv[index + 1] as string);
+  });
+  return repos;
+}
+
+function flagValue(argv: string[], flag: string): string | undefined {
+  const index = argv.indexOf(flag);
+  return index >= 0 ? argv[index + 1] : undefined;
+}
+
+async function cmdTaskNew(argv: string[], json: boolean): Promise<void> {
+  const positional = positionalArgs(argv);
+  // fw task new <type> <microservice> <summary...>
+  const [type, microservice, ...summaryParts] = positional.slice(2);
+  const summary = summaryParts.join(' ');
+  if (!type || !microservice || summary.length === 0) {
+    process.stderr.write(
+      `${c.love('usage')} fw task new <type> <microservice> <summary> --repo <name> [--repo <name>]...\n` +
+        `${c.muted('e.g.')} fw task new fix flow "execution labels" --repo proto --repo graphy\n`,
+    );
+    process.exitCode = 2;
+    return;
+  }
+
+  const repos = repoFlags(argv);
+  const branch = taskApi.buildBranch(type, microservice, summary);
+  if (repos.length === 0) {
+    process.stderr.write(`${c.love('no repos')} — pass at least one --repo. branch would be ${c.gold(branch)}\n`);
+    process.exitCode = 2;
+    return;
+  }
+
+  // Show what will happen before touching any repo.
+  process.stdout.write(`${c.bold('branch')} ${c.gold(branch)}\n`);
+  for (const repo of await taskApi.expandRepoGroups(repos)) {
+    process.stdout.write(`  ${c.muted(pad(repo, 22))} ${c.dim(branch)}\n`);
+  }
+  process.stdout.write('\n');
+
+  const result = await taskApi.createTask({
+    type,
+    microservice,
+    summary,
+    goal: flagValue(argv, '--goal'),
+    repos,
+    agent: (flagValue(argv, '--agent') as 'claude' | 'cursor' | 'codex' | 'none') ?? 'claude',
+    background: argv.includes('--background'),
+  });
+
+  if (json) return jsonOut(result);
+  for (const r of result.repoResults) {
+    process.stdout.write(`${r.ok ? c.foam('✓') : c.love('✗')} ${pad(r.repo, 22)} ${c.muted(r.detail)}\n`);
+  }
+  process.stdout.write(`\n${result.ok ? c.foam('✓') : c.love('✗')} ${result.detail}\n`);
+  if (result.task?.dir) process.stdout.write(`${c.muted(tildify(result.task.dir))}\n`);
+  if (!result.ok) process.exitCode = 1;
+}
+
+async function cmdTaskAdd(argv: string[], json: boolean): Promise<void> {
+  const positional = positionalArgs(argv);
+  const slug = positional[2];
+  const repo = positional[3];
+  if (!slug || !repo) {
+    process.stderr.write(`${c.love('usage')} fw task add <slug> <repo> [--branch <name>]\n`);
+    process.exitCode = 2;
+    return;
+  }
+  const result = await taskApi.addRepoToTask(slug, repo, flagValue(argv, '--branch'));
+  if (json) return jsonOut(result);
+  process.stdout.write(`${result.ok ? c.foam('✓') : c.love('✗')} ${result.detail}\n`);
+  if (!result.ok) process.exitCode = 1;
+}
+
+async function cmdTaskList(json: boolean): Promise<void> {
+  const tasks = await taskApi.listTasks();
+  if (json) return jsonOut(tasks);
+  if (tasks.length === 0) {
+    process.stdout.write(`${c.muted('no tasks')} ${c.dim('— create one with `fw task new`')}\n`);
+    return;
+  }
+  for (const t of tasks) {
+    const live = t.session ? c.foam('●') : c.muted('○');
+    process.stdout.write(
+      `${live} ${c.bold(t.slug)} ${c.gold(t.branch)} ${c.muted(`${t.repos.length} repo${t.repos.length === 1 ? '' : 's'}`)}` +
+        `${t.session ? c.dim(` session ${t.session}`) : ''}\n`,
+    );
+    for (const repo of t.repos) {
+      const dirty = repo.dirty > 0 ? c.gold(`${repo.dirty} dirty`) : c.muted('clean');
+      const offBranch = repo.branch && repo.branch !== t.branch ? c.love(` on ${repo.branch}`) : '';
+      process.stdout.write(`    ${pad(repo.name, 22)} ${dirty}${offBranch}\n`);
+    }
+  }
+}
+
+async function cmdTaskArchive(argv: string[], json: boolean): Promise<void> {
+  const slug = positionalArgs(argv)[2];
+  if (!slug) {
+    process.stderr.write(`${c.love('usage')} fw task archive <slug> [--force]\n`);
+    process.exitCode = 2;
+    return;
+  }
+  const result = await taskApi.archiveTask(slug, argv.includes('--force'));
+  if (json) return jsonOut(result);
+  process.stdout.write(`${result.ok ? c.foam('✓') : c.love('✗')} ${result.detail}\n`);
+  for (const k of result.kept) process.stdout.write(`  ${c.gold('kept')} ${k}\n`);
+  if (!result.ok) process.exitCode = 1;
+}
+
+async function cmdTask(argv: string[], json: boolean): Promise<void> {
+  const sub = positionalArgs(argv)[1] ?? 'ls';
+  switch (sub) {
+    case 'new':
+      return cmdTaskNew(argv, json);
+    case 'add':
+      return cmdTaskAdd(argv, json);
+    case 'ls':
+    case 'list':
+      return cmdTaskList(json);
+    case 'archive':
+      return cmdTaskArchive(argv, json);
+    default:
+      process.stderr.write(`${c.love('unknown')} fw task ${sub}\n`);
+      process.exitCode = 2;
+  }
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const json = argv.includes('--json');
@@ -476,7 +636,7 @@ async function main(): Promise<void> {
   const intervalIndex = argv.indexOf('--interval');
   const interval =
     intervalIndex >= 0 ? Number.parseFloat(argv[intervalIndex + 1] ?? '2') || 2 : 2;
-  const positional = argv.filter((a) => !a.startsWith('-'));
+  const positional = positionalArgs(argv);
   const command = positional[0] ?? 'status';
   const arg = positional[1];
   const background = argv.includes('--background');
@@ -497,6 +657,10 @@ async function main(): Promise<void> {
       break;
     case 'panes':
       await cmdPanes(json);
+      break;
+    case 'task':
+    case 'tasks':
+      await cmdTask(argv, json);
       break;
     case 'prs':
       await cmdPrs(json);

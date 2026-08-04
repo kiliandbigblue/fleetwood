@@ -639,3 +639,214 @@ button {
   align-items: center;
   gap: 8px;
 }
+
+/* --- tasks --------------------------------------------------------------- */
+
+.new-task {
+  padding: 7px 10px;
+  border-radius: var(--radius);
+  border: 1px dashed var(--overlay);
+  color: var(--muted);
+  font-size: 12px;
+  text-align: left;
+}
+.new-task:hover {
+  border-color: var(--iris);
+  color: var(--text);
+}
+
+.task-repos {
+  border-top: 1px solid var(--overlay);
+}
+
+.task-repo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px 5px 22px;
+  font-size: 11.5px;
+  min-width: 0;
+}
+
+.task-repo + .task-repo {
+  border-top: 1px solid color-mix(in srgb, var(--overlay) 45%, var(--surface));
+}
+
+.task-repo-name {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.clean {
+  color: var(--muted);
+  font-size: 10.5px;
+  flex: none;
+}
+.dirty {
+  color: var(--gold);
+  font-size: 10.5px;
+  flex: none;
+}
+
+/* Only shown when a repo has drifted off the task's branch, which is worth a warning. */
+.off-branch {
+  color: var(--love);
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 45%;
+  flex: none;
+}
+
+.add-repo {
+  display: flex;
+  gap: 4px;
+  padding: 6px 10px 8px;
+}
+
+.add-repo input {
+  flex: 1;
+  min-width: 0;
+  background: var(--base);
+  border: 1px solid var(--overlay);
+  border-radius: 5px;
+  color: var(--text);
+  font: inherit;
+  font-size: 11.5px;
+  padding: 3px 7px;
+  outline: none;
+}
+.add-repo input:focus {
+  border-color: var(--iris);
+}
+
+/* --- modal (new task) ---------------------------------------------------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 55%);
+  padding: 34px 10px 10px;
+  z-index: 20;
+  display: flex;
+}
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--overlay);
+  border-radius: var(--radius);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+.modal-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--subtle);
+}
+
+.field {
+  background: var(--base);
+  border: 1px solid var(--overlay);
+  border-radius: 5px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 8px;
+  outline: none;
+  resize: vertical;
+}
+.field:focus {
+  border-color: var(--iris);
+}
+
+.field-row {
+  display: flex;
+  gap: 4px;
+}
+
+.type-chip {
+  padding: 3px 10px;
+  border-radius: 5px;
+  background: var(--overlay);
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.type-chip.on {
+  background: color-mix(in srgb, var(--iris) 30%, var(--surface));
+  color: var(--text);
+}
+
+.branch-preview {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 11.5px;
+  color: var(--gold);
+  background: var(--base);
+  border-radius: 5px;
+  padding: 5px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.repo-picker {
+  border: 1px solid var(--overlay);
+  border-radius: 5px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.repo-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 8px;
+  font-size: 11.5px;
+  cursor: pointer;
+  min-width: 0;
+}
+.repo-option:hover {
+  background: var(--overlay);
+}
+.repo-option.on {
+  background: color-mix(in srgb, var(--iris) 14%, var(--surface));
+}
+.repo-option span:first-of-type {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+}
+
+.repo-branch-hint {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 55%;
+}
+
+.modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.modal-note {
+  color: var(--muted);
+  font-size: 10.5px;
+  flex: 1;
+  min-width: 0;
+}
