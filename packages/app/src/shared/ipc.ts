@@ -1,8 +1,11 @@
-import type { ActionResult, FleetState, PrLists } from '@fleetwood/core';
+import type { ActionResult, FleetState, PrLists, Task } from '@fleetwood/core';
 
 /** Everything the renderer knows. Pushed whole; it is small and simplifies the UI. */
 export interface Snapshot {
   fleet: FleetState;
+  /** Multi-repo tasks. Refreshed on a slower cadence than the fleet — each one
+   *  costs a `git status` per repo, which is not worth doing every second. */
+  tasks: Task[];
   prs?: PrLists;
   /** Session names that fleetwood stamped, keyed by PR key, for link badges. */
   prSessions: Record<string, string>;
@@ -28,6 +31,19 @@ export type Request =
   | { kind: 'sendPrompt'; pane: string; text: string }
   | { kind: 'spawnAgent'; session: string; cwd: string; tool: 'claude' | 'cursor' | 'codex' }
   | { kind: 'openProject'; path: string }
+  | { kind: 'listTasks' }
+  | {
+      kind: 'createTask';
+      type: string;
+      microservice: string;
+      summary: string;
+      goal?: string;
+      repos: string[];
+      branchOverrides?: Record<string, string>;
+      agent?: 'claude' | 'cursor' | 'codex' | 'none';
+    }
+  | { kind: 'addRepoToTask'; slug: string; repo: string; branch?: string }
+  | { kind: 'archiveTask'; slug: string; force?: boolean }
   | { kind: 'listProjects' }
   | { kind: 'openExternal'; url: string }
   | { kind: 'installHooks' }
@@ -35,4 +51,9 @@ export type Request =
 
 export type Response =
   | ({ ok: boolean; detail: string } & Partial<ActionResult>)
-  | { ok: true; detail: string; projects: Array<{ path: string; name: string; repo?: string }> };
+  | {
+      ok: true;
+      detail: string;
+      projects: Array<{ path: string; name: string; repo?: string; isRepo: boolean }>;
+    }
+  | { ok: boolean; detail: string; tasks: Task[] };

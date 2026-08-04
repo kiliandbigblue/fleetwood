@@ -7,6 +7,16 @@ export interface Config {
   /** Where to look for projects, in the order the picker should show them. */
   projectRoots: string[];
   /**
+   * Where multi-repo task folders live.
+   *
+   * Each task folder holds one real git worktree per involved repo, so a single
+   * agent rooted there can read and edit across all of them. Hidden, so it never
+   * shows up in the project picker or the tmux-sessionizer's fzf.
+   */
+  taskRoot: string;
+  /** Named repo constellations, e.g. `flow: [proto, graphy]`. */
+  repoGroups: Record<string, string[]>;
+  /**
    * Where PR worktrees go, relative to the repo root.
    *
    * `.agents/worktrees` is deliberately tool-agnostic: it leaves room for other
@@ -30,6 +40,8 @@ export interface Config {
 
 export const DEFAULT_CONFIG: Config = {
   projectRoots: [join(homedir(), 'projects'), join(homedir(), 'dotfiles')],
+  taskRoot: join(homedir(), 'projects', '.agents', 'tasks'),
+  repoGroups: {},
   worktreeDir: '.agents/worktrees',
   github: { enabled: true, pollSeconds: 60, extraQualifiers: '' },
   poll: { tmuxMs: 1_000, processMs: 2_000 },
@@ -45,6 +57,7 @@ export async function loadConfig(): Promise<Config> {
       ...raw,
       github: { ...DEFAULT_CONFIG.github, ...raw.github },
       poll: { ...DEFAULT_CONFIG.poll, ...raw.poll },
+      repoGroups: { ...DEFAULT_CONFIG.repoGroups, ...raw.repoGroups },
     };
   } catch {
     return DEFAULT_CONFIG;

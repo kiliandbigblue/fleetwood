@@ -19,6 +19,8 @@ const SESSION_FIELDS = [
   '@fw_branch',
   '@fw_pr',
   '@fw_worktree',
+  '@fw_task',
+  '@fw_taskdir',
 ] as const;
 
 const PANE_FIELDS = [
@@ -50,6 +52,21 @@ function splitRow(line: string, count: number): string[] {
   const parts = line.split(SEP);
   if (parts.length <= count) return parts;
   return [...parts.slice(0, count - 1), parts.slice(count - 1).join(SEP)];
+}
+
+/**
+ * Read a row into a field-keyed map.
+ *
+ * Keyed rather than positional so adding a field to the format cannot silently
+ * shift every value after it.
+ */
+function rowToMap(fields: readonly string[], line: string): Record<string, string> {
+  const parts = splitRow(line, fields.length);
+  const out: Record<string, string> = {};
+  fields.forEach((field, index) => {
+    out[field] = parts[index] ?? '';
+  });
+  return out;
 }
 
 function num(v: string | undefined, fallback = 0): number {
@@ -89,20 +106,21 @@ export function parseSessions(stdout: string): SessionRow[] {
     .split('\n')
     .filter((l) => l.length > 0)
     .map((line) => {
-      const f = splitRow(line, SESSION_FIELDS.length);
-      const kind = optional(f[5]);
+      const f = rowToMap(SESSION_FIELDS, line);
       return {
-        sessionId: f[0] ?? '',
-        name: f[1] ?? '',
-        attached: num(f[2]),
-        createdAt: num(f[3]),
-        path: f[4] ?? '',
+        sessionId: f['session_id'] ?? '',
+        name: f['session_name'] ?? '',
+        attached: num(f['session_attached']),
+        createdAt: num(f['session_created']),
+        path: f['session_path'] ?? '',
         meta: {
-          kind: kind as SessionMeta['kind'],
-          repo: optional(f[6]),
-          branch: optional(f[7]),
-          pr: optional(f[8]),
-          worktree: optional(f[9]),
+          kind: optional(f['@fw_kind']) as SessionMeta['kind'],
+          repo: optional(f['@fw_repo']),
+          branch: optional(f['@fw_branch']),
+          pr: optional(f['@fw_pr']),
+          worktree: optional(f['@fw_worktree']),
+          task: optional(f['@fw_task']),
+          taskdir: optional(f['@fw_taskdir']),
         },
       } satisfies SessionRow;
     });
@@ -113,23 +131,23 @@ export function parsePanes(stdout: string): PaneRow[] {
     .split('\n')
     .filter((l) => l.length > 0)
     .map((line) => {
-      const f = splitRow(line, PANE_FIELDS.length);
+      const f = rowToMap(PANE_FIELDS, line);
       return {
-        sessionId: f[0] ?? '',
-        sessionName: f[1] ?? '',
-        windowId: f[2] ?? '',
-        windowIndex: num(f[3]),
-        windowName: f[4] ?? '',
-        windowActive: flag(f[5]),
-        paneId: f[6] ?? '',
-        paneIndex: num(f[7]),
-        pid: num(f[8]),
-        command: f[9] ?? '',
-        cwd: f[10] ?? '',
-        active: flag(f[11]),
-        width: num(f[12]),
-        height: num(f[13]),
-        title: f[14] ?? '',
+        sessionId: f['session_id'] ?? '',
+        sessionName: f['session_name'] ?? '',
+        windowId: f['window_id'] ?? '',
+        windowIndex: num(f['window_index']),
+        windowName: f['window_name'] ?? '',
+        windowActive: flag(f['window_active']),
+        paneId: f['pane_id'] ?? '',
+        paneIndex: num(f['pane_index']),
+        pid: num(f['pane_pid']),
+        command: f['pane_current_command'] ?? '',
+        cwd: f['pane_current_path'] ?? '',
+        active: flag(f['pane_active']),
+        width: num(f['pane_width']),
+        height: num(f['pane_height']),
+        title: f['pane_title'] ?? '',
       } satisfies PaneRow;
     });
 }
@@ -298,6 +316,8 @@ const META_OPTIONS: Record<keyof SessionMeta, string> = {
   branch: '@fw_branch',
   pr: '@fw_pr',
   worktree: '@fw_worktree',
+  task: '@fw_task',
+  taskdir: '@fw_taskdir',
 };
 
 /**
@@ -353,6 +373,13 @@ export async function switchClient(session: string): Promise<boolean> {
     any = any || ok;
   }
   return any;
+}
+
+/** The active pane of a session, for running something in the window it already has. */
+export async function activePane(session: string): Promise<string | undefined> {
+  const { ok, stdout } = await tmux(['display-message', '-p', '-t', `=${session}`, '#{pane_id}']);
+  const id = stdout.trim();
+  return ok && id.length > 0 ? id : undefined;
 }
 
 /** Which session a pane belongs to, for turning a pane id into something focusable. */

@@ -122,6 +122,13 @@ export interface SpawnAgentOptions {
   /** New window (default) or a split of the current one. */
   split?: boolean;
   windowName?: string;
+  /**
+   * Start in the window the session already has rather than making another.
+   *
+   * A freshly created session comes with one window already sitting in the right
+   * directory; without this the agent would land in a second, redundant one.
+   */
+  reuseWindow?: boolean;
 }
 
 /**
@@ -134,13 +141,15 @@ export async function spawnAgent(options: SpawnAgentOptions): Promise<ActionResu
   const command = AGENT_COMMANDS[options.tool];
   if (!command) return { ok: false, detail: `no launch command known for ${options.tool}` };
 
-  const paneId = options.split
-    ? await tmux.splitWindow(`=${options.session}:`, { cwd: options.cwd })
-    : await tmux.newWindow(options.session, {
-        cwd: options.cwd,
-        name: options.windowName ?? options.tool,
-        select: true,
-      });
+  const paneId = options.reuseWindow
+    ? await tmux.activePane(options.session)
+    : options.split
+      ? await tmux.splitWindow(`=${options.session}:`, { cwd: options.cwd })
+      : await tmux.newWindow(options.session, {
+          cwd: options.cwd,
+          name: options.windowName ?? options.tool,
+          select: true,
+        });
 
   if (!paneId) return { ok: false, detail: 'could not create a pane' };
 

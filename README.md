@@ -133,10 +133,63 @@ printf 'Electron.app/Contents/MacOS/Electron' > path.txt
 Also note pnpm 10 blocks postinstall scripts, so Electron's download is gated behind
 `onlyBuiltDependencies` in `pnpm-workspace.yaml`.
 
+## Tasks that span repos
+
+Real work isn't repo-shaped. A change to `flow` touches `proto`, `graphy` and
+`storage-bigquery-replication`, and you usually don't know the full set when you
+start — so there is no good moment to decide which sessions to spawn.
+
+A **task** is one branch, one tmux session, and a folder of real git worktrees:
+
+```
+~/projects/.agents/tasks/flow-execution-labels/
+  TASK.md          the brief: goal, branch, repos
+  proto/           worktree of ~/projects/proto   on fix/flow-execution-labels
+  graphy/          worktree of ~/projects/graphy  on fix/flow-execution-labels
+  api-scripts/     added later, one click
+```
+
+```sh
+fw task new fix flow "execution labels" --repo proto --repo graphy
+fw task add flow-execution-labels api-scripts    # grow it as the work reveals itself
+fw task ls
+fw task archive flow-execution-labels
+```
+
+The session's first window is rooted at the task folder, so **one agent can grep
+and edit across every involved repo** — that's what removes the upfront guessing.
+Add repo-scoped agents when you want per-repo context. ⌘T opens the form in the app.
+
+Why it's built this way:
+
+- **Real worktrees, not symlinks.** ripgrep doesn't follow symlinks, so a folder of
+  symlinked repos would be invisible to Claude Code's Grep and Glob. Each entry is a
+  genuine linked worktree — shared object store, tracked files only, ~50 MB for a
+  repo whose full clone is 700 MB.
+- **The folder is the record.** Repo membership is `readdir`; the branch comes from
+  git. Only the immutable description lives in `task.json`, so nothing can drift.
+- **One branch name across repos**, following `<type>/<microservice>-<summary>`.
+  Since the microservice is a domain rather than a repo, the same name applies
+  everywhere the change lands — which means
+  `gh search prs "head:<branch>"` returns the task's whole PR set in one query,
+  including PRs opened by someone else. The app shows that grouping in the PR tab.
+- **Branch creation respects each repo's default branch** — `dev` for atlas/graphy/
+  reflow, `master` for proto. Never assume `main`.
+- **Archive prunes only empty branches**: no commits of its own and never pushed.
+  Anything with work in it stays. The comparison is against `origin/<default>`,
+  because a local default branch can be far behind (proto's was 45 commits stale,
+  which made brand-new branches look used).
+
+A task-root agent does **not** load each repo's `CLAUDE.md`/`AGENTS.md` or
+`.claude/settings.local.json` at startup; `TASK.md` says so, and it picks them up
+when it reads into a repo. Fresh worktrees have no `node_modules` (Go's module cache
+is global, so Go builds work immediately).
+
 ## CLI
 
 ```
 fw                    the fleet (default)
+fw task ...           multi-repo tasks (see above)
 fw watch              the fleet, refreshed live
 fw agents             flat list, most urgent first
 fw prs                PRs awaiting your review, and your own

@@ -3,11 +3,13 @@ import type { Snapshot } from '../shared/ipc.ts';
 import { SessionCard } from './SessionCard.tsx';
 import { AgentRow } from './AgentRow.tsx';
 import { PrList } from './PrList.tsx';
+import { TaskList } from './TaskList.tsx';
+import { NewTask } from './NewTask.tsx';
 import { Palette } from './Palette.tsx';
 import { send } from './api.ts';
 import { api } from './api.ts';
 
-type Tab = 'fleet' | 'prs';
+type Tab = 'fleet' | 'tasks' | 'prs';
 
 interface Toast {
   message: string;
@@ -20,6 +22,7 @@ export function App(): React.JSX.Element {
   const [toast, setToast] = useState<Toast | undefined>();
   const [pinned, setPinned] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [newTaskOpen, setNewTaskOpen] = useState(false);
 
   useEffect(() => api.onSnapshot(setSnapshot), []);
 
@@ -34,6 +37,10 @@ export function App(): React.JSX.Element {
       if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
         event.preventDefault();
         setPaletteOpen((open) => !open);
+      } else if ((event.metaKey || event.ctrlKey) && event.key === 't') {
+        event.preventDefault();
+        setTab('tasks');
+        setNewTaskOpen((open) => !open);
       } else if ((event.metaKey || event.ctrlKey) && event.key === 'r') {
         event.preventDefault();
         void send({ kind: 'refresh' });
@@ -99,6 +106,9 @@ export function App(): React.JSX.Element {
           <button className={`tab${tab === 'fleet' ? ' active' : ''}`} onClick={() => setTab('fleet')}>
             fleet<span className="count">{snapshot?.fleet.sessions.length ?? 0}</span>
           </button>
+          <button className={`tab${tab === 'tasks' ? ' active' : ''}`} onClick={() => setTab('tasks')}>
+            tasks<span className="count">{snapshot?.tasks.length ?? 0}</span>
+          </button>
           <button className={`tab${tab === 'prs' ? ' active' : ''}`} onClick={() => setTab('prs')}>
             pull requests
             <span className="count">{prCount ?? '…'}</span>
@@ -158,10 +168,26 @@ export function App(): React.JSX.Element {
           </>
         )}
 
+        {snapshot && tab === 'tasks' && (
+          <TaskList
+            tasks={snapshot.tasks}
+            fleet={snapshot.fleet}
+            onResult={onResult}
+            onNewTask={() => setNewTaskOpen(true)}
+          />
+        )}
+
         {snapshot && tab === 'prs' && (
-          <PrList prs={snapshot.prs} prSessions={snapshot.prSessions} onResult={onResult} />
+          <PrList
+            prs={snapshot.prs}
+            tasks={snapshot.tasks}
+            prSessions={snapshot.prSessions}
+            onResult={onResult}
+          />
         )}
       </div>
+
+      <NewTask open={newTaskOpen} onClose={() => setNewTaskOpen(false)} onResult={onResult} />
 
       <Palette
         open={paletteOpen}

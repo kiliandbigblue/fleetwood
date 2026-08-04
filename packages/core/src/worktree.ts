@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { run } from './exec.ts';
 import { loadConfig } from './config.ts';
 
@@ -85,6 +85,107 @@ export interface EnsureWorktreeResult {
   branch?: string;
   created: boolean;
   detail: string;
+}
+
+/**
+ * The branch a new branch should start from.
+ *
+ * Never assume `main`: across these repos the default is `dev` (atlas, graphy,
+ * reflow) or `master` (proto). `symbolic-ref` answers locally for a normal clone;
+ * `ls-remote` is the network fallback for clones that never recorded origin/HEAD.
+ */
+export async function defaultBranch(repoPath: string): Promise<string> {
+  const local = await run('git', ['-C', repoPath, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD']);
+  if (local.code === 0) {
+    const name = local.stdout.trim().replace(/^origin\//, '');
+    if (name.length > 0) return name;
+  }
+  const remote = await run('git', ['-C', repoPath, 'ls-remote', '--symref', 'origin', 'HEAD'], {
+    timeoutMs: 30_000,
+  });
+  const match = /ref:\s+refs\/heads\/(\S+)\s+HEAD/.exec(remote.stdout);
+  return match?.[1] ?? 'main';
+}
+
+async function refExists(repoPath: string, ref: string): Promise<boolean> {
+  const { code } = await run('git', ['-C', repoPath, 'rev-parse', '--verify', '--quiet', ref]);
+  return code === 0;
+}
+
+export interface EnsureWorktreeOptions {
+  /** Branch to start from when the branch has to be created. Defaults to origin's HEAD. */
+  base?: string;
+  /** Skip the fetch before branching. */
+  offline?: boolean;
+}
+
+/**
+ * Put a worktree for `branch` at exactly `targetDir`.
+ *
+ * Unlike the PR flow, task branches usually do not exist yet, so this creates
+ * them from the repo's default branch. The location is caller-chosen because a
+ * task groups worktrees from several repos under one directory — that grouping is
+ * what lets a single agent see them all.
+ */
+export async function ensureWorktree(
+  repoPath: string,
+  branch: string,
+  targetDir: string,
+  options: EnsureWorktreeOptions = {},
+): Promise<EnsureWorktreeResult> {
+  const existing = await listWorktrees(repoPath);
+
+  const here = existing.find((w) => w.path === targetDir);
+  if (here) {
+    return {
+      ok: true,
+      path: targetDir,
+      branch: here.branch ?? branch,
+      created: false,
+      detail: `reusing worktree at ${targetDir}`,
+    };
+  }
+
+  // git refuses to check one branch out twice, and moving someone else's worktree
+  // would be rude — say where it is instead of failing cryptically.
+  const elsewhere = existing.find((w) => w.branch === branch);
+  if (elsewhere) {
+    return {
+      ok: false,
+      created: false,
+      detail: `${branch} is already checked out at ${elsewhere.path} — use a different branch for this repo`,
+    };
+  }
+
+  await mkdir(dirname(targetDir), { recursive: true });
+
+  const localExists = await refExists(repoPath, `refs/heads/${branch}`);
+  let args: string[];
+
+  if (localExists) {
+    args = ['-C', repoPath, 'worktree', 'add', targetDir, branch];
+  } else {
+    if (!options.offline) {
+      // Fetching the branch is cheap and makes "someone already pushed this" work.
+      await run('git', ['-C', repoPath, 'fetch', 'origin', branch], { timeoutMs: 120_000 });
+    }
+    if (await refExists(repoPath, `refs/remotes/origin/${branch}`)) {
+      args = ['-C', repoPath, 'worktree', 'add', '--track', '-b', branch, targetDir, `origin/${branch}`];
+    } else {
+      const base = options.base ?? (await defaultBranch(repoPath));
+      if (!options.offline) {
+        await run('git', ['-C', repoPath, 'fetch', 'origin', base], { timeoutMs: 120_000 });
+      }
+      const start = (await refExists(repoPath, `refs/remotes/origin/${base}`)) ? `origin/${base}` : base;
+      args = ['-C', repoPath, 'worktree', 'add', '-b', branch, targetDir, start];
+    }
+  }
+
+  const { code, stderr } = await run('git', args, { timeoutMs: 120_000 });
+  if (code !== 0) {
+    return { ok: false, created: false, detail: `git worktree add failed: ${stderr.trim()}` };
+  }
+  return { ok: true, path: targetDir, branch, created: true, detail: `created worktree at ${targetDir}` };
 }
 
 /**
