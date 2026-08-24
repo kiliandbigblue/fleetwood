@@ -54,11 +54,13 @@ export interface FleetAgent extends AgentState {
    *
    * `pane-gone` means it reported a pane that no longer exists — a crash or a
    * closed window. `daemon-hosted` means it runs in `claude daemon` and we could
-   * not tell which terminal is showing it. `outside-tmux` means it never had one:
-   * an agent running in an IDE, which fleetwood hears from because the hooks are
-   * global but which it has no business calling orphaned.
+   * not tell which terminal is showing it.
+   *
+   * Editor-hosted agents (Cursor in the IDE, etc.) also fire global hooks with no
+   * pane, but they are dropped rather than listed: there is nothing to focus and
+   * they aren't fleetwood's to manage.
    */
-  orphanReason?: 'pane-gone' | 'daemon-hosted' | 'outside-tmux';
+  orphanReason?: 'pane-gone' | 'daemon-hosted';
   prompt?: { question?: string; options: PromptOption[]; approve?: string; deny?: string };
   /**
    * What this agent has spent — Claude transcript, or Cursor stop-hook totals.
@@ -80,7 +82,7 @@ export interface FleetSession extends SessionInfo {
 export interface FleetState {
   at: number;
   sessions: FleetSession[];
-  /** Agents with no pane: gone, hosted by the daemon, or never in tmux at all. */
+  /** Agents with no pane: a closed window, or hosted by the daemon with no match. */
   orphans: FleetAgent[];
   /** Every agent above — sessions *and* orphans — so the header matches the rows. */
   counts: Record<AgentStatus, number> & { total: number; costUsd: number };
@@ -276,8 +278,10 @@ export async function buildFleet(options: BuildOptions = {}): Promise<FleetState
     });
   }
 
-  // Anything left over belongs to no pane. Three very different cases, and two of
-  // them may well still be running, so don't declare any of them dead on sight.
+  // Anything left over belongs to no pane. Two cases may still be running — a
+  // closed window, or a daemon worker we couldn't place — so don't declare them
+  // dead on sight. Editor-hosted agents (no pane, no daemon worker) are skipped:
+  // hooks hear them, but fleetwood has nowhere to send you and nothing useful to do.
   const orphans: FleetAgent[] = [];
   for (const state of states.values()) {
     if (ctx.claimed.has(state.key)) continue;
@@ -288,11 +292,9 @@ export async function buildFleet(options: BuildOptions = {}): Promise<FleetState
     if (now - state.lastEventAt > ORPHAN_TTL_SECONDS) continue;
 
     const worker = hosted.get(state.key);
-    const reason: FleetAgent['orphanReason'] = state.pane
-      ? 'pane-gone'
-      : worker
-        ? 'daemon-hosted'
-        : 'outside-tmux';
+    if (!state.pane && !worker) continue;
+
+    const reason: FleetAgent['orphanReason'] = state.pane ? 'pane-gone' : 'daemon-hosted';
     // A pid we can still see means it's alive somewhere we just can't show. For a
     // daemon session that pid is the roster's worker, never the hook's own — the
     // hook runs in a pooled helper that is spawned early and dies late.

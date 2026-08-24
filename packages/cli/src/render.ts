@@ -182,13 +182,12 @@ export function renderFleet(fleet: FleetState, limits?: PlanLimits): string {
     lines.push('');
   }
 
-  // Three different situations, so don't file them under one scary label: an
-  // agent in an editor was never in tmux, and a daemon-hosted one is running fine
-  // — we just couldn't tell which terminal is showing it.
+  // Two different situations, so don't file them under one scary label: a
+  // daemon-hosted one is running fine — we just couldn't tell which terminal is
+  // showing it. Editor-hosted agents are dropped in buildFleet, not listed here.
   const ORPHAN_LABELS = {
     'pane-gone': 'pane gone (ended without a closing event):',
     'daemon-hosted': 'hosted by the claude daemon (no terminal matched):',
-    'outside-tmux': 'not in tmux (running in an editor):',
   } as const;
   for (const [reason, label] of Object.entries(ORPHAN_LABELS)) {
     const group = fleet.orphans.filter((a) => (a.orphanReason ?? 'pane-gone') === reason);
