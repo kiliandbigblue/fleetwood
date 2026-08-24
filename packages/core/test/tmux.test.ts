@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildTree, parsePanes, parseSessions } from '../src/tmux.ts';
+import { buildTree, parsePanes, parseSessions, tmuxEnv } from '../src/tmux.ts';
 
 const SEP = '\x1f';
 const row = (...fields: string[]): string => fields.join(SEP);
@@ -161,4 +161,45 @@ test('a session with no panes still appears', () => {
   const tree = buildTree(sessions, []);
   assert.equal(tree[0]?.name, 'empty');
   assert.deepEqual(tree[0]?.windows, []);
+});
+
+test('parseSessions drops rows that lost their separators', () => {
+  // What tmux prints for a client it does not think speaks UTF-8: every
+  // non-printable byte, the separator included, rewritten as "_".
+  const sanitized = [
+    '$0_HOME_0_1785781023_/Users/k_______',
+    '$1_atlas-pr-1234_1_1785781153_/Users/k/projects/atlas_pr_______',
+  ].join('\n');
+
+  // Better an empty fleet than two sessions with no name, no path and no panes.
+  assert.deepEqual(parseSessions(sanitized), []);
+});
+
+test('parsePanes drops rows that lost their separators', () => {
+  const sanitized = '$0_HOME_@0_0_zsh_1_%0_0_4242_zsh_/Users/k_1_120_40_zsh';
+  assert.deepEqual(parsePanes(sanitized), []);
+});
+
+test('tmuxEnv forces a UTF-8 locale over whatever the app was launched with', () => {
+  const { LC_ALL, LC_CTYPE, LANG, PATH } = process.env;
+  try {
+    // A GUI launch has none of the three; LC_ALL=C is the other way to get
+    // sanitized output, and it wins over LC_CTYPE, so that is what we set.
+    delete process.env.LC_CTYPE;
+    delete process.env.LANG;
+    process.env.LC_ALL = 'C';
+    process.env.PATH = '/opt/homebrew/bin:/usr/bin';
+
+    const env = tmuxEnv();
+    assert.match(env.LC_ALL ?? '', /UTF-8/i);
+    // Read at call time, not at import: the app repairs PATH after this module
+    // loads, and tmux has to be findable.
+    assert.equal(env.PATH, '/opt/homebrew/bin:/usr/bin');
+  } finally {
+    if (LC_ALL === undefined) delete process.env.LC_ALL;
+    else process.env.LC_ALL = LC_ALL;
+    if (LC_CTYPE !== undefined) process.env.LC_CTYPE = LC_CTYPE;
+    if (LANG !== undefined) process.env.LANG = LANG;
+    if (PATH !== undefined) process.env.PATH = PATH;
+  }
 });

@@ -69,6 +69,18 @@ function rowToMap(fields: readonly string[], line: string): Record<string, strin
   return out;
 }
 
+/**
+ * A row is only data if it still has its separators.
+ *
+ * Every format here has more than one field, so a non-empty line with no \x1f in
+ * it was mangled in transit (see `tmuxEnv`). Parsing it anyway invents a session
+ * whose every field is empty — no name, no path, no panes — which the panel
+ * renders as a real card, so an empty fleet is the more honest reading.
+ */
+function intact(line: string): boolean {
+  return line.length > 0 && line.includes(SEP);
+}
+
 function num(v: string | undefined, fallback = 0): number {
   const n = Number.parseInt(v ?? '', 10);
   return Number.isFinite(n) ? n : fallback;
@@ -104,7 +116,7 @@ export interface PaneRow extends PaneInfo {
 export function parseSessions(stdout: string): SessionRow[] {
   return stdout
     .split('\n')
-    .filter((l) => l.length > 0)
+    .filter(intact)
     .map((line) => {
       const f = rowToMap(SESSION_FIELDS, line);
       return {
@@ -129,7 +141,7 @@ export function parseSessions(stdout: string): SessionRow[] {
 export function parsePanes(stdout: string): PaneRow[] {
   return stdout
     .split('\n')
-    .filter((l) => l.length > 0)
+    .filter(intact)
     .map((line) => {
       const f = rowToMap(PANE_FIELDS, line);
       return {
@@ -194,8 +206,29 @@ export function buildTree(sessions: SessionRow[], panes: PaneRow[]): SessionInfo
 
 // --- tmux invocations ------------------------------------------------------
 
+/**
+ * tmux inherits our environment, plus a UTF-8 locale.
+ *
+ * tmux considers a client UTF-8 capable only when LC_ALL, LC_CTYPE or LANG names
+ * a UTF-8 locale. Every other client gets its command output through
+ * `utf8_sanitize()`, which rewrites each non-printable byte as "_" — including
+ * the \x1f separator every format above is built from. Launched from Finder or
+ * the Dock, a macOS app inherits none of those three from launchd, so the
+ * packaged app read each session as one unsplit field: a card with no name, no
+ * path and no panes, and every hook-reported agent filed under "pane gone"
+ * because the pane it named appeared nowhere in the tree.
+ *
+ * LC_ALL, because it is the variable tmux consults first and so the only one
+ * nothing else can override. Read per call rather than once, since the app
+ * repairs PATH after this module loads. Scoped to tmux: git, gh and ps keep the
+ * user's own locale.
+ */
+export function tmuxEnv(): NodeJS.ProcessEnv {
+  return { ...process.env, LC_ALL: 'en_US.UTF-8' };
+}
+
 async function tmux(args: string[]): Promise<{ ok: boolean; stdout: string; stderr: string }> {
-  const { code, stdout, stderr } = await run('tmux', args);
+  const { code, stdout, stderr } = await run('tmux', args, { env: tmuxEnv() });
   return { ok: code === 0, stdout, stderr };
 }
 
@@ -397,6 +430,6 @@ export async function selectPane(paneId: string): Promise<boolean> {
 }
 
 export async function version(): Promise<string> {
-  const { stdout } = await run('tmux', ['-V']);
+  const { stdout } = await tmux(['-V']);
   return stdout.trim().replace(/^tmux\s+/, '');
 }
