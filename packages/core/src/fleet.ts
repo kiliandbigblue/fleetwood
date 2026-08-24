@@ -424,15 +424,55 @@ export function reconcileWithScreen(
   return { status: state.status, provenance: 'stale' };
 }
 
+/**
+ * Cursor conversations that are subagents of another one in the same pane.
+ *
+ * Cursor runs a delegated subagent inside the parent's process but gives it its
+ * own conversation id, and its hooks inherit the parent's `$TMUX_PANE`. So each
+ * one folds into a separate `AgentState` bound to the same pane, matching the
+ * same single `cursor-agent` process — and since Cursor fires no terminal hook
+ * for a subagent (no `stop`, no session end), that state stays `working` until
+ * it ages out of the store an hour later. Left alone, one Cursor session reads
+ * as four agents, three of them finished, all pointing at the same pane.
+ *
+ * The parent is the one Cursor talks to the human through: only a top-level
+ * conversation gets `beforeSubmitPrompt`, so only it ever counts a turn. Among
+ * several that qualify — a pane reused for a second session, whose first one
+ * never reported an end either — the most recent wins. Recency alone would not
+ * do: a parent that has delegated everything is *quieter* than its subagents.
+ *
+ * Returns the keys to hide. Empty unless a pane really holds more than one.
+ */
+export function cursorSubagentKeys(states: AgentState[]): Set<string> {
+  const cursor = states.filter((s) => s.tool === 'cursor');
+  if (cursor.length < 2) return new Set();
+
+  const withTurns = cursor.filter((s) => s.turns > 0);
+  const candidates = withTurns.length > 0 ? withTurns : cursor;
+  let primary = candidates[0] as AgentState;
+  for (const s of candidates) if (s.lastEventAt > primary.lastEventAt) primary = s;
+
+  return new Set(cursor.filter((s) => s.key !== primary.key).map((s) => s.key));
+}
+
 async function agentsForPane(pane: PaneInfo, ctx: Reconcile): Promise<FleetAgent[]> {
   const { now } = ctx;
   const processes = ctx.processes.get(pane.paneId) ?? [];
   const hooked = (ctx.byPane.get(pane.paneId) ?? []).filter((s) => s.status !== 'gone');
+  const subagents = cursorSubagentKeys(hooked);
   const out: FleetAgent[] = [];
   const seenTools = new Set<AgentTool>();
 
   for (const state of hooked) {
+    // Claimed even when hidden: an unclaimed state falls through to the orphan
+    // sweep, which would list the subagent again with no pane at all.
     ctx.claimed.add(state.key);
+    if (subagents.has(state.key)) {
+      // The parent occupies the pane's cursor slot, so the process below is
+      // spoken for; nothing else should adopt it as an agent that never hooked.
+      seenTools.add(state.tool);
+      continue;
+    }
     const worker = ctx.hosted.get(state.key);
     const match = processes.find((p) => p.tool === state.tool);
     seenTools.add(state.tool);

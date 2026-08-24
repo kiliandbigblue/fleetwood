@@ -15,12 +15,26 @@ const REAL_CLAUDE_DESKTOP_APP = '/Applications/Claude.app/Contents/MacOS/Claude'
 const REAL_CLAUDE_DESKTOP_HELPER =
   '/Applications/Claude.app/Contents/Frameworks/Claude Helper.app/Contents/MacOS/Claude Helper --type=gpu-process';
 
+// Verbatim from a pane whose agent was started as `agent` (Cursor's current
+// installer name) rather than `cursor-agent` — same binary, different argv0.
+const REAL_CURSOR_AGENT_SHORT =
+  '/Users/kiliandemeulemeester/.local/bin/agent --use-system-ca /Users/kiliandemeulemeester/.local/share/cursor-agent/versions/2026.08.11-e8db854/index.js --resume=9ee84b93-7ae9-4e78-8a4f-d9432388bb4d';
+
 test('classify recognises the agent CLIs', () => {
   assert.equal(classify(REAL_CLAUDE_PANE_PROCESS), 'claude');
   assert.equal(classify(REAL_CLAUDE_LAUNCHER), 'claude');
   assert.equal(classify('/Users/k/.local/bin/cursor-agent'), 'cursor');
   assert.equal(classify('cursor-agent --resume'), 'cursor');
+  assert.equal(classify(REAL_CURSOR_AGENT_SHORT), 'cursor');
   assert.equal(classify('/opt/homebrew/bin/codex'), 'codex');
+});
+
+test('classify does not treat an unrelated agent binary as cursor', () => {
+  // The short Cursor name is just `agent`; without the share-dir path it must
+  // not claim every process of that name.
+  assert.equal(classify('/usr/bin/agent'), undefined);
+  assert.equal(classify('/Users/k/.local/bin/agent --help'), undefined);
+  assert.equal(classify('agent run something'), undefined);
 });
 
 test('classify rejects the decoys that share a Claude Code process tree', () => {
@@ -99,6 +113,18 @@ test('agentsInPane reports two tools sharing one pane', () => {
       .sort(),
     ['claude', 'cursor'],
   );
+});
+
+test('agentsInPane finds cursor when invoked as agent', () => {
+  // Without this, a live Cursor session is reported gone: hooks still fire, but
+  // process reconciliation finds nothing matching `cursor-agent` and kills the row.
+  const table = buildProcTable(
+    parsePs([`100   1   0.0 10:00 -zsh`, `200 100   5.0 09:00 ${REAL_CURSOR_AGENT_SHORT}`].join('\n')),
+  );
+  const agents = agentsInPane(table, 100);
+  assert.equal(agents.length, 1);
+  assert.equal(agents[0]?.tool, 'cursor');
+  assert.equal(agents[0]?.pid, 200);
 });
 
 test('agentsInPane returns nothing for a plain shell', () => {

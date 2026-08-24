@@ -41,7 +41,11 @@ const MATCHERS: Matcher[] = [
   },
   {
     tool: 'cursor',
-    include: /(?:^|\/)cursor-agent(?:\s|$)/,
+    // Cursor ships both names: `cursor-agent` (older) and `agent` (current
+    // installer symlink). The short name alone would false-positive on any
+    // binary called `agent`, so it only counts when argv still points at the
+    // cursor-agent install under ~/.local/share/cursor-agent/.
+    include: /(?:^|\/)cursor-agent(?:\s|$)|(?:^|\/)agent\s+.*\/cursor-agent\//,
     exclude: /\/Applications\/Cursor\.app\//,
   },
   {

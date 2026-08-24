@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { matchDaemonPanes, reconcileWithScreen } from '../src/fleet.ts';
+import { cursorSubagentKeys, matchDaemonPanes, reconcileWithScreen } from '../src/fleet.ts';
 import type { DaemonWorker } from '../src/claudeDaemon.ts';
 import { readScreen } from '../src/screen.ts';
+import type { AgentState } from '../src/events.ts';
 
 const WORKER: DaemonWorker = {
   sessionId: '21ad03a2-af31-4e13-82e7-1c58aca3156c',
@@ -129,4 +130,56 @@ test('a permission prompt on screen wins whether or not the hook is stale', () =
     true,
   );
   assert.equal(corroborated.provenance, 'hook');
+});
+
+/**
+ * The shape a real Cursor pane produces: one conversation the human prompts,
+ * and one id per delegated subagent, all carrying the parent's $TMUX_PANE.
+ */
+function cursorState(over: Partial<AgentState> & { key: string }): AgentState {
+  return {
+    tool: 'cursor',
+    pane: '%5',
+    status: 'working',
+    provenance: 'hook',
+    since: 1_000,
+    lastEventAt: 1_000,
+    lastEvent: 'PreToolUse',
+    turns: 0,
+    toolCalls: 0,
+    errorCount: 0,
+    subagents: 0,
+    ...over,
+  };
+}
+
+test('cursor subagents on the parent’s pane are hidden, not the parent', () => {
+  const parent = cursorState({ key: 'cursor:parent', turns: 6, lastEvent: 'UserPromptSubmit', lastEventAt: 2_000 });
+  // Subagents stay noisier than the parent that delegated to them: the freshest
+  // event on the pane belongs to a row we want gone.
+  const busy = cursorState({ key: 'cursor:busy', lastEventAt: 2_500 });
+  const finished = cursorState({ key: 'cursor:finished', lastEventAt: 1_100 });
+
+  const hidden = cursorSubagentKeys([parent, busy, finished]);
+  assert.deepEqual([...hidden].sort(), ['cursor:busy', 'cursor:finished']);
+});
+
+test('a lone cursor conversation is never mistaken for a subagent', () => {
+  // A session that has started but not been prompted yet has no turns either.
+  const fresh = cursorState({ key: 'cursor:fresh', lastEvent: 'SessionStart' });
+  assert.equal(cursorSubagentKeys([fresh]).size, 0);
+});
+
+test('a reused pane keeps the newer conversation, not the abandoned one', () => {
+  // Cursor reports no session end, so yesterday's parent is still in the store.
+  const stale = cursorState({ key: 'cursor:old', turns: 3, lastEventAt: 1_000 });
+  const current = cursorState({ key: 'cursor:new', turns: 1, lastEventAt: 9_000 });
+  assert.deepEqual([...cursorSubagentKeys([stale, current])], ['cursor:old']);
+});
+
+test('other tools sharing the pane are left alone', () => {
+  const parent = cursorState({ key: 'cursor:parent', turns: 2, lastEventAt: 2_000 });
+  const sub = cursorState({ key: 'cursor:sub', lastEventAt: 3_000 });
+  const claude = cursorState({ key: 'claude:c', tool: 'claude', turns: 4, lastEventAt: 5_000 });
+  assert.deepEqual([...cursorSubagentKeys([parent, sub, claude])], ['cursor:sub']);
 });
