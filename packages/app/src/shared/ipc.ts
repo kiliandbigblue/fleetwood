@@ -1,4 +1,4 @@
-import type { ActionResult, FleetState, PlanLimits, PrLists, Task } from '@fleetwood/core';
+import type { ActionResult, FleetState, MergedPrs, PlanLimits, PrLists, Task } from '@fleetwood/core';
 
 /** Everything the renderer knows. Pushed whole; it is small and simplifies the UI. */
 export interface Snapshot {
@@ -7,6 +7,13 @@ export interface Snapshot {
    *  costs a `git status` per repo, which is not worth doing every second. */
   tasks: Task[];
   prs?: PrLists;
+  /**
+   * Merged inside the lookback window, with what CI did with the merge commit.
+   *
+   * Already ordered and already carrying your hand-marks, so the header pill and
+   * the list cannot disagree about how much is still owed.
+   */
+  merged?: MergedPrs;
   /** Session names that fleetwood stamped, keyed by PR key, for link badges. */
   prSessions: Record<string, string>;
   hooksInstalled: boolean;
@@ -23,6 +30,11 @@ export const CHANNELS = {
 export type Request =
   | { kind: 'refresh' }
   | { kind: 'refreshPrs' }
+  /** `force` drops the cache, so even terminal rows are re-queried. */
+  | { kind: 'refreshMerged'; force?: boolean }
+  /** "I shipped this" — the fact CI cannot know for a manually deployed image. */
+  | { kind: 'markPrDeployed'; key: string }
+  | { kind: 'unmarkPrDeployed'; key: string }
   | { kind: 'focusSession'; session: string }
   | { kind: 'focusPane'; pane: string }
   | { kind: 'killSession'; session: string }

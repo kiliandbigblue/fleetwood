@@ -7,6 +7,9 @@ import { TaskList } from './TaskList.tsx';
 import { NewTask } from './NewTask.tsx';
 import { Palette } from './Palette.tsx';
 import { LimitBars } from './LimitBars.tsx';
+// The leaf module: the barrel re-exports tmux and process scanning, which fail
+// the renderer bundle on `node:child_process`.
+import { needsDeploy } from '@fleetwood/core/deployState';
 import { money, send } from './api.ts';
 import { api } from './api.ts';
 
@@ -46,6 +49,9 @@ export function App(): React.JSX.Element {
         event.preventDefault();
         void send({ kind: 'refresh' });
         void send({ kind: 'refreshPrs' });
+        // A manual refresh means "ignore what you cached", including rows whose
+        // state we assumed nothing could change.
+        void send({ kind: 'refreshMerged', force: true });
       }
     };
     window.addEventListener('keydown', onKey);
@@ -56,9 +62,18 @@ export function App(): React.JSX.Element {
 
   const counts = snapshot?.fleet.counts;
   const blocked = counts ? counts.blocked_permission + counts.blocked_input : 0;
+  const merged = snapshot?.merged?.prs ?? [];
   const prCount = snapshot?.prs
-    ? snapshot.prs.reviewRequested.length + snapshot.prs.mine.length
+    ? snapshot.prs.reviewRequested.length + snapshot.prs.mine.length + merged.length
     : undefined;
+  /**
+   * Merges whose image is built and which nothing deployed.
+   *
+   * This is the number the feature exists for: it is what you would otherwise
+   * announce as shipped without shipping it. Hoisted to the header so it does
+   * not depend on having the pull requests tab open.
+   */
+  const toDeploy = merged.filter((pr) => needsDeploy(pr)).length;
 
   // Sessions needing attention float to the top; the rest keep tmux's order.
   const sessions = snapshot
@@ -78,6 +93,15 @@ export function App(): React.JSX.Element {
           <span className="brand">fleetwood</span>
           <div className="pills">
             {blocked > 0 && <span className="pill blocked">✋ {blocked}</span>}
+            {toDeploy > 0 && (
+              <button
+                className="pill to-deploy"
+                title="merged, image built, nothing deployed it"
+                onClick={() => setTab('prs')}
+              >
+                ⬆ {toDeploy} to deploy
+              </button>
+            )}
             {counts && counts.working > 0 && <span className="pill working">▶ {counts.working}</span>}
             {counts && <span className="pill">{counts.idle} idle</span>}
             {/* Summed over sessions and orphans alike, so the header agrees with
@@ -105,6 +129,7 @@ export function App(): React.JSX.Element {
             onClick={() => {
               void send({ kind: 'refresh' });
               void send({ kind: 'refreshPrs' });
+              void send({ kind: 'refreshMerged', force: true });
             }}
           >
             ↻
@@ -190,6 +215,7 @@ export function App(): React.JSX.Element {
         {snapshot && tab === 'prs' && (
           <PrList
             prs={snapshot.prs}
+            merged={snapshot.merged}
             tasks={snapshot.tasks}
             prSessions={snapshot.prSessions}
             onResult={onResult}

@@ -63,6 +63,39 @@ still counts tokens and marks the figure a floor with `~`, an endpoint that
 changed shape yields an empty gauge, and a failed poll keeps the last bars with
 an "as of" note rather than blanking them.
 
+**"Deployed" is mostly not a fact GitHub holds, so the badge doesn't claim it.**
+Across every repo here there are no Deployments-API entries and no job-level
+`environment:` — for the Go services deploying *is* a human running `kubectl`, and
+nothing writes that down. What GitHub does hold is the workflow runs on the merge
+commit, and those separate the two shapes cleanly: a merge to `dev` runs the
+checks, `Autotag` cuts a `vX.Y.Z`, and the tag triggers the image build — whereas
+a frontend merge runs a deploy and is simply live. So the badge reports where the
+trail stopped. `image built · deploy it` means an image exists in
+`eu.gcr.io/bigblue-docker` and nobody has shipped it; `deployed` means a deploy
+run actually succeeded. The distinction is the whole point, which is why it is
+never collapsed into one green tick.
+
+The load-bearing detail is that a tag-triggered build still carries the **merge
+commit** as its head SHA, because the tag points at it — so one
+`gh run list --commit` sees the entire test → autotag → build chain and hands back
+the tag name with it. Querying the branch ref would miss the build entirely.
+Reading the *names* of those runs is what assigns roles, deploy before build, so
+`build_and_deploy` is a deploy rather than something you are told to go and ship.
+
+Marking is deliberately not dismissing. A row that disappears is a row you can no
+longer check, and the moment you want to check is exactly when you are about to
+post to Slack — so the list keeps everything inside the lookback window and only
+changes the order. The mark also never overwrites the CI reading: the badge says
+`deployed by hand`, and what CI actually got as far as stays in the tooltip, which
+is what you want on the day a mark turns out to be wrong.
+
+Three honest limits: right after a merge an absent build means "not yet" rather
+than "never", so there is a settle window before silence is reported as `no CI
+trail`; a red check counts as a failure because it means `Autotag` never fires, so
+no tag and no image are coming; and a repo whose workflow name says nothing
+(`storage-mysql-bridge` calls its build-and-deploy `CI`) needs a pattern override
+in `github.merged.repos` rather than a wrong badge.
+
 **Daemon-hosted sessions get a fourth source.** Claude Code can run a session
 inside `claude daemon`'s own pty, with the tmux pane holding only a thin client
 attached to it — that's what a session launched from `/` does. Both usual bindings
@@ -97,6 +130,14 @@ guessed onto the wrong terminal. `fw doctor` reports both numbers.
   helper that outlives it), and a nested one only by the pid it reported itself
   (the pane's outermost process is its parent). SIGTERM first, SIGKILL if it's
   ignored — and the toast says which.
+- **What you merged, and whether it still needs shipping.** The PR tab's first
+  section is your recent merges, badged with what CI did with the merge commit —
+  so you never announce a change on Slack that was never deployed, or announce it
+  while the build is still running. `⬆ image built · deploy it` is the one that
+  means work; the header carries the count so it reaches you from any tab. When
+  you have shipped one, **mark it deployed** — the row keeps its place in the list
+  and its CI history, changes to `✔ deployed by hand`, and sinks below the ones
+  still owed. Nothing is ever hidden: what is outstanding is simply on top.
 - **PR → session in one click.** Find-or-create: an existing session for that PR is
   focused, otherwise a dedicated git worktree and tmux session are built and stamped.
   Clicking twice never gives you two sessions.

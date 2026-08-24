@@ -6,6 +6,7 @@ import {
   github,
   hooks,
   limits as limitsApi,
+  deployMarks,
   prSession,
   proc,
   repoIndex,
@@ -13,7 +14,7 @@ import {
   task as taskApi,
   tmux,
 } from '@fleetwood/core';
-import type { FleetState, PlanLimits, PullRequest } from '@fleetwood/core';
+import type { FleetState, MergedPr, PlanLimits, PullRequest } from '@fleetwood/core';
 import { c, pad, relativeAge, tildify, width } from './ui.ts';
 import { renderAgentLine, renderFleet, renderLimits } from './render.ts';
 
@@ -374,9 +375,51 @@ function reviewMark(pr: PullRequest): string {
   }
 }
 
+/**
+ * What CI did with a merge, in one column.
+ *
+ * `deploy` is the loud one on purpose: it is the only state that means an image
+ * exists and nobody has shipped it.
+ */
+function deployMark(pr: MergedPr): { glyph: string; label: string } {
+  // A hand-mark overrides the badge; the CI state is still in the JSON output.
+  if (pr.deployedByHand !== undefined) {
+    return { glyph: c.foam('✓'), label: c.foam('deployed by hand') };
+  }
+  switch (pr.deploy.state) {
+    case 'built':
+      return { glyph: c.iris('⬆'), label: c.iris(c.bold('deploy')) };
+    case 'building':
+      return { glyph: c.gold('◍'), label: c.gold('building') };
+    case 'deploying':
+      return { glyph: c.gold('◍'), label: c.gold('deploying') };
+    case 'deployed':
+      return { glyph: c.foam('✓'), label: c.foam('deployed') };
+    case 'failed':
+      return { glyph: c.love('✗'), label: c.love('ci failed') };
+    case 'checking':
+      return { glyph: c.dim('◍'), label: c.dim('checks') };
+    case 'waiting':
+      return { glyph: c.dim('◌'), label: c.dim('waiting') };
+    default:
+      return { glyph: c.dim('·'), label: c.dim('no ci') };
+  }
+}
+
 async function cmdPrs(json: boolean): Promise<void> {
-  const [lists, sessions] = await Promise.all([github.fetchPrs(), tmux.listSessions()]);
-  if (json) return jsonOut(lists);
+  const settings = await configModule.loadConfig();
+  const mergedCfg = settings.github.merged;
+  // Shared with the app, so marking one deployed there shows here too.
+  const marks = await deployMarks.loadMarks();
+  const [lists, sessions, mergedList] = await Promise.all([
+    github.fetchPrs(),
+    tmux.listSessions(),
+    mergedCfg.enabled
+      ? github.fetchMergedPrs({ config: mergedCfg, marks })
+      : Promise.resolve({ prs: [] as MergedPr[], fetchedAt: 0, degraded: false }),
+  ]);
+  const recentlyMerged = mergedList.prs;
+  if (json) return jsonOut({ ...lists, merged: recentlyMerged });
 
   if (lists.degraded) {
     process.stdout.write(`${c.love('gh returned nothing')} ${c.muted('— check `gh auth status`')}\n`);
@@ -400,6 +443,23 @@ async function cmdPrs(json: boolean): Promise<void> {
       );
     }
   };
+
+  const owed = recentlyMerged.filter((pr) => github.needsDeploy(pr)).length;
+  const heading = owed > 0 ? `recently merged ${c.iris(`(${owed} to deploy)`)}` : 'recently merged';
+  process.stdout.write(`\n${c.bold(heading)} ${c.muted(`(${recentlyMerged.length})`)}\n`);
+  if (mergedList.degraded) {
+    // An empty list means nothing merged; say so only when we actually looked.
+    process.stdout.write(`  ${c.love('could not read merge history')}\n`);
+  } else if (recentlyMerged.length === 0) {
+    process.stdout.write(`  ${c.dim('nothing')}\n`);
+  }
+  for (const pr of recentlyMerged) {
+    const mark = deployMark(pr);
+    const tag = pr.deploy.tag ? ` ${pr.deploy.tag}` : '';
+    process.stdout.write(
+      `  ${mark.glyph} ${c.bold(pad(`#${pr.number}`, 7))} ${c.muted(pad(pr.repo, 24))} ${pad(pr.title.slice(0, 46), 46)} ${pad(mark.label, 20)}${pad(c.muted(tag.trim()), 12)}${c.dim(relativeAge(Date.parse(pr.mergedAt) / 1000))}\n`,
+    );
+  }
 
   section('needs my review', lists.reviewRequested);
   section('mine', lists.mine);

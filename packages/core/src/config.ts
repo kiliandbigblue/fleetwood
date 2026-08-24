@@ -3,6 +3,36 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { CONFIG_FILE, ensureDirs } from './paths.ts';
 
+/**
+ * How a workflow run's name is read as deploy / build / pre-flight.
+ *
+ * Each is a case-insensitive regex source. `deploy` is tested first, so a job
+ * called `build_and_deploy` counts as a deploy rather than a build — otherwise
+ * the frontends would all read as "still needs shipping".
+ */
+export interface DeployPatterns {
+  deployPattern: string;
+  buildPattern: string;
+  checkPattern: string;
+}
+
+export interface MergedConfig extends DeployPatterns {
+  enabled: boolean;
+  /** How far back to look. Older merges are nobody's open question any more. */
+  lookbackHours: number;
+  /** Slower than the open-PR poll: a merge's trail takes minutes, not seconds. */
+  pollSeconds: number;
+  /**
+   * Below this age, a missing build/deploy run means "not yet", not "never".
+   *
+   * The chain is test → autotag → tag push → build, so there is a real window
+   * after a merge where the only honest answer is "still running".
+   */
+  settleMinutes: number;
+  /** Per-repo pattern overrides, for repos whose workflow names don't say it. */
+  repos: Record<string, Partial<DeployPatterns>>;
+}
+
 export interface Config {
   /** Where to look for projects, in the order the picker should show them. */
   projectRoots: string[];
@@ -29,6 +59,17 @@ export interface Config {
     pollSeconds: number;
     /** Extra qualifiers appended to every search, e.g. 'org:bigbluedisco'. */
     extraQualifiers: string;
+    /**
+     * The recently-merged list, and how to read a merge's CI trail.
+     *
+     * "Deployed" is not a fact GitHub holds for most of these repos — no
+     * Deployments API entries, no job-level `environment:`. What it does hold is
+     * the workflow runs attached to the merge commit, and their *names* say
+     * which of the two shapes happened: a docker image was pushed (someone
+     * still has to ship it), or a deploy ran (it is live). Hence patterns over
+     * names rather than a per-repo table.
+     */
+    merged: MergedConfig;
   };
   poll: {
     tmuxMs: number;
@@ -57,7 +98,21 @@ export const DEFAULT_CONFIG: Config = {
   taskRoot: join(homedir(), 'projects', '.agents', 'tasks'),
   repoGroups: {},
   worktreeDir: '.agents/worktrees',
-  github: { enabled: true, pollSeconds: 60, extraQualifiers: '' },
+  github: {
+    enabled: true,
+    pollSeconds: 60,
+    extraQualifiers: '',
+    merged: {
+      enabled: true,
+      lookbackHours: 72,
+      pollSeconds: 120,
+      settleMinutes: 15,
+      deployPattern: 'deploy|hosting',
+      buildPattern: 'docker|image|\\bbuild\\b|publish|package|bindings',
+      checkPattern: 'test|lint|check|autotag',
+      repos: {},
+    },
+  },
   poll: { tmuxMs: 1_000, processMs: 2_000 },
   capture: true,
   limits: { tokenCommand: '', pollSeconds: 300 },
@@ -70,7 +125,11 @@ export async function loadConfig(): Promise<Config> {
     return {
       ...DEFAULT_CONFIG,
       ...raw,
-      github: { ...DEFAULT_CONFIG.github, ...raw.github },
+      github: {
+        ...DEFAULT_CONFIG.github,
+        ...raw.github,
+        merged: { ...DEFAULT_CONFIG.github.merged, ...raw.github?.merged },
+      },
       poll: { ...DEFAULT_CONFIG.poll, ...raw.poll },
       limits: { ...DEFAULT_CONFIG.limits, ...raw.limits },
       repoGroups: { ...DEFAULT_CONFIG.repoGroups, ...raw.repoGroups },

@@ -12,6 +12,13 @@ export const EVENTS_LOG = join(FW_HOME, 'events.jsonl');
 /** Cache only — tmux user options are the source of truth for session metadata. */
 export const STATE_FILE = join(FW_HOME, 'state.json');
 export const CONFIG_FILE = join(FW_HOME, 'config.json');
+/**
+ * Which merges you deployed by hand.
+ *
+ * CI cannot know it, and renderer state is in-memory only, so the fact has to
+ * live in a file owned by the main process — same arrangement as `window.json`.
+ */
+export const MERGED_FILE = join(FW_HOME, 'merged.json');
 /** Timestamped copies of any user config we touch, before we touch it. */
 export const BACKUP_DIR = join(FW_HOME, 'backups');
 export const HOOK_DIR = join(FW_HOME, 'hooks');

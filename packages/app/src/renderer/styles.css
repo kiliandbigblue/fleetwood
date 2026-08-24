@@ -758,6 +758,77 @@ button {
   color: var(--foam);
 }
 
+/* --- recently merged ---------------------------------------------------- */
+
+/* The section header carries its own hard-refresh, so it needs a right edge. */
+.section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.section-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.section-title-row .owed {
+  color: var(--iris);
+}
+
+/* Nothing is owed on these, so they stop competing for attention. */
+.pr.quiet {
+  opacity: 0.55;
+}
+.pr.quiet:hover {
+  opacity: 1;
+}
+
+/*
+ * `built` is the only state that means work, so it is the only one with the
+ * accent colour and weight. Everything else borrows the palette the open-PR
+ * check glyphs already use, so the two sections read as one language.
+ */
+.deploy-built {
+  color: var(--iris);
+  font-weight: 600;
+}
+.deploy-building,
+.deploy-deploying {
+  color: var(--gold);
+}
+.deploy-deployed {
+  color: var(--foam);
+}
+.deploy-failed {
+  color: var(--love);
+}
+.deploy-checking,
+.deploy-waiting,
+.deploy-none {
+  color: var(--muted);
+}
+
+.deploy-tag {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A button, not a pill, because it jumps you to the list. */
+.pill.to-deploy {
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  color: var(--iris);
+  background: color-mix(in srgb, var(--iris) 22%, var(--base));
+}
+.pill.to-deploy:hover {
+  background: color-mix(in srgb, var(--iris) 36%, var(--base));
+}
+
 /* --- toast -------------------------------------------------------------- */
 
 .toast {

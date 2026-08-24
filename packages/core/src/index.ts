@@ -14,6 +14,8 @@ export * as hooks from './hookInstall.ts';
 export * as actions from './actions.ts';
 export * as config from './config.ts';
 export * as github from './github.ts';
+export * as deployState from './deployState.ts';
+export * as deployMarks from './deployMarks.ts';
 export * as repoIndex from './repoIndex.ts';
 export * as worktree from './worktree.ts';
 export * as prSession from './prSession.ts';
@@ -21,10 +23,21 @@ export * as task from './task.ts';
 
 // Types consumers need by name (namespace re-exports don't surface them).
 export type { PullRequest, ChecksState, PrLists } from './github.ts';
+// Flat, because the renderer needs these as values and must not import the
+// barrel (which pulls in tmux and process scanning).
+export { isDone, needsDeploy, byUrgencyThenRecency } from './deployState.ts';
+export type {
+  DeployState,
+  DeployRollup,
+  RunRole,
+  WorkflowRun,
+  MergedPr,
+  MergedPrs,
+} from './github.ts';
 export type { AgentState, AgentEvent, SpoolRecord } from './events.ts';
 export type { LocalRepo, RepoIndex } from './repoIndex.ts';
 export type { Worktree } from './worktree.ts';
-export type { Config } from './config.ts';
+export type { Config, MergedConfig, DeployPatterns } from './config.ts';
 export type { Task, TaskRepo, CreateTaskInput, TaskResult } from './task.ts';
 export type { ActionResult } from './actions.ts';
 export type { PromptOption, ScreenRead } from './screen.ts';

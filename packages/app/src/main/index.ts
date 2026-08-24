@@ -9,12 +9,13 @@ import {
   hooks,
   limits as limitsApi,
   paths,
+  deployMarks,
   prSession,
   repoIndex,
   spool,
   task as taskApi,
 } from '@fleetwood/core';
-import type { PlanLimits, PrLists, Task } from '@fleetwood/core';
+import type { MergedPr, MergedPrs, PlanLimits, PrLists, Task } from '@fleetwood/core';
 import { repairPath } from './path.ts';
 import { CHANNELS } from '../shared/ipc.ts';
 import type { Request, Response, Snapshot } from '../shared/ipc.ts';
@@ -37,6 +38,15 @@ let win: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let collector: Awaited<ReturnType<typeof spool.Collector.start>> | undefined;
 let prs: PrLists | undefined;
+let merged: MergedPrs | undefined;
+/**
+ * Merged PRs whose state nothing can change any more, so they are never
+ * re-queried. Without this the section would cost three `gh` processes per PR on
+ * every poll, forever; with it, steady state is one search call.
+ */
+let mergedCache = new Map<string, MergedPr>();
+/** `prKey → epoch seconds` for merges the user says they deployed by hand. */
+let deployedByHand = new Map<string, number>();
 /** Cached: listing tasks runs a `git status` per repo, too costly for the 1s poll. */
 let taskCache: { at: number; tasks: Task[] } = { at: 0, tasks: [] };
 /**
@@ -50,6 +60,7 @@ let planLimits: PlanLimits | undefined;
 let limitsAt = 0;
 let fleetTimer: NodeJS.Timeout | undefined;
 let prTimer: NodeJS.Timeout | undefined;
+let mergedTimer: NodeJS.Timeout | undefined;
 
 interface WindowState {
   x?: number;
@@ -131,6 +142,7 @@ async function buildSnapshot(): Promise<Snapshot> {
     fleet,
     tasks: await getTasks(),
     prs,
+    merged,
     prSessions,
     hooksInstalled: hookState.claude.installed > 0,
     limits: planLimits,
@@ -157,6 +169,62 @@ async function refreshPrs(): Promise<void> {
   if (!settings.github.enabled) return;
   prs = await github.fetchPrs();
   await pushSnapshot();
+}
+
+/**
+ * The recently-merged list, ordered and stamped with your own deploy marks.
+ *
+ * `force` is the hard refresh: it drops the cache so even a row that reads
+ * `deployed` or `built` is asked again. That matters because those states are
+ * terminal by assumption, and the assumption is occasionally wrong — a re-run
+ * workflow, or a pattern you just corrected in the config.
+ */
+async function refreshMerged(force = false): Promise<void> {
+  const settings = await configModule.loadConfig();
+  if (!settings.github.enabled || !settings.github.merged.enabled) {
+    merged = undefined;
+    return;
+  }
+  if (force) mergedCache = new Map();
+
+  const { lookbackHours } = settings.github.merged;
+  // Twice the window: a mark only matters while its PR could still be listed, and
+  // the slack keeps a widened lookback from dropping marks it should still honour.
+  const cutoff = Math.floor(Date.now() / 1000) - lookbackHours * 3_600 * 2;
+  deployedByHand = await deployMarks.loadMarks(cutoff);
+
+  merged = await github.fetchMergedPrs({
+    config: settings.github.merged,
+    cached: mergedCache,
+    marks: deployedByHand,
+  });
+
+  const next = new Map<string, MergedPr>();
+  for (const pr of merged.prs) next.set(github.prKey(pr.repo, pr.number), pr);
+  mergedCache = next;
+  await pushSnapshot();
+}
+
+/**
+ * Apply a hand-mark to what the renderer is already showing.
+ *
+ * Re-running the whole fan-out would be several seconds of `gh` for a fact we
+ * already hold, and the row has to move the moment it is clicked.
+ */
+function restampMarks(): void {
+  if (!merged) return;
+  const prs = merged.prs
+    .map((pr) => {
+      const at = deployedByHand.get(github.prKey(pr.repo, pr.number));
+      const { deployedByHand: _drop, ...rest } = pr;
+      return at === undefined ? (rest as MergedPr) : { ...rest, deployedByHand: at };
+    })
+    .sort((a, b) => {
+      const done = Number(github.isDone(a)) - Number(github.isDone(b));
+      return done !== 0 ? done : b.mergedAt.localeCompare(a.mergedAt);
+    });
+  merged = { ...merged, prs };
+  for (const pr of prs) mergedCache.set(github.prKey(pr.repo, pr.number), pr);
 }
 
 /**
@@ -195,6 +263,27 @@ async function handle(request: Request): Promise<Response> {
     case 'refreshPrs':
       await refreshPrs();
       return { ok: true, detail: 'pull requests refreshed' };
+
+    case 'refreshMerged':
+      await refreshMerged(request.force ?? false);
+      return { ok: true, detail: request.force ? 'merged list re-read from scratch' : 'merged list refreshed' };
+
+    case 'markPrDeployed': {
+      const at = Math.floor(Date.now() / 1000);
+      await deployMarks.markDeployed(request.key, at);
+      deployedByHand.set(request.key, at);
+      restampMarks();
+      await pushSnapshot();
+      return { ok: true, detail: `${request.key} marked deployed` };
+    }
+
+    case 'unmarkPrDeployed': {
+      await deployMarks.unmarkDeployed(request.key);
+      deployedByHand.delete(request.key);
+      restampMarks();
+      await pushSnapshot();
+      return { ok: true, detail: `${request.key} is unshipped again` };
+    }
 
     case 'focusSession':
       return actions.focusSession(request.session);
@@ -400,8 +489,15 @@ app.whenReady().then(async () => {
 
   fleetTimer = setInterval(() => void pushSnapshot(), settings.poll.tmuxMs);
   prTimer = setInterval(() => void refreshPrs(), settings.github.pollSeconds * 1_000);
+  // Its own, slower clock: a merge's CI trail takes minutes, and each new row
+  // costs a `gh pr view` plus a `gh run list`.
+  mergedTimer = setInterval(
+    () => void refreshMerged(),
+    settings.github.merged.pollSeconds * 1_000,
+  );
   await pushSnapshot();
   void refreshPrs();
+  void refreshMerged();
 
   globalShortcut.register('Alt+Shift+F', toggleWindow);
 
@@ -420,4 +516,5 @@ app.on('will-quit', () => {
   collector?.stop();
   if (fleetTimer) clearInterval(fleetTimer);
   if (prTimer) clearInterval(prTimer);
+  if (mergedTimer) clearInterval(mergedTimer);
 });
