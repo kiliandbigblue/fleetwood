@@ -817,11 +817,13 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
-/* A button, not a pill, because it jumps you to the list. */
+/*
+ * A button, not a span, because it jumps you to the list — but styled with colour
+ * only. The global `button` reset already drops the border and inherits the font,
+ * and `.pill` supplies the 11px; declaring `font` here would reset that through
+ * the shorthand and render this pill larger than its neighbours.
+ */
 .pill.to-deploy {
-  border: none;
-  cursor: pointer;
-  font: inherit;
   color: var(--iris);
   background: color-mix(in srgb, var(--iris) 22%, var(--base));
 }
