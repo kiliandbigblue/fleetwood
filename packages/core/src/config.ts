@@ -9,6 +9,14 @@ import { CONFIG_FILE, ensureDirs } from './paths.ts';
  * Each is a case-insensitive regex source. `deploy` is tested first, so a job
  * called `build_and_deploy` counts as a deploy rather than a build — otherwise
  * the frontends would all read as "still needs shipping".
+ *
+ * `build` means specifically the run that produces the *deployable* artifact —
+ * the container image. Repos like `atlas` fire several workflows off the same
+ * tag, and the others publish libraries: `Copy Go bindings to atlas-proto-go`
+ * pushes generated code to another repo, `Node.js Package` publishes to npm.
+ * Neither is a thing you deploy, so neither may answer for the image. Matching
+ * them meant the badge reported whichever of the three GitHub happened to list
+ * first — they share a commit, a tag, and a second, so the order is arbitrary.
  */
 export interface DeployPatterns {
   deployPattern: string;
@@ -116,7 +124,7 @@ export const DEFAULT_CONFIG: Config = {
       pollSeconds: 120,
       settleMinutes: 15,
       deployPattern: 'deploy|hosting',
-      buildPattern: 'docker|image|\\bbuild\\b|publish|package|bindings',
+      buildPattern: 'docker|image|\\bbuild\\b|publish',
       checkPattern: 'test|lint|check|autotag',
       repos: {},
     },

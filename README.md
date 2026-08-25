@@ -81,6 +81,11 @@ commit** as its head SHA, because the tag points at it — so one
 the tag name with it. Querying the branch ref would miss the build entirely.
 Reading the *names* of those runs is what assigns roles, deploy before build, so
 `build_and_deploy` is a deploy rather than something you are told to go and ship.
+A *build* means the run that produces the deployable image, and only that. `atlas`
+fires three workflows off the same tag — `Docker build`, `Copy Go bindings to
+atlas-proto-go`, `Node.js Package` — and the latter two publish libraries. They
+share a commit, a tag and a creation second, so if the pattern matches them too
+the badge reports whichever GitHub happens to list first.
 
 Marking is deliberately not dismissing. A row that disappears is a row you can no
 longer check, and the moment you want to check is exactly when you are about to

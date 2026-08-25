@@ -124,8 +124,11 @@ test('deploy is read before build, so build_and_deploy is not a build', () => {
   assert.equal(classifyRun('Deploy to Firebase Hosting on merge', PATTERNS), 'deploy');
   assert.equal(classifyRun('Production deploy to Firebase Hosting', PATTERNS), 'deploy');
   assert.equal(classifyRun('Docker build', PATTERNS), 'build');
-  assert.equal(classifyRun('Node.js Package', PATTERNS), 'build');
-  assert.equal(classifyRun('Copy Go bindings to atlas-proto-go', PATTERNS), 'build');
+  // Publishing a library is not producing something to deploy. Both of these
+  // fire off the same tag as atlas's `Docker build`; reading either as a build
+  // let it answer for the image.
+  assert.equal(classifyRun('Node.js Package', PATTERNS), 'check');
+  assert.equal(classifyRun('Copy Go bindings to atlas-proto-go', PATTERNS), 'check');
   assert.equal(classifyRun('Test and lint', PATTERNS), 'check');
   assert.equal(classifyRun('Autotag', PATTERNS), 'check');
   assert.equal(classifyRun('Check', PATTERNS), 'check');
@@ -150,7 +153,9 @@ test('a Go repo merge reads as built, with the tag Autotag pushed', () => {
 
 test('atlas keeps Docker build decisive among its other tag-triggered runs', () => {
   // atlas#3676: two package-publishing runs fire on the same tag. Neither is
-  // what you deploy, and neither may drown out the image.
+  // what you deploy, and neither may drown out the image. They are listed first
+  // here because that is how `gh run list` returned them — the three share a
+  // commit, a tag and a creation second, so nothing orders them.
   const rollup = summariseDeploy(
     runs(
       ['Copy Go bindings to atlas-proto-go', 'completed', 'success', 'v0.786.3'],
@@ -163,6 +168,35 @@ test('atlas keeps Docker build decisive among its other tag-triggered runs', () 
   );
   assert.equal(rollup.state, 'built');
   assert.equal(rollup.tag, 'v0.786.3');
+  // The badge links to whatever decided it, so naming the wrong run sends you
+  // to a log that says nothing about the image you are about to ship.
+  assert.equal(rollup.decidedBy?.name, 'Docker build');
+});
+
+test('a library publish neither claims the image nor holds it up', () => {
+  // The npm publish is flaky and slow, and its outcome says nothing about the
+  // image. Green on its own it must not read as something to deploy; still
+  // running it must not stall a finished build behind it.
+  const bindingsOnly = summariseDeploy(
+    runs(
+      ['Copy Go bindings to atlas-proto-go', 'completed', 'success', 'v0.807.1'],
+      ['Autotag', 'completed', 'success'],
+      ['Test and lint', 'completed', 'success'],
+    ),
+    { settled: true },
+  );
+  assert.equal(bindingsOnly.state, 'none');
+  const stillPublishing = summariseDeploy(
+    runs(
+      ['Node.js Package', 'in_progress', '', 'v0.807.1'],
+      ['Docker build', 'completed', 'success', 'v0.807.1'],
+      ['Autotag', 'completed', 'success'],
+      ['Test and lint', 'completed', 'success'],
+    ),
+    { settled: true },
+  );
+  assert.equal(stillPublishing.state, 'built');
+  assert.equal(stillPublishing.decidedBy?.name, 'Docker build');
 });
 
 test('a frontend merge reads as deployed, not as something to ship', () => {
