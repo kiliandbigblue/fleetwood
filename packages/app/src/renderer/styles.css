@@ -1169,7 +1169,7 @@ button {
   top: 30px;
   right: 0;
   z-index: 30;
-  min-width: 168px;
+  min-width: 132px;
   padding: 4px;
   background: var(--panel);
   border: 1px solid var(--edge);
@@ -1202,25 +1202,6 @@ button {
 }
 .theme-option.on {
   color: var(--text);
-}
-
-/*
- * The row's own colours, not the active theme's — this is the one place in the
- * app that has to render a palette it is not painted in, so the swatches carry
- * inline backgrounds and sit on the candidate's own `bg`.
- */
-.theme-swatches {
-  display: flex;
-  gap: 2px;
-  padding: 3px;
-  border-radius: 4px;
-  flex: none;
-}
-
-.theme-swatch {
-  width: 7px;
-  height: 7px;
-  border-radius: 2px;
 }
 
 .theme-label {
