@@ -12,6 +12,15 @@ export interface LimitWindow {
   key: string;
   /** "Current session", "Current week (all models)", … */
   title: string;
+  /**
+   * The same window in one word: `5h`, `week`, `opus`.
+   *
+   * The panel's status rail shows one window at a time and has about forty pixels
+   * for its name, so the long title cannot go there — and truncating it produces
+   * "Current we…", which names nothing. Kept beside the title it abbreviates so
+   * the two cannot drift.
+   */
+  short: string;
   /** 0..1. */
   utilization: number;
   /** Epoch seconds, or undefined when the window carries no reset. */
@@ -41,13 +50,13 @@ export interface PlanLimits {
  * put a bogus "spend 0%" bar on screen, so a new window not showing up until
  * it's listed here is the cheaper failure.
  */
-const WINDOWS: [key: string, title: string][] = [
-  ['five_hour', 'Current session'],
-  ['seven_day', 'Current week (all models)'],
-  ['seven_day_opus', 'Current week (Opus only)'],
-  ['seven_day_sonnet', 'Current week (Sonnet only)'],
-  ['seven_day_cowork', 'Current week (Cowork)'],
-  ['seven_day_oauth_apps', 'Current week (OAuth apps)'],
+const WINDOWS: [key: string, title: string, short: string][] = [
+  ['five_hour', 'Current session', '5h'],
+  ['seven_day', 'Current week (all models)', 'week'],
+  ['seven_day_opus', 'Current week (Opus only)', 'opus'],
+  ['seven_day_sonnet', 'Current week (Sonnet only)', 'sonnet'],
+  ['seven_day_cowork', 'Current week (Cowork)', 'cowork'],
+  ['seven_day_oauth_apps', 'Current week (OAuth apps)', 'oauth'],
 ];
 
 /**
@@ -93,18 +102,18 @@ export function parseLimits(body: unknown, now: number): PlanLimits {
   const root = (body ?? {}) as Record<string, unknown>;
   const windows: LimitWindow[] = [];
 
-  const push = (key: string, wire: WireWindow, title: string): void => {
+  const push = (key: string, wire: WireWindow, title: string, short: string): void => {
     const utilization = fraction(wire.utilization ?? wire.percent);
     if (utilization === undefined) return;
-    windows.push({ key, title, utilization, resetsAt: epoch(wire.resets_at) });
+    windows.push({ key, title, short, utilization, resetsAt: epoch(wire.resets_at) });
   };
 
   // Most windows are null on any given plan — an account with no Opus-specific
   // cap reports `"seven_day_opus": null` rather than omitting the key.
-  for (const [key, title] of WINDOWS) {
+  for (const [key, title, short] of WINDOWS) {
     const value = root[key];
     if (value === null || typeof value !== 'object') continue;
-    push(key, value as WireWindow, title);
+    push(key, value as WireWindow, title, short);
   }
 
   // Per-model weekly caps arrive in a list instead of as named keys. Only the
@@ -117,7 +126,11 @@ export function parseLimits(body: unknown, now: number): PlanLimits {
       const scope = entry.scope as { model?: { display_name?: unknown } } | null | undefined;
       const name = scope?.model?.display_name;
       if (typeof name !== 'string') continue;
-      push(`weekly_scoped:${name}`, entry as WireWindow, `Current week (${name})`);
+      // "Claude Opus 4.5" abbreviates to `opus`: the family is what distinguishes
+      // one scoped cap from another, and the version never fits the rail.
+      const short = (name.split(/\s+/).find((word) => !/^claude$/i.test(word)) ?? name)
+        .toLowerCase();
+      push(`weekly_scoped:${name}`, entry as WireWindow, `Current week (${name})`, short);
     }
   }
 

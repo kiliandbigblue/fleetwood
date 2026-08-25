@@ -114,6 +114,8 @@ test('the limits array contributes only per-model caps, never duplicates', () =>
   );
   const scoped = withScoped.windows.find((w) => w.key === 'weekly_scoped:Opus 5');
   assert.equal(scoped?.title, 'Current week (Opus 5)');
+  // The rail's one-word name: the family, not the version and not the vendor.
+  assert.equal(scoped?.short, 'opus');
   // That branch reads `percent` where the named windows use `utilization`.
   assert.equal(scoped?.utilization, 0.31);
 });

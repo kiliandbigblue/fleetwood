@@ -25,6 +25,27 @@
   --accent: #c4a7e7;
   --branch: #ebbcba;
   --radius: 8px;
+
+  /*
+   * The two rails and the face they are set in. Named roles, not new colours.
+   *
+   * `--rail` is the window's own background, deliberately. A lifted fill was
+   * tried — mostly `edge`, which would have held its ground as `bgOpacity`
+   * thinned the list between the rails — and it read as a frame bolted onto the
+   * panel rather than as part of it. The chrome is already distinguished by type
+   * and position; spending a second surface on it too made it shout.
+   *
+   * So the rails are the same sheet as the body, a hairline apart, and at a low
+   * opacity the whole window thins together instead of becoming a solid frame
+   * around a see-through middle.
+   */
+  --rail: var(--bg);
+  /* `edge` is what the panel already draws every seam with — the line between a
+     surface and what sits on it. A rail is no exception. */
+  --rail-line: var(--edge);
+  /* The terminal's face. `theme.ts` argues this panel has to be the same colours
+     as the editor beside it; the rails take the argument one step further. */
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 * {
@@ -52,6 +73,18 @@ button {
   background: none;
   border: 0;
   cursor: pointer;
+}
+
+/*
+ * Keyboard focus, on one ring rather than per control.
+ *
+ * `:focus-visible` and not `:focus`, so a clicked tab does not keep a ring the
+ * mouse never asked for. Mixed from `text` because it has to land on a rail, on a
+ * card, and on the theme popover, and no single role reads on all three.
+ */
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--text) 55%, transparent);
+  outline-offset: 1px;
 }
 
 /*
@@ -102,97 +135,241 @@ button {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 9%, transparent);
 }
 
-/* --- header --------------------------------------------------------------- */
+/* --- rails --------------------------------------------------------------- */
 
-.header {
-  /* Leaves room for the traffic lights under titleBarStyle: hiddenInset. */
-  padding: 26px 12px 8px;
-  -webkit-app-region: drag;
-  border-bottom: 1px solid var(--edge);
-  background: var(--bg);
-}
-
-.header-row {
+/*
+ * Two fixed strips with the scrolling list between them.
+ *
+ * The split is what they are for: the top rail is everything waiting on you and
+ * every way to get to it, the bottom rail is everything that is merely true. What
+ * was here instead was a brand, a row of five pills mixing both kinds, and a row
+ * of tabs — three rows of chrome to say what two lines say.
+ */
+.rail {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex: none;
+  background: var(--rail);
+  -webkit-app-region: drag;
 }
 
-.header button,
-.tab {
+/*
+ * Both rails are window handles, minus the things you actually press.
+ *
+ * The popovers are on that list as whole surfaces, not just their controls: they
+ * hang off a rail, so their padding and headings would otherwise inherit the drag
+ * region and moving the window would be the reward for reaching into one.
+ */
+.rail button,
+.rail input,
+.theme-menu,
+.quota-menu {
   -webkit-app-region: no-drag;
 }
 
-.brand {
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  margin-right: auto;
+.rail-top {
+  /*
+   * Inset from the left, not padded from the top.
+   *
+   * The traffic lights sit at the window's top-left under `titleBarStyle:
+   * hiddenInset`, and clearing them sideways buys back the 26px of empty header
+   * that used to be reserved above the content — the whole reason this took two
+   * rows to fit one bar's worth of controls. Verified against the real window:
+   * the lights end around 72px and the first label starts at 87.
+   */
+  height: 40px;
+  padding: 0 8px 0 78px;
+  gap: 8px;
+  border-bottom: 1px solid var(--rail-line);
 }
 
-.pills {
+.rail-bottom {
+  min-height: 26px;
+  padding: 0 10px;
+  gap: 10px;
+  border-top: 1px solid var(--rail-line);
+}
+
+/*
+ * One dot, one meaning, everywhere in the panel.
+ *
+ * The rails borrow the mark the agent rows already use, so a red dot in a rail
+ * and a red dot on a row below it say the same thing. It replaces `✋` and `⬆`,
+ * which were colour emoji — an unreadable blob at this size, and a second
+ * vocabulary for a fact the rows already had a mark for.
+ *
+ * `currentColor`, so which status it is stays the parent's business and this rule
+ * never learns that statuses exist.
+ */
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+.dot.pulsing {
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+/* --- top rail: navigation that is also status ---------------------------- */
+
+.nav {
   display: flex;
-  gap: 5px;
-  align-items: center;
+  align-items: stretch;
+  align-self: stretch;
+  gap: 1px;
+  margin-right: auto;
+  min-width: 0;
+  /* Clips, rather than pushing. Tabs do not wrap and do not shrink, so something
+     has to give in the pathological case (three-digit counts in a 380px window);
+     losing the tail of the last label beats shoving the controls past the window's
+     right edge, where they cannot be clicked at all. */
+  overflow: hidden;
 }
 
-.pill {
+/*
+ * A tab is set in the terminal's face, not the panel's.
+ *
+ * Content stays in the UI sans; both rails are mono. That split is what makes the
+ * chrome read as an instrument around the list rather than as one more row of it —
+ * and uppercase-with-tracking is already this file's mark for "a label, not
+ * content" (see `.section-title`).
+ */
+.nav-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  font-family: var(--mono);
   font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: var(--edge);
-  color: var(--soft);
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--dim);
   white-space: nowrap;
 }
 
-.pill.blocked {
-  background: color-mix(in srgb, var(--danger) 22%, var(--bg));
+.nav-tab:hover {
+  color: var(--soft);
+}
+
+/*
+ * The active tab is marked by brightness and a rule on the rail's own seam.
+ *
+ * Not by a fill, which is what it was: every colour in this row is a status, and a
+ * tinted tab background would be the one coloured thing here that means nothing.
+ * Brightness is free — no hue spends itself saying "you are here".
+ */
+.nav-tab.active {
+  color: var(--text);
+}
+
+.nav-tab.active::after {
+  content: '';
+  position: absolute;
+  right: 6px;
+  bottom: -1px;
+  left: 6px;
+  height: 2px;
+  background: var(--text);
+}
+
+/*
+ * Inventory: how much is over there.
+ *
+ * Held apart from the label it trails by type rather than by tone — numerals
+ * against tracked uppercase. A quieter grey was the first attempt and came out at
+ * roughly 1.9:1 against the rail, which is not a de-emphasis but an illegibility;
+ * `dim` is this file's documented floor for text still meant to be read.
+ */
+.nav-total {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  color: var(--dim);
+}
+
+.nav-tab.active .nav-total,
+.nav-tab:hover .nav-total {
+  color: var(--soft);
+}
+
+/*
+ * The number you would cross the panel for, on the tab that gets you there.
+ *
+ * These two facts — how many agents are blocked, how many merges nothing has
+ * deployed — were pills in a row of their own, which put the number that mattered
+ * and the control that acts on it in different places and different shapes. A tab
+ * is the control; the count belongs on it.
+ */
+.nav-alert {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.nav-alert.danger {
   color: var(--danger);
 }
-.pill.working {
-  background: color-mix(in srgb, var(--ok) 18%, var(--bg));
-  color: var(--ok);
+.nav-alert.warn {
+  color: var(--warn);
+}
+.nav-alert.accent {
+  color: var(--accent);
+}
+
+.rail-controls {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex: none;
 }
 
 .icon-button {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  color: var(--dim);
   display: grid;
   place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  font-size: 13px;
+  color: var(--dim);
+  flex: none;
 }
+
 .icon-button:hover {
   background: var(--edge);
   color: var(--text);
 }
+
+/* A mode that is on, and worth noticing that it is: always-on-top. */
 .icon-button.on {
   color: var(--warn);
 }
 
-.tabs {
-  display: flex;
-  gap: 2px;
-  margin-top: 8px;
+/* Merely showing its popover — pressed, not a mode. */
+.icon-button.showing,
+.quota-gauge.showing {
+  background: color-mix(in srgb, var(--text) 10%, var(--edge));
+  color: var(--text);
 }
 
-.tab {
-  padding: 4px 10px;
-  border-radius: 6px;
-  color: var(--dim);
-  font-size: 12px;
-}
-.tab:hover {
-  color: var(--text);
-}
-.tab.active {
-  background: var(--edge);
-  color: var(--text);
-}
-.tab .count {
-  color: var(--dim);
-  margin-left: 5px;
-  font-variant-numeric: tabular-nums;
+/*
+ * Drawn, not typed.
+ *
+ * Status marks stay text because the tray title is the same vocabulary and can
+ * only draw a string. Controls carry no such obligation and were paying for it:
+ * `⇧` is the shift key, not "keep above", and no codepoint means "always on top".
+ * Sized in `em`, so all three follow the button.
+ */
+.icon {
+  display: block;
+  width: 1em;
+  height: 1em;
 }
 
 /* --- scroll body --------------------------------------------------------- */
@@ -257,7 +434,7 @@ button {
 /* Second line, so the longest string on the card stops competing for the first. */
 .branch-line {
   padding: 0 10px 6px 22px;
-  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-family: var(--mono);
   font-size: 10.5px;
   color: var(--branch);
   white-space: nowrap;
@@ -267,7 +444,7 @@ button {
 
 .head-path {
   margin-left: auto;
-  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-family: var(--mono);
   font-size: 10.5px;
   color: var(--dim);
   white-space: nowrap;
@@ -315,7 +492,7 @@ button {
 
 .badge.branch {
   color: var(--branch);
-  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-family: var(--mono);
   /* Branch names are the longest thing in a card head; let this one shrink. */
   flex: 0 1 auto;
   min-width: 0;
@@ -331,7 +508,7 @@ button {
   color: var(--dim);
   font-size: 11px;
   margin-left: auto;
-  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-family: var(--mono);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -439,6 +616,17 @@ button {
   }
 }
 
+/*
+ * Named rather than blanket-disabled on `*`: this is the only animation in the
+ * panel, and a green dot that does not breathe is still a green dot.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .status-working,
+  .dot.pulsing {
+    animation: none;
+  }
+}
+
 .tool {
   font-weight: 600;
   font-size: 11px;
@@ -460,7 +648,7 @@ button {
 .activity {
   color: var(--soft);
   font-size: 11px;
-  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-family: var(--mono);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -489,7 +677,7 @@ button {
    claimed the free space with its own auto margin, in which case cost trails it. */
 .session-cost {
   margin-left: auto;
-  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-family: var(--mono);
   font-size: 10.5px;
 }
 
@@ -545,44 +733,150 @@ button {
   flex: none;
 }
 
-/* --- plan quota bars ------------------------------------------------------ */
+/* --- bottom rail: fleet vitals and runway -------------------------------- */
 
-/* Pinned under the scrolling body, so it reads as a footer rather than as one
-   more thing in the fleet list. */
-.limits {
+.vitals {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 6px 12px 8px;
-  border-top: 1px solid color-mix(in srgb, var(--edge) 60%, var(--panel));
-  background: color-mix(in srgb, var(--edge) 20%, var(--panel));
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+  color: var(--dim);
+}
+
+.vital {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The one live thing in either rail: mid-turn agents, breathing. */
+.vital.ok {
+  color: var(--ok);
+}
+
+.quota {
+  position: relative;
+  margin-left: auto;
   flex: none;
 }
 
-.limits-head {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  margin-bottom: 1px;
-}
-
-.limits-label {
-  font-size: 10px;
-  color: var(--dim);
-  text-transform: lowercase;
-  letter-spacing: 0.03em;
-}
-
-.limit {
+.quota-gauge {
   display: flex;
   align-items: center;
   gap: 6px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 5px;
+  font-family: var(--mono);
   font-size: 10.5px;
+  letter-spacing: 0.03em;
   color: var(--dim);
-  min-width: 0;
 }
 
-.limit-title {
+.quota-gauge:hover {
+  background: var(--edge);
+}
+
+/* `.tool` is the agent rows' 11px; this row runs half a point smaller. */
+.quota-gauge .tool {
+  font-size: 10.5px;
+}
+
+.quota-window {
+  text-transform: uppercase;
+}
+
+.quota-percent {
+  color: var(--soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.quota-reset {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The panel's one meter.
+ *
+ * Everything else in both rails is a count, and counts get numerals. Runway is
+ * the only thing here that is a proportion of anything, so it is the only thing
+ * drawn as a bar — which is what lets the bar mean something at a glance instead
+ * of being one more decorated number.
+ */
+.meter {
+  width: 42px;
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+  overflow: hidden;
+  flex: none;
+}
+
+/* A dated bar is still worth reading, but it should not look live. */
+.meter.stale {
+  opacity: 0.5;
+}
+
+.meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--ok);
+}
+
+.meter-fill.warn {
+  background: var(--warn);
+}
+
+.meter-fill.critical {
+  background: var(--danger);
+}
+
+/*
+ * Every window, on request. Upward, because it hangs off the bottom rail.
+ *
+ * Solid at every opacity for the same reason the theme popover is — see the note
+ * in `theme.ts`. Right-aligned to its button, which is at the window's right edge.
+ */
+.quota-menu {
+  position: absolute;
+  right: 0;
+  bottom: 26px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 272px;
+  padding: 7px 8px 8px;
+  font-family: var(--mono);
+  background: var(--panel-solid);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  box-shadow: 0 -8px 24px rgb(0 0 0 / 45%);
+}
+
+.quota-menu-head {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--dim);
+}
+
+.quota-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 10.5px;
+  color: var(--dim);
+}
+
+.quota-row-title {
   flex: 0 1 auto;
   min-width: 0;
   white-space: nowrap;
@@ -590,50 +884,46 @@ button {
   text-overflow: ellipsis;
 }
 
-.limit-track {
+/*
+ * In here the meter takes the slack, because in here it is the point: a row has
+ * 270px to spend and a bar reads a 78% against a 94% far better at 120px than at
+ * 42. Out in the rail it stays fixed — there, width is what the row is short of.
+ */
+.quota-row .meter {
   flex: 1 1 auto;
+  width: auto;
   min-width: 40px;
-  height: 4px;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--edge) 80%, var(--panel));
-  overflow: hidden;
 }
 
-/* A dated bar is still worth reading, but it should not look live. */
-.limit-track.stale {
-  opacity: 0.5;
-}
-
-.limit-fill {
-  display: block;
-  height: 100%;
-  border-radius: 2px;
-  background: var(--ok);
-}
-
-.limit-fill.warn {
-  background: var(--warn);
-}
-
-.limit-fill.critical {
-  background: var(--danger);
-}
-
-.limit-percent {
-  flex: none;
-  font-variant-numeric: tabular-nums;
-}
-
-.limit-reset {
-  flex: none;
-  color: var(--soft);
-  font-variant-numeric: tabular-nums;
-}
-
-.limit-stale {
+.quota-stale {
+  margin-top: 2px;
   font-size: 10px;
-  color: var(--soft);
   font-style: italic;
+  color: var(--soft);
+}
+
+/*
+ * A narrow panel, in the order things are worth losing.
+ *
+ * First the reset time, which the gauge's tooltip and the popover both still
+ * carry. Then, on a tab that has something waiting on you, the inventory count —
+ * `FLEET 5 ●2` becomes `FLEET ●2`, because between those two numbers the one you
+ * would act on is not the 5. `minWidth` on the window is 380.
+ */
+@media (max-width: 430px) {
+  /* Scoped to the rail: the popover is where the reset times go when they cannot
+     fit out here, so hiding them in there too would drop them entirely. */
+  .quota-gauge .quota-reset {
+    display: none;
+  }
+
+  .nav-tab {
+    padding: 0 7px;
+  }
+
+  .nav-tab:has(.nav-alert) .nav-total {
+    display: none;
+  }
 }
 
 /* --- permission prompt --------------------------------------------------- */
@@ -661,7 +951,7 @@ button {
 .prompt-option {
   font-size: 11px;
   color: var(--soft);
-  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-family: var(--mono);
 }
 .prompt-option.selected {
   color: var(--text);
@@ -860,20 +1150,6 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
-/*
- * A button, not a span, because it jumps you to the list — but styled with colour
- * only. The global `button` reset already drops the border and inherits the font,
- * and `.pill` supplies the 11px; declaring `font` here would reset that through
- * the shorthand and render this pill larger than its neighbours.
- */
-.pill.to-deploy {
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 22%, var(--bg));
-}
-.pill.to-deploy:hover {
-  background: color-mix(in srgb, var(--accent) 36%, var(--bg));
-}
-
 /* --- toast -------------------------------------------------------------- */
 
 .toast {
@@ -977,7 +1253,7 @@ button {
 }
 
 .task-repo-name {
-  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-family: var(--mono);
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
@@ -1001,7 +1277,7 @@ button {
 .off-branch {
   color: var(--danger);
   font-size: 10px;
-  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-family: var(--mono);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1166,7 +1442,7 @@ button {
 }
 
 .branch-preview {
-  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-family: var(--mono);
   font-size: 11.5px;
   color: var(--warn);
   background: var(--bg);
@@ -1200,14 +1476,14 @@ button {
   background: color-mix(in srgb, var(--accent) 14%, var(--panel));
 }
 .repo-option span:first-of-type {
-  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-family: var(--mono);
 }
 
 .repo-branch-hint {
   margin-left: auto;
   color: var(--dim);
   font-size: 10px;
-  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-family: var(--mono);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

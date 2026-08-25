@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { Snapshot } from '../shared/ipc.ts';
 import { SessionCard } from './SessionCard.tsx';
 import { AgentRow } from './AgentRow.tsx';
@@ -6,25 +6,16 @@ import { PrList } from './PrList.tsx';
 import { TaskCard } from './TaskCard.tsx';
 import { NewTask } from './NewTask.tsx';
 import { Palette } from './Palette.tsx';
-import { LimitBars } from './LimitBars.tsx';
+import { StatusBar } from './StatusBar.tsx';
+import { TopBar } from './TopBar.tsx';
+import type { Tab } from './TopBar.tsx';
 import { ThemePicker } from './ThemePicker.tsx';
 // The leaf module: the barrel re-exports tmux and process scanning, which fail
 // the renderer bundle on `node:child_process`.
 import { needsDeploy } from '@fleetwood/core/deployState';
 import { applyTheme } from './theme.ts';
-import { money, send } from './api.ts';
+import { send } from './api.ts';
 import { api } from './api.ts';
-
-/**
- * The two lists.
- *
- * Tasks used to be a third: a task with a session was rendered twice — once here
- * as a bare session card with half its controls missing, once there as a task card
- * that knew nothing about the agents running in it. They are the same object, so
- * they are now one card in one list, and `TaskCard` is what a session card becomes
- * when we know it is working a task.
- */
-type Tab = 'fleet' | 'prs';
 
 interface Toast {
   message: string;
@@ -41,6 +32,17 @@ export function App(): React.JSX.Element {
   const [themeOpen, setThemeOpen] = useState(false);
 
   useEffect(() => api.onSnapshot(setSnapshot), []);
+
+  /*
+   * The fleet polls itself every second; these three are the ones that do not.
+   * `force` on the merged list drops the cache, so a manual refresh re-asks even
+   * rows whose state we assumed nothing could change.
+   */
+  const refresh = useCallback((): void => {
+    void send({ kind: 'refresh' });
+    void send({ kind: 'refreshPrs' });
+    void send({ kind: 'refreshMerged', force: true });
+  }, []);
 
   /*
    * Repaint whenever the configured theme or its opacity changes — including the
@@ -69,21 +71,16 @@ export function App(): React.JSX.Element {
         setNewTaskOpen((open) => !open);
       } else if ((event.metaKey || event.ctrlKey) && event.key === 'r') {
         event.preventDefault();
-        void send({ kind: 'refresh' });
-        void send({ kind: 'refreshPrs' });
-        // A manual refresh means "ignore what you cached", including rows whose
-        // state we assumed nothing could change.
-        void send({ kind: 'refreshMerged', force: true });
+        refresh();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [refresh]);
 
   const onResult = (message: string, ok: boolean): void => setToast({ message, ok });
 
   const counts = snapshot?.fleet.counts;
-  const blocked = counts ? counts.blocked_permission + counts.blocked_input : 0;
   const merged = snapshot?.merged?.prs ?? [];
   const prCount = snapshot?.prs
     ? snapshot.prs.reviewRequested.length + snapshot.prs.mine.length + merged.length
@@ -92,7 +89,7 @@ export function App(): React.JSX.Element {
    * Merges whose image is built and which nothing deployed.
    *
    * This is the number the feature exists for: it is what you would otherwise
-   * announce as shipped without shipping it. Hoisted to the header so it does
+   * announce as shipped without shipping it. Hoisted to the top rail so it does
    * not depend on having the pull requests tab open.
    */
   const toDeploy = merged.filter((pr) => needsDeploy(pr)).length;
@@ -130,31 +127,22 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="app">
-      <div className="header">
-        <div className="header-row">
-          <span className="brand">fleetwood</span>
-          <div className="pills">
-            {blocked > 0 && <span className="pill blocked">✋ {blocked}</span>}
-            {toDeploy > 0 && (
-              <button
-                className="pill to-deploy"
-                title="merged, image built, nothing deployed it"
-                onClick={() => setTab('prs')}
-              >
-                ⬆ {toDeploy} to deploy
-              </button>
-            )}
-            {counts && counts.working > 0 && <span className="pill working">▶ {counts.working}</span>}
-            {counts && <span className="pill">{counts.idle} idle</span>}
-            {/* Summed over sessions and orphans alike, so the header agrees with
-                the rows below it. */}
-            {counts && counts.costUsd > 0 && (
-              <span className="pill" title="what the whole fleet has spent, estimated at API rates">
-                {money(counts.costUsd)}
-              </span>
-            )}
-          </div>
-          {snapshot && (
+      <TopBar
+        tab={tab}
+        onTab={setTab}
+        counts={counts}
+        fleetCount={sessions.length + dormantTasks.length}
+        prCount={prCount}
+        toDeploy={toDeploy}
+        pinned={pinned}
+        onPin={() => {
+          const next = !pinned;
+          setPinned(next);
+          void send({ kind: 'setAlwaysOnTop', value: next });
+        }}
+        onRefresh={refresh}
+        themePicker={
+          snapshot && (
             <ThemePicker
               current={snapshot.theme}
               bgOpacity={snapshot.bgOpacity}
@@ -162,40 +150,9 @@ export function App(): React.JSX.Element {
               onToggle={() => setThemeOpen((open) => !open)}
               onClose={() => setThemeOpen(false)}
             />
-          )}
-          <button
-            className={`icon-button${pinned ? ' on' : ''}`}
-            title="keep on top of other windows"
-            onClick={() => {
-              const next = !pinned;
-              setPinned(next);
-              void send({ kind: 'setAlwaysOnTop', value: next });
-            }}
-          >
-            ⇧
-          </button>
-          <button
-            className="icon-button"
-            title="refresh (⌘R)"
-            onClick={() => {
-              void send({ kind: 'refresh' });
-              void send({ kind: 'refreshPrs' });
-              void send({ kind: 'refreshMerged', force: true });
-            }}
-          >
-            ↻
-          </button>
-        </div>
-        <div className="tabs">
-          <button className={`tab${tab === 'fleet' ? ' active' : ''}`} onClick={() => setTab('fleet')}>
-            fleet<span className="count">{sessions.length + dormantTasks.length}</span>
-          </button>
-          <button className={`tab${tab === 'prs' ? ' active' : ''}`} onClick={() => setTab('prs')}>
-            pull requests
-            <span className="count">{prCount ?? '…'}</span>
-          </button>
-        </div>
-      </div>
+          )
+        }
+      />
 
       <div className="body">
         {snapshot && !snapshot.hooksInstalled && (
@@ -287,9 +244,9 @@ export function App(): React.JSX.Element {
         )}
       </div>
 
-      {/* Pinned below the scrolling body: it is ambient context, not something
-          you act on, and it belongs to one agent tool rather than to the fleet. */}
-      {snapshot?.limits && <LimitBars limits={snapshot.limits} />}
+      {/* Pinned below the scrolling body: everything down there is ambient
+          context rather than something you act on — see `StatusBar`. */}
+      {counts && <StatusBar counts={counts} limits={snapshot?.limits} />}
 
       <NewTask open={newTaskOpen} onClose={() => setNewTaskOpen(false)} onResult={onResult} />
 

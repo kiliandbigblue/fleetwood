@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { MIN_BG_OPACITY, THEME_NAMES, THEMES } from '@fleetwood/core/theme';
 import type { ThemeName } from '@fleetwood/core/theme';
 import { send } from './api.ts';
+import { Icon } from './Icon.tsx';
 import { applyTheme } from './theme.ts';
+import { useDismiss } from './useDismiss.ts';
 
 interface Props {
   current: ThemeName;
@@ -17,8 +19,8 @@ interface Props {
 const PERCENT_STEP = 5;
 
 /**
- * The theme picker: an icon button in the header, a popover of flavours, and the
- * background-opacity slider under them.
+ * The theme picker: an icon button in the top rail, a popover of flavours, and
+ * the background-opacity slider under them.
  *
  * Not a ⌘K entry, even though the palette was the cheaper place to put it: you
  * pick a theme by looking at the panel repaint behind the popover, and a
@@ -44,22 +46,7 @@ export function ThemePicker({
   useEffect(() => setAlpha(bgOpacity), [bgOpacity]);
   const writeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (event: MouseEvent): void => {
-      if (!wrapRef.current?.contains(event.target as Node)) onClose();
-    };
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onClose();
-    };
-    // Capture, so a click on any other control closes this before acting.
-    document.addEventListener('mousedown', onDown, true);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown, true);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open, onClose]);
+  useDismiss(wrapRef, open, onClose);
 
   const choose = (name: ThemeName): void => {
     // Painted here rather than waiting for the snapshot to come back with it: the
@@ -99,11 +86,12 @@ export function ThemePicker({
   return (
     <div className="theme-picker" ref={wrapRef}>
       <button
-        className={`icon-button${open ? ' on' : ''}`}
+        className={`icon-button${open ? ' showing' : ''}`}
         title={`theme — ${THEMES[current].family} ${THEMES[current].label}`}
+        aria-expanded={open}
         onClick={onToggle}
       >
-        ◐
+        <Icon name="contrast" />
       </button>
       {open && (
         <div className="theme-menu">
