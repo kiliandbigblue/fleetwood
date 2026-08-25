@@ -419,8 +419,11 @@ export async function killAgent(
 }
 
 export async function killSession(name: string): Promise<ActionResult> {
-  const ok = await tmux.killSession(name);
-  return ok ? { ok: true, detail: `killed ${name}` } : { ok: false, detail: `could not kill ${name}` };
+  // Attached clients are moved to the oldest surviving session first, so closing a
+  // card from the panel cannot dump the terminal out of tmux.
+  const { killed, switchedTo } = await tmux.killSessionKeepingClients(name);
+  if (!killed) return { ok: false, detail: `could not kill ${name}` };
+  return { ok: true, detail: `killed ${name}${switchedTo ? ` — focused ${switchedTo}` : ''}` };
 }
 
 export async function renameSession(from: string, to: string): Promise<ActionResult> {

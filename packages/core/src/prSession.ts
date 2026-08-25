@@ -155,7 +155,9 @@ export async function archivePrSession(sessionName: string, force = false): Prom
     }
   }
 
-  const killed = await tmux.killSession(sessionName);
+  // Same reason as archiveTask: killing the session a client sits in kicks that
+  // client back out to a plain shell, so move it to another session first.
+  const { killed } = await tmux.killSessionKeepingClients(sessionName);
   if (!killed) return { ok: false, created: false, detail: `removed the worktree but could not kill ${sessionName}` };
 
   // Be explicit when there was nothing to clean up: a session stamped as a PR but

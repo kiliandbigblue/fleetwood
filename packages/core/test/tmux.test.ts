@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildTree, parsePanes, parseSessions, tmuxEnv } from '../src/tmux.ts';
+import { buildTree, parsePanes, parseSessions, planSessionKill, tmuxEnv } from '../src/tmux.ts';
+import type { ClientInfo, SessionRow } from '../src/tmux.ts';
 
 const SEP = '\x1f';
 const row = (...fields: string[]): string => fields.join(SEP);
@@ -202,4 +203,75 @@ test('tmuxEnv forces a UTF-8 locale over whatever the app was launched with', ()
     if (LANG !== undefined) process.env.LANG = LANG;
     if (PATH !== undefined) process.env.PATH = PATH;
   }
+});
+
+/**
+ * Archiving a task kills its session. These cover where the clients go first —
+ * getting it wrong detaches Ghostty back to a bare shell, which is the bug.
+ */
+const session = (name: string, createdAt: number, attached = 0): SessionRow => ({
+  sessionId: `$${name}`,
+  name,
+  attached,
+  createdAt,
+  path: `/Users/k/${name}`,
+  meta: {
+    kind: undefined,
+    repo: undefined,
+    branch: undefined,
+    pr: undefined,
+    worktree: undefined,
+    task: undefined,
+    taskdir: undefined,
+  },
+});
+
+const client = (tty: string, name: string): ClientInfo => ({
+  tty,
+  session: name,
+  termName: 'xterm-ghostty',
+});
+
+test('the client on a doomed session is moved to the oldest surviving one', () => {
+  const sessions = [
+    session('atlas-pr-1', 1785781153),
+    session('HOME', 1785781023),
+    session('doomed', 1785790000, 1),
+  ];
+  const plan = planSessionKill(sessions, [client('/dev/ttys004', 'doomed')], 'doomed');
+  assert.equal(plan.switchTo, 'HOME');
+  assert.deepEqual(plan.ttys, ['/dev/ttys004']);
+});
+
+test('clients attached elsewhere are left where they are', () => {
+  const sessions = [session('HOME', 1785781023, 1), session('doomed', 1785790000, 1)];
+  const clients = [client('/dev/ttys004', 'HOME'), client('/dev/ttys005', 'doomed')];
+  assert.deepEqual(planSessionKill(sessions, clients, 'doomed').ttys, ['/dev/ttys005']);
+});
+
+test('nothing attached to it means nothing to move', () => {
+  const sessions = [session('HOME', 1785781023, 1), session('doomed', 1785790000)];
+  const plan = planSessionKill(sessions, [client('/dev/ttys004', 'HOME')], 'doomed');
+  assert.equal(plan.switchTo, undefined);
+  assert.deepEqual(plan.ttys, []);
+});
+
+test('the last session has nowhere to go, so the client detaches as before', () => {
+  const plan = planSessionKill(
+    [session('doomed', 1785790000, 1)],
+    [client('/dev/ttys004', 'doomed')],
+    'doomed',
+  );
+  assert.equal(plan.switchTo, undefined);
+  assert.deepEqual(plan.ttys, ['/dev/ttys004']);
+});
+
+test('sessions created in the same second fall back to name order', () => {
+  const sessions = [
+    session('proto', 1785781023),
+    session('atlas', 1785781023),
+    session('doomed', 1785790000, 1),
+  ];
+  const plan = planSessionKill(sessions, [client('/dev/ttys004', 'doomed')], 'doomed');
+  assert.equal(plan.switchTo, 'atlas');
 });

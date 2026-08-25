@@ -408,6 +408,66 @@ export async function switchClient(session: string): Promise<boolean> {
   return any;
 }
 
+export interface KillPlan {
+  /** The session to move clients to, or undefined when there is nowhere to go. */
+  switchTo?: string;
+  /** Only the ttys attached to the doomed session; clients elsewhere are left alone. */
+  ttys: string[];
+}
+
+/**
+ * Where the clients watching a session should go before it is killed.
+ *
+ * Killing the session a client is attached to detaches that client, and a Ghostty
+ * window whose `tmux attach` just exited falls back to the shell that launched
+ * it — the window resumes, and fleetwood is left driving a terminal that is no
+ * longer inside tmux. Moving those clients to the oldest surviving session first
+ * keeps them in tmux; the kill then detaches nobody.
+ *
+ * "Oldest" and not "the one after this": the first session is the one the user
+ * started their day in, so it is the least surprising place to land.
+ */
+export function planSessionKill(
+  sessions: SessionRow[],
+  clients: ClientInfo[],
+  name: string,
+): KillPlan {
+  const ttys = clients.filter((c) => c.session === name).map((c) => c.tty);
+  if (ttys.length === 0) return { ttys: [] };
+  const survivors = sessions
+    .filter((s) => s.name !== name)
+    // createdAt has one-second resolution, so ties are real; name keeps them stable.
+    .sort((a, b) => a.createdAt - b.createdAt || a.name.localeCompare(b.name));
+  return { switchTo: survivors[0]?.name, ttys };
+}
+
+export interface KillOutcome {
+  killed: boolean;
+  /** The session the clients were moved to, when there was one to move them to. */
+  switchedTo?: string;
+}
+
+/**
+ * Kill a session, first moving anything attached to it out of the way.
+ *
+ * With no other session left there is nowhere to move to, so the client detaches
+ * exactly as it used to.
+ */
+export async function killSessionKeepingClients(name: string): Promise<KillOutcome> {
+  const [sessions, clients] = await Promise.all([listSessions(), listClients()]);
+  const plan = planSessionKill(sessions, clients, name);
+
+  let switchedTo: string | undefined;
+  if (plan.switchTo) {
+    for (const tty of plan.ttys) {
+      const { ok } = await tmux(['switch-client', '-c', tty, '-t', `=${plan.switchTo}`]);
+      if (ok) switchedTo = plan.switchTo;
+    }
+  }
+
+  return { killed: await killSession(name), switchedTo };
+}
+
 /** The active pane of a session, for running something in the window it already has. */
 export async function activePane(session: string): Promise<string | undefined> {
   const { ok, stdout } = await tmux(['display-message', '-p', '-t', `=${session}`, '#{pane_id}']);

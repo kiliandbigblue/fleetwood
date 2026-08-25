@@ -573,11 +573,16 @@ export async function archiveTask(slug: string, force = false): Promise<ArchiveR
 
   const sessions = await tmux.listSessions();
   const session = sessions.find((s) => s.meta.task === slug);
-  if (session) await tmux.killSession(session.name);
+  // Move whatever is attached to the task's session onto another one before
+  // killing it: a detached client drops its Ghostty window back to a bare shell.
+  const kill = session ? await tmux.killSessionKeepingClients(session.name) : undefined;
 
+  const sessionNote = session
+    ? ` and session ${session.name}${kill?.switchedTo ? ` (focused ${kill.switchedTo})` : ''}`
+    : '';
   return {
     ok: true,
-    detail: `archived ${slug}: removed ${removed.length} worktree(s)${session ? ` and session ${session.name}` : ''}`,
+    detail: `archived ${slug}: removed ${removed.length} worktree(s)${sessionNote}`,
     removed,
     kept,
   };
