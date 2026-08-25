@@ -20,6 +20,7 @@ export * as repoIndex from './repoIndex.ts';
 export * as worktree from './worktree.ts';
 export * as prSession from './prSession.ts';
 export * as task from './task.ts';
+export { partitionAgents, repoSummary } from './taskView.ts';
 // Flat, because both renderers paint from the same palettes and neither may
 // import the barrel for them (which pulls in tmux and process scanning).
 export {

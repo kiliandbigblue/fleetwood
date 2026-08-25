@@ -907,6 +907,45 @@ button {
 
 /* --- tasks --------------------------------------------------------------- */
 
+/*
+ * A task with no tmux session.
+ *
+ * Dashed like the `+ new task` button it came from, which is the whole message:
+ * the worktrees are real and on disk, but nothing is running in them yet. Not
+ * dimmed further than that — it is still a card you act on, and the actions on it
+ * are the ones that make the session.
+ */
+.card.dormant {
+  border-style: dashed;
+}
+.card.dormant .session-name {
+  color: var(--soft);
+}
+
+/*
+ * The repo count in a task's header, doubling as the disclosure for the rows.
+ *
+ * Deliberately not `.head-path`, which it otherwise looks exactly like: that one
+ * is dropped below 400px, and a toggle you cannot reach is worse than a path you
+ * cannot read.
+ */
+.repo-toggle {
+  margin-left: auto;
+  padding: 0;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 10.5px;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.repo-toggle:hover {
+  color: var(--text);
+}
+
 .new-task {
   padding: 7px 10px;
   border-radius: var(--radius);

@@ -390,6 +390,15 @@ async function handle(request: Request): Promise<Response> {
       return { ok: result.ok, detail: result.detail };
     }
 
+    case 'startTaskSession': {
+      const result = await taskApi.startTaskSession(request.slug, request.agent ?? 'none');
+      // Force: the card's every other button needs the session name, and the task
+      // cache is up to 5s old.
+      await getTasks(true);
+      await pushSnapshot();
+      return { ok: result.ok, detail: result.detail };
+    }
+
     case 'addRepoToTask': {
       const result = await taskApi.addRepoToTask(request.slug, request.repo, request.branch);
       await getTasks(true);

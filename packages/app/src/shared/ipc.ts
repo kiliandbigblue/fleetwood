@@ -84,6 +84,13 @@ export type Request =
       branchOverrides?: Record<string, string>;
       agent?: 'claude' | 'cursor' | 'codex' | 'none';
     }
+  /**
+   * Give a task that has none a tmux session — optionally with an agent in it.
+   *
+   * A task with no session has no name to pass to `spawnAgent` or `openEditor`,
+   * so this is what every button on a dormant task's card goes through first.
+   */
+  | { kind: 'startTaskSession'; slug: string; agent?: 'claude' | 'cursor' | 'codex' | 'none' }
   | { kind: 'addRepoToTask'; slug: string; repo: string; branch?: string }
   /** Replace a task's NOTES.md. Empty text clears it. */
   | { kind: 'setTaskNotes'; slug: string; notes: string }

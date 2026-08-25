@@ -3,7 +3,7 @@ import type { Snapshot } from '../shared/ipc.ts';
 import { SessionCard } from './SessionCard.tsx';
 import { AgentRow } from './AgentRow.tsx';
 import { PrList } from './PrList.tsx';
-import { TaskList } from './TaskList.tsx';
+import { TaskCard } from './TaskCard.tsx';
 import { NewTask } from './NewTask.tsx';
 import { Palette } from './Palette.tsx';
 import { LimitBars } from './LimitBars.tsx';
@@ -15,7 +15,16 @@ import { applyTheme } from './theme.ts';
 import { money, send } from './api.ts';
 import { api } from './api.ts';
 
-type Tab = 'fleet' | 'tasks' | 'prs';
+/**
+ * The two lists.
+ *
+ * Tasks used to be a third: a task with a session was rendered twice — once here
+ * as a bare session card with half its controls missing, once there as a task card
+ * that knew nothing about the agents running in it. They are the same object, so
+ * they are now one card in one list, and `TaskCard` is what a session card becomes
+ * when we know it is working a task.
+ */
+type Tab = 'fleet' | 'prs';
 
 interface Toast {
   message: string;
@@ -56,7 +65,7 @@ export function App(): React.JSX.Element {
         setPaletteOpen((open) => !open);
       } else if ((event.metaKey || event.ctrlKey) && event.key === 't') {
         event.preventDefault();
-        setTab('tasks');
+        setTab('fleet');
         setNewTaskOpen((open) => !open);
       } else if ((event.metaKey || event.ctrlKey) && event.key === 'r') {
         event.preventDefault();
@@ -98,6 +107,26 @@ export function App(): React.JSX.Element {
         return 0;
       })
     : [];
+
+  /*
+   * The join that merges the two lists: `@fw_task` is stamped on the session at
+   * creation, so a session knows its task and a task knows its session name.
+   * Keyed by name rather than id because that is what `Task.session` holds.
+   *
+   * No special sort is needed to put tasks near the top — they are the sessions
+   * with agents in them, and the sort above already ranks by that.
+   */
+  const taskBySession = new Map(
+    (snapshot?.tasks ?? []).filter((t) => t.session).map((t) => [t.session as string, t]),
+  );
+  /*
+   * Tasks with no session at all.
+   *
+   * Listed last and under their own heading rather than mixed in: a session-keyed
+   * list would otherwise drop them entirely, and "the task exists, nothing is
+   * running it" is the state a folder of worktrees spends most of its life in.
+   */
+  const dormantTasks = (snapshot?.tasks ?? []).filter((t) => !t.session);
 
   return (
     <div className="app">
@@ -159,10 +188,7 @@ export function App(): React.JSX.Element {
         </div>
         <div className="tabs">
           <button className={`tab${tab === 'fleet' ? ' active' : ''}`} onClick={() => setTab('fleet')}>
-            fleet<span className="count">{snapshot?.fleet.sessions.length ?? 0}</span>
-          </button>
-          <button className={`tab${tab === 'tasks' ? ' active' : ''}`} onClick={() => setTab('tasks')}>
-            tasks<span className="count">{snapshot?.tasks.length ?? 0}</span>
+            fleet<span className="count">{sessions.length + dormantTasks.length}</span>
           </button>
           <button className={`tab${tab === 'prs' ? ' active' : ''}`} onClick={() => setTab('prs')}>
             pull requests
@@ -190,10 +216,33 @@ export function App(): React.JSX.Element {
 
         {snapshot && tab === 'fleet' && (
           <>
-            {sessions.length === 0 && <div className="empty">no tmux sessions</div>}
-            {sessions.map((session) => (
-              <SessionCard key={session.sessionId} session={session} onResult={onResult} />
-            ))}
+            {sessions.length === 0 && dormantTasks.length === 0 && (
+              <div className="empty">no tmux sessions</div>
+            )}
+            {sessions.map((session) => {
+              const task = taskBySession.get(session.name);
+              return task ? (
+                <TaskCard
+                  key={session.sessionId}
+                  task={task}
+                  session={session}
+                  editor={snapshot.editor}
+                  onResult={onResult}
+                />
+              ) : (
+                <SessionCard key={session.sessionId} session={session} onResult={onResult} />
+              );
+            })}
+            {dormantTasks.length > 0 && (
+              <>
+                <div className="section-title">
+                  no session ({dormantTasks.length}) — worktrees ready, nothing running
+                </div>
+                {dormantTasks.map((task) => (
+                  <TaskCard key={task.slug} task={task} editor={snapshot.editor} onResult={onResult} />
+                ))}
+              </>
+            )}
             {/* Two different situations, so don't file them under one scary label:
                 a daemon-hosted one is running fine — we just couldn't tell which
                 terminal is showing it. */}
@@ -219,17 +268,12 @@ export function App(): React.JSX.Element {
                 </div>
               );
             })}
+            {/* Last, not first: the top of this list is for whatever needs you, and
+                a dashed strip that never changes does not. ⌘T is the fast path. */}
+            <button className="new-task" onClick={() => setNewTaskOpen(true)} title="new task (⌘T)">
+              + new task
+            </button>
           </>
-        )}
-
-        {snapshot && tab === 'tasks' && (
-          <TaskList
-            tasks={snapshot.tasks}
-            fleet={snapshot.fleet}
-            editor={snapshot.editor}
-            onResult={onResult}
-            onNewTask={() => setNewTaskOpen(true)}
-          />
         )}
 
         {snapshot && tab === 'prs' && (

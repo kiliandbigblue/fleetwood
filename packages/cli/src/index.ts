@@ -10,11 +10,12 @@ import {
   prSession,
   proc,
   repoIndex,
+  repoSummary,
   spool,
   task as taskApi,
   tmux,
 } from '@fleetwood/core';
-import type { FleetState, MergedPr, PlanLimits, PullRequest } from '@fleetwood/core';
+import type { AgentTool, FleetState, MergedPr, PlanLimits, PullRequest } from '@fleetwood/core';
 import { c, pad, relativeAge, tildify, useTheme, width } from './ui.ts';
 import { renderAgentLine, renderFleet, renderLimits } from './render.ts';
 
@@ -34,6 +35,7 @@ ${c.bold('commands')}
                     create a task: one branch, a worktree per repo, one session
                     ${c.dim('the session is left at a shell; --agent starts one in it')}
   task add <slug> <repo> [--branch b]   add a repo to a live task
+  task start <slug> [--agent claude]    give a dormant task its session
   task ls           tasks, their repos, branches and dirty state
   task archive <slug> [--force]         remove every worktree and the session
 
@@ -713,6 +715,20 @@ async function cmdTaskAdd(argv: string[], json: boolean): Promise<void> {
   if (!result.ok) process.exitCode = 1;
 }
 
+async function cmdTaskStart(argv: string[], json: boolean): Promise<void> {
+  const slug = positionalArgs(argv)[2];
+  if (!slug) {
+    process.stderr.write(`${c.danger('usage')} fw task start <slug> [--agent claude|cursor|codex]\n`);
+    process.exitCode = 2;
+    return;
+  }
+  const agent = (flagValue(argv, '--agent') ?? 'none') as AgentTool | 'none';
+  const result = await taskApi.startTaskSession(slug, agent);
+  if (json) return jsonOut(result);
+  process.stdout.write(`${result.ok ? c.ok('✓') : c.danger('✗')} ${result.detail}\n`);
+  if (!result.ok) process.exitCode = 1;
+}
+
 async function cmdTaskList(json: boolean): Promise<void> {
   const tasks = await taskApi.listTasks();
   if (json) return jsonOut(tasks);
@@ -723,7 +739,7 @@ async function cmdTaskList(json: boolean): Promise<void> {
   for (const t of tasks) {
     const live = t.session ? c.ok('●') : c.muted('○');
     process.stdout.write(
-      `${live} ${c.bold(t.slug)} ${c.warn(t.branch)} ${c.muted(`${t.repos.length} repo${t.repos.length === 1 ? '' : 's'}`)}` +
+      `${live} ${c.bold(t.slug)} ${c.warn(t.branch)} ${c.muted(repoSummary(t.repos, t.branch))}` +
         `${t.session ? c.dim(` session ${t.session}`) : ''}\n`,
     );
     for (const repo of t.repos) {
@@ -755,6 +771,8 @@ async function cmdTask(argv: string[], json: boolean): Promise<void> {
       return cmdTaskNew(argv, json);
     case 'add':
       return cmdTaskAdd(argv, json);
+    case 'start':
+      return cmdTaskStart(argv, json);
     case 'ls':
     case 'list':
       return cmdTaskList(json);

@@ -400,6 +400,63 @@ async function ensureTaskSession(
   return name;
 }
 
+/**
+ * Give an existing task the tmux session it hasn't got yet.
+ *
+ * A task is a folder of worktrees, and creating one deliberately starts nothing —
+ * so a task can sit on disk for days with no session. That state used to be a dead
+ * end in the panel: every button on the card needed a session name it didn't have.
+ * This is the way out of it, and the same call whether you want a bare shell or an
+ * agent, because `ensureTaskSession` already decides both and is idempotent by
+ * slug: if something already made the session, it is returned rather than doubled.
+ */
+export async function startTaskSession(
+  slug: string,
+  agent: AgentTool | 'none' = 'none',
+): Promise<TaskResult> {
+  const dir = await taskDirFor(slug);
+  const record = await readRecord(dir);
+  if (!record) return { ok: false, detail: `no task named ${slug}`, repoResults: [] };
+
+  const repos = await readTaskRepos(dir);
+  /*
+   * Look for the session before asking for one, because `ensureTaskSession` starts
+   * the agent only on a session it *created* — its caller is task creation, where
+   * finding one already there means somebody else set the task up and dropping an
+   * agent into it would be a surprise.
+   *
+   * Here the ask is the other way round: `--agent claude` said start claude, and a
+   * session that already exists is not a reason to have started nothing. It is
+   * also a live race — the panel decides which button to draw from a snapshot up
+   * to a second old, so a task can gain a session between the draw and the click.
+   * Either way the agent is spawned, exactly as `+ claude` on a live card would.
+   */
+  const existing = (await tmux.listSessions()).find((s) => s.meta.task === slug);
+  const session = existing?.name ?? (await ensureTaskSession(record, dir, repos, agent));
+  if (!session) {
+    return { ok: false, detail: `could not create a tmux session for ${slug}`, repoResults: [] };
+  }
+
+  let spawned: ActionResult | undefined;
+  if (existing && agent !== 'none') spawned = await spawnAgent({ session, tool: agent, cwd: dir });
+  await focusSession(session);
+
+  const what = existing ? `session ${session} already existed` : `session ${session}`;
+  return {
+    // A session we could not put the agent into is a partial success, and saying
+    // so is the difference between "it's running" and "go and look".
+    ok: spawned?.ok ?? true,
+    task: { ...record, dir, repos, session, notes: await readTaskNotes(dir) },
+    detail:
+      agent === 'none'
+        ? what
+        : spawned
+          ? `${what} — ${spawned.detail}`
+          : `${what} running ${agent}`,
+    repoResults: [],
+  };
+}
+
 /** Add a repo to a task that already exists — the answer to "I need proto too". */
 export async function addRepoToTask(
   slug: string,

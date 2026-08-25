@@ -296,6 +296,7 @@ A **task** is one branch, one tmux session, and a folder of real git worktrees:
 ```sh
 fw task new fix flow "execution labels" --repo proto --repo graphy
 fw task add flow-execution-labels api-scripts    # grow it as the work reveals itself
+fw task start flow-execution-labels              # a session for one that has none
 fw task ls
 fw task archive flow-execution-labels
 ```
@@ -310,6 +311,23 @@ for a while before anyone works it. So the session is made ready (right director
 right branch, stamped as a task) and left at a shell. `+ claude` or `+ cursor` on the
 card starts one at the task root; `--agent claude` does it at creation time if you
 want the old behaviour.
+
+**Tasks are not a separate list.** They were, and a live task was rendered twice for
+it: once in the fleet as a plain session card — right agents, none of the repos, no
+notes, a `kill` where `archive` belonged — and once in the tasks tab as a card that
+knew the repos but nothing about what was running in them. They are the same tmux
+session, so wanting to act on a task from the fleet was not a missing feature but
+the same object split across two tabs. One list now; a task card *is* the session
+card for a session with `@fw_task` stamped on it, and it carries both halves. The
+join is that stamp, so nothing new is tracked to make it.
+
+Since a task is also a folder that can exist with no session, the ones with none sit
+under their own heading at the foot of the list, dashed rather than solid. Every
+button on such a card makes the session first (`fw task start`, or `+ shell` to get
+one without an agent) — before, a dormant task's card had no working control on it
+at all. And because a four-repo task with notes is many times the height of a `HOME`
+card, the repo rows collapse to `3 repos · 2 dirty` unless an agent is working inside
+one or something is waiting on you; clicking the count pins it open either way.
 
 Each repo row carries `+nvim`, which opens the editor in a fresh window of the
 task's session, rooted at **that worktree** rather than at the task folder. It's a
@@ -354,7 +372,7 @@ is global, so Go builds work immediately).
 
 ```
 fw                    the fleet (default)
-fw task ...           multi-repo tasks (see above)
+fw task ...           multi-repo tasks: new / add / start / ls / archive (see above)
 fw watch              the fleet, refreshed live
 fw agents             flat list, most urgent first
 fw limits             plan quota: how much of each usage window is spent
@@ -411,4 +429,5 @@ Covers the tmux format parsers, the process matcher (against real argv from live
 sessions, decoys included), the event folder (one case per agent event, with
 out-of-order delivery), the screen parser (against real box-drawn prompts), the
 kill-target precedence (each case has a plausible pid belonging to another agent),
+the task view — which repo an agent is in, and what the collapsed repo line claims —
 and the git/GitHub plumbing.

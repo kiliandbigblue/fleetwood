@@ -1,44 +1,25 @@
 import { useState } from 'react';
-import type { FleetAgent, FleetState, Task, TaskRepo } from '@fleetwood/core';
+import type { FleetAgent, FleetSession, Task, TaskRepo } from '@fleetwood/core';
+// The leaf module: the barrel re-exports tmux and process scanning, which fail the
+// renderer bundle on `node:child_process`.
+import { partitionAgents, repoSummary } from '@fleetwood/core/taskView';
 import { AgentRow } from './AgentRow.tsx';
-import { send } from './api.ts';
+import { cost, send, usageTitle } from './api.ts';
 
 interface Props {
-  tasks: Task[];
-  fleet: FleetState;
+  task: Task;
+  /**
+   * The task's live tmux session, when it has one.
+   *
+   * Absent is a real state, not a loading one: creating a task starts nothing, so
+   * a task sits on disk with no session until someone works it. The card renders
+   * dormant in that case — every button that needs a session name asks for one
+   * first.
+   */
+  session?: FleetSession;
   /** The configured editor command, so the per-repo button says what it runs. */
   editor: string;
   onResult: (message: string, ok: boolean) => void;
-  onNewTask: () => void;
-}
-
-/**
- * Which repo an agent is working in, by its cwd.
- *
- * An agent at the task root belongs to the task as a whole; one inside a repo's
- * worktree belongs to that repo. That distinction is the whole point of the layout,
- * so the UI has to show it rather than lumping every agent together.
- */
-function partitionAgents(
-  task: Task,
-  agents: FleetAgent[],
-): { taskLevel: FleetAgent[]; byRepo: Map<string, FleetAgent[]> } {
-  const byRepo = new Map<string, FleetAgent[]>();
-  const taskLevel: FleetAgent[] = [];
-
-  for (const agent of agents) {
-    const repo = agent.cwd
-      ? task.repos.find((r) => agent.cwd === r.path || agent.cwd?.startsWith(`${r.path}/`))
-      : undefined;
-    if (repo) {
-      const list = byRepo.get(repo.name);
-      if (list) list.push(agent);
-      else byRepo.set(repo.name, [agent]);
-    } else {
-      taskLevel.push(agent);
-    }
-  }
-  return { taskLevel, byRepo };
 }
 
 /** `nvim -u NONE` is a legal editor setting; only the command itself names the button. */
@@ -115,21 +96,28 @@ function RepoRow({
   );
 }
 
-function TaskCard({
-  task,
-  fleet,
-  editor,
-  onResult,
-}: {
-  task: Task;
-  fleet: FleetState;
-  editor: string;
-  onResult: Props['onResult'];
-}): React.JSX.Element {
+/**
+ * One task, as a card in the fleet list.
+ *
+ * This is a session card that knows what its session *is* — same shape, same
+ * header, plus the things only a task has: the worktrees under it, agents filed
+ * under the repo they are actually in, and the notes. It replaces the pair of
+ * cards a live task used to get, one per tab, each missing half the controls.
+ */
+export function TaskCard({ task, session, editor, onResult }: Props): React.JSX.Element {
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [addingRepo, setAddingRepo] = useState(false);
   const [repoName, setRepoName] = useState('');
   const [editingNotes, setEditingNotes] = useState(false);
+  /**
+   * Whether the repo rows are showing, once you have said so.
+   *
+   * `undefined` means you haven't — the card then follows the fleet (see `expanded`
+   * below), which is what makes a task that starts needing attention open itself.
+   * A click pins it either way, because a card you deliberately opened must not
+   * close under you on the next snapshot.
+   */
+  const [showRepos, setShowRepos] = useState<boolean | undefined>();
   /**
    * What is being typed, held locally on purpose.
    *
@@ -143,9 +131,12 @@ function TaskCard({
     onResult(result.detail, result.ok);
   };
 
-  const session = task.session ? fleet.sessions.find((s) => s.name === task.session) : undefined;
   const { taskLevel, byRepo } = partitionAgents(task, session?.agents ?? []);
   const needsAttention = session?.needsAttention ?? false;
+  const dormant = !task.session;
+  // Open when there is something in there to see: an agent working inside a repo,
+  // or anything waiting on you. Otherwise the summary line is the whole story.
+  const expanded = showRepos ?? (needsAttention || byRepo.size > 0);
 
   const openNotes = (): void => {
     setDraft(task.notes ?? '');
@@ -156,21 +147,51 @@ function TaskCard({
     void act({ kind: 'setTaskNotes', slug: task.slug, notes: draft });
   };
 
+  /** Agent buttons work on a dormant task too — they make the session first. */
+  const startAgent = (tool: 'claude' | 'cursor'): void => {
+    if (task.session) {
+      void act({ kind: 'spawnAgent', session: task.session, cwd: task.dir, tool });
+    } else {
+      void act({ kind: 'startTaskSession', slug: task.slug, agent: tool });
+    }
+  };
+
   return (
-    <div className={`card${needsAttention ? ' attention' : ''}`}>
+    <div className={`card${needsAttention ? ' attention' : ''}${dormant ? ' dormant' : ''}`}>
       <div
         className="card-head"
         onClick={
-          task.session ? () => void act({ kind: 'focusSession', session: task.session as string }) : undefined
+          task.session
+            ? () => void act({ kind: 'focusSession', session: task.session as string })
+            : () => void act({ kind: 'startTaskSession', slug: task.slug })
         }
-        title={task.session ? `focus ${task.session} · ${task.dir}` : task.dir}
+        title={
+          task.session
+            ? `focus ${task.session} · ${task.dir}`
+            : `no session yet — open one on ${task.dir}`
+        }
       >
         <span className={`attached-dot${session && session.attached > 0 ? '' : ' detached'}`}>●</span>
         <span className="session-name">{task.slug}</span>
         <span className="badge kind">task</span>
-        <span className="head-path">
-          {task.repos.length} repo{task.repos.length === 1 ? '' : 's'}
-        </span>
+        {/* Doubles as the repo-rows toggle: it is already the count they summarise. */}
+        <button
+          className="repo-toggle"
+          title={expanded ? 'hide the repos' : 'show the repos'}
+          onClick={(event) => {
+            event.stopPropagation();
+            setShowRepos(!expanded);
+          }}
+        >
+          {expanded ? '▾ ' : '▸ '}
+          {repoSummary(task.repos, task.branch)}
+        </button>
+        {/* What this task has cost across its agents. */}
+        {session?.usage && (
+          <span className="cost session-cost" title={usageTitle(session.usage)}>
+            {cost(session.usage)}
+          </span>
+        )}
       </div>
 
       <div className="branch-line" title={task.branch}>
@@ -181,19 +202,21 @@ function TaskCard({
         <AgentRow key={agent.key} agent={agent} onResult={onResult} />
       ))}
 
-      <div className="task-repos">
-        {task.repos.map((repo) => (
-          <RepoRow
-            key={repo.name}
-            repo={repo}
-            taskBranch={task.branch}
-            session={task.session}
-            editor={editor}
-            agents={byRepo.get(repo.name) ?? []}
-            onResult={onResult}
-          />
-        ))}
-      </div>
+      {expanded && (
+        <div className="task-repos">
+          {task.repos.map((repo) => (
+            <RepoRow
+              key={repo.name}
+              repo={repo}
+              taskBranch={task.branch}
+              session={task.session}
+              editor={editor}
+              agents={byRepo.get(repo.name) ?? []}
+              onResult={onResult}
+            />
+          ))}
+        </div>
+      )}
 
       {editingNotes ? (
         <div className="task-notes-edit">
@@ -266,37 +289,22 @@ function TaskCard({
           <button className="chip" onClick={() => setAddingRepo(true)} title="add another repo to this task">
             + repo
           </button>
-          {task.session && (
-            <>
-              <button
-                className="chip"
-                onClick={() =>
-                  void act({
-                    kind: 'spawnAgent',
-                    session: task.session as string,
-                    cwd: task.dir,
-                    tool: 'claude',
-                  })
-                }
-                title="another agent at the task root"
-              >
-                + claude
-              </button>
-              <button
-                className="chip"
-                onClick={() =>
-                  void act({
-                    kind: 'spawnAgent',
-                    session: task.session as string,
-                    cwd: task.dir,
-                    tool: 'cursor',
-                  })
-                }
-                title="cursor-agent at the task root"
-              >
-                + cursor
-              </button>
-            </>
+          <button className="chip" onClick={() => startAgent('claude')} title="claude at the task root">
+            + claude
+          </button>
+          <button className="chip" onClick={() => startAgent('cursor')} title="cursor-agent at the task root">
+            + cursor
+          </button>
+          {/* Only offered while there is no session: it is the way to get a shell in
+              the task folder without starting an agent you didn't ask for. */}
+          {dormant && (
+            <button
+              className="chip"
+              onClick={() => void act({ kind: 'startTaskSession', slug: task.slug })}
+              title="tmux session at the task root, left at a shell"
+            >
+              + shell
+            </button>
           )}
           <button className="chip" onClick={openNotes} title="your own notes on this task, kept in NOTES.md">
             {task.notes ? 'notes' : '+ note'}
@@ -321,26 +329,5 @@ function TaskCard({
         </div>
       )}
     </div>
-  );
-}
-
-export function TaskList({ tasks, fleet, editor, onResult, onNewTask }: Props): React.JSX.Element {
-  return (
-    <>
-      <button className="new-task" onClick={onNewTask}>
-        + new task
-      </button>
-      {tasks.length === 0 && (
-        <div className="empty">
-          No tasks yet.
-          <br />
-          A task is one branch across several repos, with a worktree for each — so an
-          agent can work across them without you deciding the repo list upfront.
-        </div>
-      )}
-      {tasks.map((task) => (
-        <TaskCard key={task.slug} task={task} fleet={fleet} editor={editor} onResult={onResult} />
-      ))}
-    </>
   );
 }
