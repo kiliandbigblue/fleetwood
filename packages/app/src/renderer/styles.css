@@ -13,6 +13,8 @@
 :root {
   --bg: #191724;
   --panel: #1f1d2e;
+  /* `panel`, never thinned: the theme popover stays readable at any opacity. */
+  --panel-solid: #1f1d2e;
   --edge: #26233a;
   --dim: #6e6a86;
   --soft: #908caa;
@@ -56,6 +58,13 @@ button {
   display: flex;
   flex-direction: column;
   height: 100%;
+  /*
+   * The window's own edge, in CSS, because the window is transparent (see
+   * `main/index.ts`) and macOS draws no shadow on one of those. It earns its keep
+   * twice over at a low `bgOpacity`, where the panel would otherwise have no
+   * boundary at all and the header would read as text lying on the desktop.
+   */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 9%, transparent);
 }
 
 /* --- header --------------------------------------------------------------- */
@@ -1171,7 +1180,8 @@ button {
   z-index: 30;
   min-width: 132px;
   padding: 4px;
-  background: var(--panel);
+  /* Solid at every opacity — see the note in `theme.ts`. */
+  background: var(--panel-solid);
   border: 1px solid var(--edge);
   border-radius: var(--radius);
   box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
@@ -1217,4 +1227,64 @@ button {
   width: 8px;
   font-size: 10px;
   color: var(--accent);
+}
+
+/*
+ * The background-opacity slider, at the foot of the theme popover.
+ *
+ * Divided off the flavours above it: everything else in this menu is a choice of
+ * palette, and this one is a property of the window.
+ */
+.theme-alpha {
+  margin-top: 4px;
+  padding: 2px 0 4px;
+  border-top: 1px solid var(--edge);
+}
+
+.theme-alpha .theme-family {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.theme-alpha-value {
+  /* Tabular, or the label jitters sideways as the number changes width mid-drag. */
+  font-variant-numeric: tabular-nums;
+  color: var(--soft);
+  letter-spacing: 0;
+}
+
+.theme-alpha input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 14px;
+  margin: 0;
+  padding: 0 6px;
+  background: none;
+  cursor: ew-resize;
+}
+
+.theme-alpha input[type='range']::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--edge);
+}
+
+.theme-alpha input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  margin-top: -3.5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.theme-alpha input[type='range']:focus-visible {
+  outline: none;
+}
+.theme-alpha input[type='range']:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
 }

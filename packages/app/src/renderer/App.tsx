@@ -34,14 +34,14 @@ export function App(): React.JSX.Element {
   useEffect(() => api.onSnapshot(setSnapshot), []);
 
   /*
-   * Repaint whenever the configured theme changes — including the very first
-   * snapshot, which is what actually applies the config on a cold start. Keyed on
-   * the name alone, so the 1s snapshot poll is not writing eleven custom
-   * properties a second.
+   * Repaint whenever the configured theme or its opacity changes — including the
+   * very first snapshot, which is what actually applies the config on a cold
+   * start. Keyed on the two values, so the 1s snapshot poll is not writing eleven
+   * custom properties a second.
    */
   useEffect(() => {
-    if (snapshot) applyTheme(snapshot.theme);
-  }, [snapshot?.theme]);
+    if (snapshot) applyTheme(snapshot.theme, snapshot.bgOpacity);
+  }, [snapshot?.theme, snapshot?.bgOpacity]);
 
   useEffect(() => {
     if (!toast) return;
@@ -128,6 +128,7 @@ export function App(): React.JSX.Element {
           {snapshot && (
             <ThemePicker
               current={snapshot.theme}
+              bgOpacity={snapshot.bgOpacity}
               open={themeOpen}
               onToggle={() => setThemeOpen((open) => !open)}
               onClose={() => setThemeOpen(false)}

@@ -1,7 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  DEFAULT_BG_OPACITY,
   DEFAULT_THEME,
+  MIN_BG_OPACITY,
+  clampBgOpacity,
+  withAlpha,
   THEMES,
   THEME_NAMES,
   isThemeName,
@@ -113,4 +117,33 @@ test('rgbTriplet renders the CLI escape operands', () => {
   assert.equal(rgbTriplet('#6e6a86'), '110;106;134');
   assert.throws(() => rgbTriplet('eb6f92'), /not a 6-digit hex/);
   assert.throws(() => rgbTriplet('#fff'), /not a 6-digit hex/);
+});
+
+test('the default background opacity is opaque', () => {
+  // The regression guard on the slider: an install that never touches it must
+  // look exactly as it did before the window could be seen through.
+  assert.equal(DEFAULT_BG_OPACITY, 1);
+  assert.equal(clampBgOpacity(undefined), 1);
+});
+
+test('clampBgOpacity keeps a hand-edited opacity inside the slider range', () => {
+  assert.equal(clampBgOpacity(0.65), 0.65);
+  assert.equal(clampBgOpacity(1), 1);
+  assert.equal(clampBgOpacity(MIN_BG_OPACITY), MIN_BG_OPACITY);
+  // Above solid, and below the floor where the panel stops being readable.
+  assert.equal(clampBgOpacity(4), 1);
+  assert.equal(clampBgOpacity(0), MIN_BG_OPACITY);
+  assert.equal(clampBgOpacity(-1), MIN_BG_OPACITY);
+  // The shapes a hand-edit produces: a percentage as a string, a null, a NaN.
+  for (const bad of ['0.5', null, {}, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.equal(clampBgOpacity(bad), DEFAULT_BG_OPACITY, `${JSON.stringify(bad)} should fall back`);
+  }
+});
+
+test('withAlpha renders the translucent surfaces the renderer paints', () => {
+  assert.equal(withAlpha('#191724', 1), 'rgb(25 23 36 / 1)');
+  assert.equal(withAlpha('#1f1d2e', 0.6), 'rgb(31 29 46 / 0.6)');
+  // Clamped on the way out too, so no caller can paint an invisible window.
+  assert.equal(withAlpha('#000000', 0), `rgb(0 0 0 / ${MIN_BG_OPACITY})`);
+  assert.throws(() => withAlpha('#fff', 1), /not a 6-digit hex/);
 });

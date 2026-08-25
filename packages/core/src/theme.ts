@@ -288,3 +288,33 @@ export function rgbTriplet(hex: string): string {
   const value = Number.parseInt(match[1] as string, 16);
   return `${(value >> 16) & 0xff};${(value >> 8) & 0xff};${value & 0xff}`;
 }
+
+/**
+ * The floor the background opacity slider stops at.
+ *
+ * Not zero: at zero the window's surfaces vanish entirely and the panel is text
+ * floating over whatever is behind it — unreadable, and indistinguishable from
+ * the app having failed to paint. A fifth of a fill is still a fill.
+ */
+export const MIN_BG_OPACITY = 0.2;
+
+/** Opaque, so an install that never touches the slider looks as it always did. */
+export const DEFAULT_BG_OPACITY = 1;
+
+/** Snap a hand-edited or hand-dragged opacity into range. */
+export function clampBgOpacity(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_BG_OPACITY;
+  return Math.min(1, Math.max(MIN_BG_OPACITY, value));
+}
+
+/**
+ * `#rrggbb` + alpha → `rgb(r g b / a)`, for the panel's translucent surfaces.
+ *
+ * Beside `rgbTriplet` for the same reason: this is the module that knows what
+ * shape a palette value is, so the parsing of one belongs here and not in the
+ * renderer.
+ */
+export function withAlpha(hex: string, alpha: number): string {
+  const [r, g, b] = rgbTriplet(hex).split(';');
+  return `rgb(${r} ${g} ${b} / ${clampBgOpacity(alpha)})`;
+}

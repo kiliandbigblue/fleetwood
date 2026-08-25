@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { CONFIG_FILE, ensureDirs } from './paths.ts';
-import { DEFAULT_THEME, isThemeName } from './theme.ts';
+import { clampBgOpacity, DEFAULT_BG_OPACITY, DEFAULT_THEME, isThemeName } from './theme.ts';
 import type { ThemeName } from './theme.ts';
 
 /**
@@ -107,6 +107,19 @@ export interface Config {
    */
   theme: ThemeName;
   /**
+   * How opaque the panel's own surfaces are — 1 is solid, 0.2 the floor.
+   *
+   * The panel's, not `fw`'s: a terminal's transparency is the terminal's setting,
+   * so this is the one key here the CLI has no use for. It lives beside `theme`
+   * anyway because it is the same decision — how this window sits over whatever
+   * is behind it — and the slider that writes it is in the theme popover.
+   *
+   * Only `bg` and `panel` take the alpha. Text, accents and borders stay solid at
+   * every setting: the point is to see the desktop through the window, not to
+   * read the window through itself.
+   */
+  bgOpacity: number;
+  /**
    * The plan's quota bars — the same numbers Claude Code's `/usage` shows.
    *
    * Off until `tokenCommand` is set, because reading it means handing fleetwood
@@ -146,6 +159,7 @@ export const DEFAULT_CONFIG: Config = {
   capture: true,
   editor: 'nvim',
   theme: DEFAULT_THEME,
+  bgOpacity: DEFAULT_BG_OPACITY,
   limits: { tokenCommand: '', pollSeconds: 300 },
 };
 
@@ -168,6 +182,9 @@ export async function loadConfig(): Promise<Config> {
       // it's wrong, but a misspelt theme name would leave both UIs with no
       // palette at all.
       theme: isThemeName(raw.theme) ? raw.theme : DEFAULT_CONFIG.theme,
+      // Same reasoning, one step further: an out-of-range alpha would leave the
+      // window either invisible or lying about the slider it came from.
+      bgOpacity: clampBgOpacity(raw.bgOpacity),
     };
   } catch {
     return DEFAULT_CONFIG;
@@ -180,22 +197,33 @@ export async function saveConfig(config: Config): Promise<void> {
 }
 
 /**
- * Persist just the theme, leaving the rest of the file exactly as written.
+ * Write one key, leaving the rest of the file exactly as written.
  *
- * Not `saveConfig({ ...(await loadConfig()), theme })`: that would bake every
+ * Not `saveConfig({ ...(await loadConfig()), ...patch })`: that would bake every
  * current default into the file, and the whole point of the shallow merge above
  * is that a config listing only what you care about keeps picking up new ones.
  */
-export async function saveTheme(theme: ThemeName): Promise<void> {
+async function patchConfig(patch: Record<string, unknown>): Promise<void> {
   let raw: Record<string, unknown> = {};
   try {
     raw = JSON.parse(await readFile(CONFIG_FILE, 'utf8')) as Record<string, unknown>;
   } catch (error) {
-    // No file yet is fine — write one holding just the theme. Anything else means
+    // No file yet is fine — write one holding just this key. Anything else means
     // there is a config there we could not parse, and clobbering a config to
-    // record a colour scheme is not a trade worth making.
+    // record an appearance setting is not a trade worth making.
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
   await ensureDirs();
-  await writeFile(CONFIG_FILE, `${JSON.stringify({ ...raw, theme }, null, 2)}\n`, 'utf8');
+  await writeFile(CONFIG_FILE, `${JSON.stringify({ ...raw, ...patch }, null, 2)}\n`, 'utf8');
+}
+
+/** Persist just the theme. */
+export async function saveTheme(theme: ThemeName): Promise<void> {
+  await patchConfig({ theme });
+}
+
+/** Persist just the background opacity, clamped, so the file can't hold a value
+ *  the slider could never produce. */
+export async function saveBgOpacity(bgOpacity: number): Promise<void> {
+  await patchConfig({ bgOpacity: clampBgOpacity(bgOpacity) });
 }

@@ -148,6 +148,7 @@ async function buildSnapshot(): Promise<Snapshot> {
     hooksInstalled: hookState.claude.installed > 0,
     editor: settings.editor,
     theme: settings.theme,
+    bgOpacity: settings.bgOpacity,
     limits: planLimits,
   };
 }
@@ -445,6 +446,15 @@ async function handle(request: Request): Promise<Response> {
       return { ok: true, detail: `${theme.family} ${theme.label}` };
     }
 
+    case 'setBgOpacity': {
+      // The renderer has already repainted; this only records it. Dragging the
+      // slider is debounced there, so this is one write per adjustment, not one
+      // per pixel.
+      await configModule.saveBgOpacity(request.value);
+      await pushSnapshot();
+      return { ok: true, detail: `background ${Math.round(request.value * 100)}%` };
+    }
+
     case 'setAlwaysOnTop':
       win?.setAlwaysOnTop(request.value);
       await saveWindowState();
@@ -464,7 +474,19 @@ async function createWindow(): Promise<void> {
     show: false,
     // A side panel, not a document window.
     titleBarStyle: 'hiddenInset',
-    backgroundColor: '#191724',
+    /*
+     * Transparent always, whatever `bgOpacity` says, because Electron fixes
+     * transparency at creation: a window born opaque can never be seen through,
+     * and a slider that needed a relaunch to take effect is not a slider. So the
+     * window contributes no fill of its own and every pixel of background comes
+     * from the renderer's `--bg` / `--panel`, which carry the alpha. At the
+     * default opacity of 1 those are solid and this looks exactly as it did.
+     *
+     * The cost is the native drop shadow, which macOS does not draw on a
+     * transparent window — hence the CSS ring on `.app` standing in for it.
+     */
+    transparent: true,
+    backgroundColor: '#00000000',
     alwaysOnTop: state.alwaysOnTop,
     webPreferences: {
       preload: join(BUNDLE_DIR, '..', 'preload', 'index.cjs'),

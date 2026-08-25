@@ -1,25 +1,48 @@
-import { useEffect, useRef } from 'react';
-import { THEME_NAMES, THEMES } from '@fleetwood/core/theme';
+import { useEffect, useRef, useState } from 'react';
+import { MIN_BG_OPACITY, THEME_NAMES, THEMES } from '@fleetwood/core/theme';
 import type { ThemeName } from '@fleetwood/core/theme';
 import { send } from './api.ts';
 import { applyTheme } from './theme.ts';
 
 interface Props {
   current: ThemeName;
+  /** The configured background opacity, 0.2–1. */
+  bgOpacity: number;
   open: boolean;
   onToggle: () => void;
   onClose: () => void;
 }
 
+/** Whole percents: the file holds 0.65, the slider speaks 65. */
+const PERCENT_STEP = 5;
+
 /**
- * The theme picker: an icon button in the header, and a popover of flavours.
+ * The theme picker: an icon button in the header, a popover of flavours, and the
+ * background-opacity slider under them.
  *
  * Not a ⌘K entry, even though the palette was the cheaper place to put it: you
  * pick a theme by looking at the panel repaint behind the popover, and a
- * full-screen palette covers the thing you are judging.
+ * full-screen palette covers the thing you are judging. The slider belongs here
+ * for the same reason, and doubly so — it is judged entirely by what shows
+ * through, so it has to sit on the surface it is thinning.
  */
-export function ThemePicker({ current, open, onToggle, onClose }: Props): React.JSX.Element {
+export function ThemePicker({
+  current,
+  bgOpacity,
+  open,
+  onToggle,
+  onClose,
+}: Props): React.JSX.Element {
   const wrapRef = useRef<HTMLDivElement>(null);
+  /*
+   * The slider's own position, so a drag is not fighting the 1s snapshot poll.
+   * It follows the config whenever that changes — including a hand edit — but a
+   * drag in progress leaves the config untouched until the write below settles,
+   * so there is nothing to be yanked back to mid-gesture.
+   */
+  const [alpha, setAlpha] = useState(bgOpacity);
+  useEffect(() => setAlpha(bgOpacity), [bgOpacity]);
+  const writeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     if (!open) return;
@@ -42,9 +65,25 @@ export function ThemePicker({ current, open, onToggle, onClose }: Props): React.
     // Painted here rather than waiting for the snapshot to come back with it: the
     // round trip writes a file, and a picker that lags its own click feels broken.
     // The snapshot is still the source of truth and will agree a moment later.
-    applyTheme(name);
+    applyTheme(name, alpha);
     onClose();
     void send({ kind: 'setTheme', theme: name });
+  };
+
+  /*
+   * Repaint on every step, persist once the dragging stops.
+   *
+   * Same trade as `choose`, one order of magnitude sharper: an opacity you cannot
+   * see while you choose it is not a setting you can choose, and a config file
+   * rewritten sixty times a second to record a gesture that is still in progress
+   * is not one either.
+   */
+  const slide = (percent: number): void => {
+    const value = percent / 100;
+    setAlpha(value);
+    applyTheme(current, value);
+    clearTimeout(writeTimer.current);
+    writeTimer.current = setTimeout(() => void send({ kind: 'setBgOpacity', value }), 250);
   };
 
   // Families in registry order, each with its flavours, so the list groups
@@ -91,6 +130,25 @@ export function ThemePicker({ current, open, onToggle, onClose }: Props): React.
               ))}
             </div>
           ))}
+          {/*
+            Last, under a divider: it is the one control here that is not a theme,
+            and putting it above the list would push the flavours off the bottom.
+          */}
+          <div className="theme-alpha">
+            <div className="theme-family">
+              background
+              <span className="theme-alpha-value">{Math.round(alpha * 100)}%</span>
+            </div>
+            <input
+              type="range"
+              min={Math.round(MIN_BG_OPACITY * 100)}
+              max={100}
+              step={PERCENT_STEP}
+              value={Math.round(alpha * 100)}
+              title="how much of the desktop shows through"
+              onChange={(event) => slide(Number(event.target.value))}
+            />
+          </div>
         </div>
       )}
     </div>

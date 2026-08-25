@@ -35,6 +35,14 @@ export interface Snapshot {
    * on the next poll without a relaunch.
    */
   theme: ThemeName;
+  /**
+   * How opaque the window's own surfaces are, 0.2–1.
+   *
+   * Alongside the theme and for the same reason: dropped into the config by hand
+   * it lands on the next poll, and the picker's slider is only ever the fast path
+   * to the same key.
+   */
+  bgOpacity: number;
   /** Plan quota bars. Absent unless `limits.tokenCommand` is configured. */
   limits?: PlanLimits;
 }
@@ -87,7 +95,9 @@ export type Request =
   | { kind: 'installHooks' }
   | { kind: 'setAlwaysOnTop'; value: boolean }
   /** Repaint, and remember it: written to the config the CLI reads too. */
-  | { kind: 'setTheme'; theme: ThemeName };
+  | { kind: 'setTheme'; theme: ThemeName }
+  /** How much of the desktop shows through. App-only — `fw` has no window. */
+  | { kind: 'setBgOpacity'; value: number };
 
 export type Response =
   | ({ ok: boolean; detail: string } & Partial<ActionResult>)

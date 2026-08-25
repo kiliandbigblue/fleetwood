@@ -8,7 +8,7 @@ import { join } from 'node:path';
 // first import of anything that pulls it in — hence the dynamic imports below.
 const home = await mkdtemp(join(tmpdir(), 'fw-theme-'));
 process.env.FLEETWOOD_HOME = home;
-const { loadConfig, saveTheme, DEFAULT_CONFIG } = await import('../src/config.ts');
+const { loadConfig, saveTheme, saveBgOpacity, DEFAULT_CONFIG } = await import('../src/config.ts');
 const { CONFIG_FILE } = await import('../src/paths.ts');
 
 const write = (value: unknown): Promise<void> =>
@@ -78,4 +78,40 @@ test('saveTheme refuses to clobber a config it cannot parse', async () => {
   await writeFile(CONFIG_FILE, damaged, 'utf8');
   await assert.rejects(() => saveTheme('rose-pine'));
   assert.equal(await readFile(CONFIG_FILE, 'utf8'), damaged);
+});
+
+test('no config file at all comes up opaque', async () => {
+  await rm(CONFIG_FILE, { force: true });
+  assert.equal((await loadConfig()).bgOpacity, 1);
+  assert.equal(DEFAULT_CONFIG.bgOpacity, 1);
+});
+
+test('a configured background opacity is read back, out-of-range ones clamped', async () => {
+  await write({ bgOpacity: 0.55 });
+  assert.equal((await loadConfig()).bgOpacity, 0.55);
+
+  // A hand edit is the only way to get here — the slider cannot produce these —
+  // and an invisible window is not a legible way to report the mistake.
+  for (const [written, expected] of [[0, 0.2], [-2, 0.2], [5, 1], ['0.5', 1], [null, 1]] as const) {
+    await write({ bgOpacity: written });
+    assert.equal((await loadConfig()).bgOpacity, expected, `${JSON.stringify(written)}`);
+  }
+});
+
+test('saveBgOpacity writes only that key, clamped', async () => {
+  await write({ theme: 'rose-pine-moon', editor: 'hx' });
+  await saveBgOpacity(0.7);
+  assert.deepEqual(await read(), { theme: 'rose-pine-moon', editor: 'hx', bgOpacity: 0.7 });
+
+  await saveBgOpacity(9);
+  assert.deepEqual(await read(), { theme: 'rose-pine-moon', editor: 'hx', bgOpacity: 1 });
+});
+
+test('the theme and the opacity do not overwrite each other', async () => {
+  // Two writers on one file, one key each: picking a flavour must not reset the
+  // transparency the slider just set, or vice versa.
+  await rm(CONFIG_FILE, { force: true });
+  await saveBgOpacity(0.65);
+  await saveTheme('tokyonight-moon');
+  assert.deepEqual(await read(), { bgOpacity: 0.65, theme: 'tokyonight-moon' });
 });

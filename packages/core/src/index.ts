@@ -22,7 +22,18 @@ export * as prSession from './prSession.ts';
 export * as task from './task.ts';
 // Flat, because both renderers paint from the same palettes and neither may
 // import the barrel for them (which pulls in tmux and process scanning).
-export { THEMES, THEME_NAMES, DEFAULT_THEME, isThemeName, paletteFor, rgbTriplet } from './theme.ts';
+export {
+  THEMES,
+  THEME_NAMES,
+  DEFAULT_THEME,
+  DEFAULT_BG_OPACITY,
+  MIN_BG_OPACITY,
+  isThemeName,
+  clampBgOpacity,
+  paletteFor,
+  rgbTriplet,
+  withAlpha,
+} from './theme.ts';
 
 // Types consumers need by name (namespace re-exports don't surface them).
 export type { PullRequest, ChecksState, PrLists } from './github.ts';

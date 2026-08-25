@@ -215,6 +215,27 @@ next to it is the exact clash worth ending. Editing the key by hand works — th
 picks it up on its next poll, no relaunch — and an unknown name falls back to the
 default rather than painting nothing.
 
+The `background` slider at the foot of the same popover sets how much of the
+desktop shows through — 100% down to 20%, live as you drag, saved as a `bgOpacity`
+key beside `theme`. That one is the panel's alone: a terminal's transparency is the
+terminal's setting, so `fw` has no use for it.
+
+Only two of the eleven roles thin out, `bg` and `panel`. Text, accents and borders
+stay solid at every setting, because the point is to see the desktop through the
+window rather than to read the window through itself — and card fills derived from
+`panel` inherit the alpha for free, so a card still reads as a layer over the
+window instead of a solid slab on a see-through one. The theme popover itself is
+the one deliberate exception, pinned opaque: it is the only floating surface with
+no dimming backdrop under it, and a slider you cannot read at the setting it just
+applied is one you cannot use to get back.
+
+Electron fixes window transparency **at creation**, so the window is always
+created transparent and contributes no fill of its own; every pixel of background
+comes from the renderer, which is what makes the slider immediate instead of
+needing a relaunch. At the default opacity of 1 that is indistinguishable from
+before, with one exception — macOS draws no native drop shadow on a transparent
+window, so `.app` carries a 1px CSS ring in its place.
+
 Adding a theme is **data, not CSS**. `packages/core/src/theme.ts` maps each palette
 onto eleven roles named for their job (`bg`, `panel`, `edge`, `dim`, `soft`, `text`,
 `danger`, `warn`, `ok`, `accent`, `branch`); the renderer writes them onto the
