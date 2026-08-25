@@ -204,6 +204,7 @@ export function App(): React.JSX.Element {
           <TaskList
             tasks={snapshot.tasks}
             fleet={snapshot.fleet}
+            editor={snapshot.editor}
             onResult={onResult}
             onNewTask={() => setNewTaskOpen(true)}
           />

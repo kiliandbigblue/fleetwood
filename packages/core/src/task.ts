@@ -14,6 +14,7 @@ import {
 import { run } from './exec.ts';
 import * as tmux from './tmux.ts';
 import { focusSession, spawnAgent } from './actions.ts';
+import type { ActionResult } from './actions.ts';
 import type { AgentTool } from './types.ts';
 
 /**
@@ -35,6 +36,8 @@ export interface Task {
   repos: TaskRepo[];
   /** tmux session working this task, when one exists. */
   session?: string;
+  /** Your own running notes, from `NOTES.md`. Absent when you haven't written any. */
+  notes?: string;
 }
 
 export interface TaskRepo {
@@ -62,6 +65,8 @@ interface TaskRecord {
 
 const RECORD_FILE = 'task.json';
 const BRIEF_FILE = 'TASK.md';
+/** Hand-written, never generated — see `readTaskNotes`. */
+const NOTES_FILE = 'NOTES.md';
 
 /** Git ref names forbid a lot; keep to lowercase kebab and nothing surprising. */
 export function slugify(text: string): string {
@@ -164,6 +169,10 @@ function renderBrief(record: TaskRecord, repos: TaskRepo[]): string {
     '`AGENTS.md` or its `.claude/settings.local.json`. Read those when you start',
     'working inside a repo — they carry that repo\'s conventions.',
     '',
+    'Beside this file, `NOTES.md` — when it exists — holds the human\'s own running',
+    'notes on this task. Read it. `TASK.md`, the file you are reading, is generated',
+    'and rewritten whenever a repo joins the task, so write nothing into it.',
+    '',
   );
   return lines.join('\n');
 }
@@ -189,7 +198,8 @@ export async function readTaskRepos(dir: string): Promise<TaskRepo[]> {
   const index = await getIndex();
   const repos: TaskRepo[] = [];
   for (const entry of entries.sort()) {
-    if (entry.startsWith('.') || entry === RECORD_FILE || entry === BRIEF_FILE) continue;
+    if (entry.startsWith('.') || entry === RECORD_FILE || entry === BRIEF_FILE || entry === NOTES_FILE)
+      continue;
     const path = join(dir, entry);
     if (!(await exists(join(path, '.git')))) continue;
     const match = index.repos.find((r) => basename(r.path).toLowerCase() === entry.toLowerCase());
@@ -209,6 +219,51 @@ async function writeMeta(dir: string, record: TaskRecord, repos: TaskRepo[]): Pr
   await writeFile(join(dir, BRIEF_FILE), renderBrief(record, repos), 'utf8');
 }
 
+/**
+ * Your own notes on a task, from `NOTES.md`.
+ *
+ * A file of its own, and deliberately not part of `task.json` or `TASK.md`: the
+ * record is immutable and the brief is regenerated on every repo change, so
+ * anything you typed into either would eventually be overwritten. Keeping the
+ * notes beside the worktrees rather than in `~/.fleetwood` also means an agent
+ * working the task can read them without being told where to look — which is
+ * most of the reason to write them down at all.
+ */
+export async function readTaskNotes(dir: string): Promise<string | undefined> {
+  try {
+    const text = await readFile(join(dir, NOTES_FILE), 'utf8');
+    return text.trim().length > 0 ? text : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Replace a task's notes, by folder.
+ *
+ * Emptying them removes the file rather than leaving a blank one behind, so
+ * "no notes" is one state on disk instead of two.
+ */
+export async function writeNotesFile(dir: string, notes: string): Promise<void> {
+  const path = join(dir, NOTES_FILE);
+  const text = notes.trim();
+  if (text.length === 0) await rm(path, { force: true });
+  else await writeFile(path, `${text}\n`, 'utf8');
+}
+
+/** Same, by slug — refuses a slug that is not a task rather than creating a folder. */
+export async function writeTaskNotes(slug: string, notes: string): Promise<ActionResult> {
+  const dir = await taskDirFor(slug);
+  if (!(await readRecord(dir))) return { ok: false, detail: `no task named ${slug}` };
+
+  await writeNotesFile(dir, notes);
+  const length = notes.trim().length;
+  return {
+    ok: true,
+    detail: length === 0 ? `cleared notes on ${slug}` : `saved notes on ${slug} (${length} chars)`,
+  };
+}
+
 export interface CreateTaskInput {
   type: string;
   microservice: string;
@@ -217,7 +272,15 @@ export interface CreateTaskInput {
   /** Repo names or saved group names; branch overrides keyed by repo name. */
   repos: string[];
   branchOverrides?: Record<string, string>;
-  /** Agent to start at the task root. 'none' creates the session without one. */
+  /**
+   * Agent to start at the task root. Defaults to `'none'`.
+   *
+   * Creating a task and choosing what runs in it are two decisions, and only the
+   * first one is being made at that moment: the repo set is still a guess, and a
+   * task often exists for a while before anyone works it. So the session is made
+   * ready — right directory, right branch, stamped — and left at a shell. Ask for
+   * an agent explicitly, here or with `+ claude` / `+ cursor` on the card.
+   */
   agent?: AgentTool | 'none';
   background?: boolean;
 }
@@ -286,7 +349,7 @@ export async function createTask(input: CreateTaskInput): Promise<TaskResult> {
 
   await writeMeta(dir, record, repos);
 
-  const session = await ensureTaskSession(record, dir, repos, input.agent ?? 'claude');
+  const session = await ensureTaskSession(record, dir, repos, input.agent ?? 'none');
   if (!input.background && session) await focusSession(session);
 
   return {
@@ -300,9 +363,10 @@ export async function createTask(input: CreateTaskInput): Promise<TaskResult> {
 /**
  * One session per task, rooted at the task folder.
  *
- * The first window is the cross-repo agent — its cwd is the folder holding every
- * worktree, which is the whole point: it can grep across repos and discover what
- * the change actually needs.
+ * The first window sits in the folder holding every worktree, which is the whole
+ * point: whatever runs there can grep across repos and discover what the change
+ * actually needs. It is left as a plain shell unless an agent was asked for —
+ * see `CreateTaskInput.agent`.
  */
 async function ensureTaskSession(
   record: TaskRecord,
@@ -382,6 +446,7 @@ export async function getTask(slug: string): Promise<Task | undefined> {
     dir,
     repos: await readTaskRepos(dir),
     session: sessions.find((s) => s.meta.task === slug)?.name,
+    notes: await readTaskNotes(dir),
   };
 }
 
@@ -407,6 +472,7 @@ export async function listTasks(): Promise<Task[]> {
       dir,
       repos: await readTaskRepos(dir),
       session: sessions.find((s) => s.meta.task === record.slug)?.name,
+      notes: await readTaskNotes(dir),
     });
   }
   return tasks.sort((a, b) => b.createdAt - a.createdAt);

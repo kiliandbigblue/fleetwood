@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { branchToSlug, buildBranch, slugify } from '../src/task.ts';
+import { mkdtemp, readdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { branchToSlug, buildBranch, readTaskNotes, readTaskRepos, slugify, writeNotesFile } from '../src/task.ts';
 
 test('branch names follow the <type>/<microservice>-<summary> convention', () => {
   // The microservice is a domain, not a repo — which is why the same branch name
@@ -57,4 +60,29 @@ test('slug and branch round-trip for the same task description', () => {
   // Rebuilding from the same inputs is stable — that is what makes createTask
   // idempotent by slug.
   assert.equal(buildBranch('fix', 'flow', 'execution labels'), branch);
+});
+
+test('notes round-trip through the task folder', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'fw-notes-'));
+  assert.equal(await readTaskNotes(dir), undefined);
+
+  await writeNotesFile(dir, 'check the trip id, several truck loads share one');
+  assert.match((await readTaskNotes(dir)) ?? '', /several truck loads/);
+
+  // Blank input removes the file: "no notes" must be one state on disk, not two.
+  await writeNotesFile(dir, '   \n  ');
+  assert.equal(await readTaskNotes(dir), undefined);
+  assert.deepEqual(await readdir(dir), []);
+});
+
+test('a whitespace-only NOTES.md reads as no notes at all', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'fw-notes-'));
+  await writeFile(join(dir, 'NOTES.md'), '\n\n  \n', 'utf8');
+  assert.equal(await readTaskNotes(dir), undefined);
+});
+
+test('NOTES.md is not mistaken for a repo in the task folder', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'fw-notes-'));
+  await writeNotesFile(dir, 'do not list me as a worktree');
+  assert.deepEqual(await readTaskRepos(dir), []);
 });

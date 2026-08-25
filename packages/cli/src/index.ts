@@ -30,8 +30,9 @@ ${c.bold('commands')}
   sessions          tmux sessions and their fleetwood metadata
   panes             every pane and the agent process found in it
 
-  task new <type> <service> <summary> [--repo r]...
+  task new <type> <service> <summary> [--repo r]... [--agent claude]
                     create a task: one branch, a worktree per repo, one session
+                    ${c.dim('the session is left at a shell; --agent starts one in it')}
   task add <slug> <repo> [--branch b]   add a repo to a live task
   task ls           tasks, their repos, branches and dirty state
   task archive <slug> [--force]         remove every worktree and the session
@@ -684,7 +685,7 @@ async function cmdTaskNew(argv: string[], json: boolean): Promise<void> {
     summary,
     goal: flagValue(argv, '--goal'),
     repos,
-    agent: (flagValue(argv, '--agent') as 'claude' | 'cursor' | 'codex' | 'none') ?? 'claude',
+    agent: flagValue(argv, '--agent') as 'claude' | 'cursor' | 'codex' | 'none' | undefined,
     background: argv.includes('--background'),
   });
 

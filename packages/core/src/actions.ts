@@ -166,6 +166,54 @@ export async function spawnAgent(options: SpawnAgentOptions): Promise<ActionResu
   };
 }
 
+export interface OpenEditorOptions {
+  session: string;
+  cwd: string;
+  /** The command to run — whatever `editor` is configured to, `nvim` by default. */
+  editor: string;
+  /** tmux window name. Defaults to the directory's own name. */
+  name?: string;
+  /** Split the current window instead of opening one of its own. */
+  split?: boolean;
+}
+
+/**
+ * Open an editor on a directory, in an existing session.
+ *
+ * Its own window rather than a split of whatever you were looking at: an editor
+ * wants the full height, and "open this repo" should not halve the pane you were
+ * reading. As with `spawnAgent` the command is typed into a shell instead of
+ * being the pane's command, so quitting the editor leaves you at a prompt in the
+ * right directory rather than closing the window.
+ */
+export async function openEditor(options: OpenEditorOptions): Promise<ActionResult> {
+  const editor = options.editor.trim();
+  if (editor.length === 0) return { ok: false, detail: 'no editor configured' };
+  if (!(await tmux.hasSession(options.session))) {
+    return { ok: false, detail: `no tmux session named ${options.session}` };
+  }
+
+  const paneId = options.split
+    ? await tmux.splitWindow(`=${options.session}:`, { cwd: options.cwd })
+    : await tmux.newWindow(options.session, {
+        cwd: options.cwd,
+        name: options.name ?? basename(options.cwd),
+        select: true,
+      });
+  if (!paneId) return { ok: false, detail: 'could not create a pane' };
+
+  if (!(await tmux.sendText(paneId, editor))) {
+    return { ok: false, detail: `created ${paneId} but could not type ${editor}` };
+  }
+
+  // Landing you in the editor is the point; creating it out of sight is not.
+  const focus = await focusSession(options.session);
+  return {
+    ok: true,
+    detail: `${editor} in ${paneId} on ${basename(options.cwd)}${focus.ok ? '' : ` — ${focus.detail}`}`,
+  };
+}
+
 /** Type a prompt into an agent's pane and submit it. */
 export async function sendPrompt(paneId: string, text: string): Promise<ActionResult> {
   const ok = await tmux.sendText(paneId, text);

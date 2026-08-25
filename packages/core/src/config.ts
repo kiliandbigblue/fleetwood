@@ -78,6 +78,14 @@ export interface Config {
   /** Read pane contents to resolve prompts and stale states. */
   capture: boolean;
   /**
+   * The editor the panel launches on a repo, typed into a fresh pane.
+   *
+   * A setting rather than a constant because it is the one command here that is
+   * pure personal taste — and the button is labelled with whatever it says, so
+   * changing it never leaves the UI lying about what the click does.
+   */
+  editor: string;
+  /**
    * The plan's quota bars — the same numbers Claude Code's `/usage` shows.
    *
    * Off until `tokenCommand` is set, because reading it means handing fleetwood
@@ -115,6 +123,7 @@ export const DEFAULT_CONFIG: Config = {
   },
   poll: { tmuxMs: 1_000, processMs: 2_000 },
   capture: true,
+  editor: 'nvim',
   limits: { tokenCommand: '', pollSeconds: 300 },
 };
 

@@ -232,7 +232,8 @@ A **task** is one branch, one tmux session, and a folder of real git worktrees:
 
 ```
 ~/projects/.agents/tasks/flow-execution-labels/
-  TASK.md          the brief: goal, branch, repos
+  TASK.md          the brief: goal, branch, repos (generated)
+  NOTES.md         your own notes, typed in the panel (yours; never rewritten)
   proto/           worktree of ~/projects/proto   on fix/flow-execution-labels
   graphy/          worktree of ~/projects/graphy  on fix/flow-execution-labels
   api-scripts/     added later, one click
@@ -245,9 +246,30 @@ fw task ls
 fw task archive flow-execution-labels
 ```
 
-The session's first window is rooted at the task folder, so **one agent can grep
+The session's first window is rooted at the task folder, so **an agent there can grep
 and edit across every involved repo** — that's what removes the upfront guessing.
-Add repo-scoped agents when you want per-repo context. ⌘T opens the form in the app.
+⌘T opens the form in the app.
+
+**Creating a task starts no agent.** Those are two decisions and only the first one
+is being made at that moment — the repo set is still a guess, and a task often sits
+for a while before anyone works it. So the session is made ready (right directory,
+right branch, stamped as a task) and left at a shell. `+ claude` or `+ cursor` on the
+card starts one at the task root; `--agent claude` does it at creation time if you
+want the old behaviour.
+
+Each repo row carries `+nvim`, which opens the editor in a fresh window of the
+task's session, rooted at **that worktree** rather than at the task folder. It's a
+window rather than a split because an editor wants the full height, and the command
+is typed into a shell, so quitting it leaves you at a prompt in the right directory.
+`editor` in the config names the command, and the button is labelled with it.
+
+`notes` on the card writes `NOTES.md` beside the worktrees. It is a file of its own
+because `task.json` is immutable and `TASK.md` is regenerated every time a repo is
+added — notes typed into either would eventually be overwritten. Living beside the
+worktrees rather than in `~/.fleetwood` also means an agent working the task can read
+them without being told they exist, which is most of the point of writing them down;
+`TASK.md` tells it to look. Emptying the box deletes the file, so "no notes" is one
+state on disk rather than two.
 
 Why it's built this way:
 

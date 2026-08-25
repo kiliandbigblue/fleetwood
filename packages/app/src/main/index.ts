@@ -145,6 +145,7 @@ async function buildSnapshot(): Promise<Snapshot> {
     merged,
     prSessions,
     hooksInstalled: hookState.claude.installed > 0,
+    editor: settings.editor,
     limits: planLimits,
   };
 }
@@ -378,7 +379,8 @@ async function handle(request: Request): Promise<Response> {
         goal: request.goal,
         repos: request.repos,
         branchOverrides: request.branchOverrides,
-        agent: request.agent ?? 'claude',
+        // Undefined means none: core decides, so the two front ends can't drift.
+        agent: request.agent,
       });
       await getTasks(true);
       await pushSnapshot();
@@ -390,6 +392,26 @@ async function handle(request: Request): Promise<Response> {
       await getTasks(true);
       await pushSnapshot();
       return { ok: result.ok, detail: result.detail };
+    }
+
+    case 'setTaskNotes': {
+      const result = await taskApi.writeTaskNotes(request.slug, request.notes);
+      // Force: the task cache is 5s old and the textarea has to settle at once.
+      await getTasks(true);
+      await pushSnapshot();
+      return result;
+    }
+
+    case 'openEditor': {
+      const settings = await configModule.loadConfig();
+      const result = await actions.openEditor({
+        session: request.session,
+        cwd: request.cwd,
+        editor: settings.editor,
+        name: request.name,
+      });
+      await pushSnapshot();
+      return result;
     }
 
     case 'archiveTask': {

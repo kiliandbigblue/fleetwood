@@ -17,6 +17,8 @@ export interface Snapshot {
   /** Session names that fleetwood stamped, keyed by PR key, for link badges. */
   prSessions: Record<string, string>;
   hooksInstalled: boolean;
+  /** The editor `openEditor` will run, so the button says what it does. */
+  editor: string;
   /** Plan quota bars. Absent unless `limits.tokenCommand` is configured. */
   limits?: PlanLimits;
 }
@@ -59,6 +61,10 @@ export type Request =
       agent?: 'claude' | 'cursor' | 'codex' | 'none';
     }
   | { kind: 'addRepoToTask'; slug: string; repo: string; branch?: string }
+  /** Replace a task's NOTES.md. Empty text clears it. */
+  | { kind: 'setTaskNotes'; slug: string; notes: string }
+  /** Editor in a fresh pane of an existing session, on one repo's worktree. */
+  | { kind: 'openEditor'; session: string; cwd: string; name?: string }
   | { kind: 'archiveTask'; slug: string; force?: boolean }
   | { kind: 'listProjects' }
   | { kind: 'openExternal'; url: string }
