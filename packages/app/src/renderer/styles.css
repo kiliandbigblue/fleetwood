@@ -54,6 +54,41 @@ button {
   cursor: pointer;
 }
 
+/*
+ * One scrollbar, for every scroll container in the panel.
+ *
+ * WebKit's default is a pale overlay bar, and on a dark theme it reads as a lit
+ * seam — worst inside a card, where the notes block scrolls a few pixels from a
+ * border it then outshines. Declared on `*` rather than per container so the next
+ * scrollable thing inherits the panel's look instead of the platform's.
+ */
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  /* Mixed from `soft` rather than sitting on `edge`: the thumb has to read over a
+     card fill and over the window's own background, and at this alpha it reads as
+     the same grey on both instead of vanishing into one of them. */
+  background: color-mix(in srgb, var(--soft) 26%, transparent);
+  border-radius: 999px;
+  /* Inset by a transparent border, not by a narrower bar: the thumb draws 5px
+     wide while the track it lives in keeps the full 9px of pointer target. */
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--soft) 52%, transparent);
+  background-clip: padding-box;
+}
+
 .app {
   display: flex;
   flex-direction: column;
@@ -169,14 +204,6 @@ button {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.body::-webkit-scrollbar {
-  width: 8px;
-}
-.body::-webkit-scrollbar-thumb {
-  background: var(--edge);
-  border-radius: 4px;
 }
 
 .empty {
