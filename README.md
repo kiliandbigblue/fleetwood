@@ -201,6 +201,34 @@ The bundle is **signed ad-hoc**, which is all that's needed for an app built on 
 machine that runs it: nothing downloads it, so Gatekeeper never quarantines it. It is
 not notarised, so it will not run as-is on anyone else's Mac.
 
+### Themes
+
+The `◐` button in the header switches palette. Eight flavours across three
+families — Rosé Pine (main, moon), Catppuccin (mocha, macchiato, frappé) and Tokyo
+Night (night, storm, moon) — with Rosé Pine main the default, because that is what
+the tmux status line runs.
+
+The choice is one `theme` key in `~/.fleetwood/config.json`, so **`fw` paints in it
+too**. That is the point of the setting rather than a bonus: this panel lives beside
+the terminal all day, and `fw status` printed in a different palette than the window
+next to it is the exact clash worth ending. Editing the key by hand works — the panel
+picks it up on its next poll, no relaunch — and an unknown name falls back to the
+default rather than painting nothing.
+
+Adding a theme is **data, not CSS**. `packages/core/src/theme.ts` maps each palette
+onto eleven roles named for their job (`bg`, `panel`, `edge`, `dim`, `soft`, `text`,
+`danger`, `warn`, `ok`, `accent`, `branch`); the renderer writes them onto the
+document as custom properties and the CLI as truecolor escapes. Nothing below
+`:root` in `styles.css` names a colour.
+
+The values are the upstream palettes exactly as the neovim plugins define them
+(`rose-pine/palette.lua`, `catppuccin/palettes/*.lua`, `tokyonight/colors/*.lua`),
+because matching the editor is the whole job and a hand-mixed near-miss is what
+reads as wrong. Ghostty's theme files were the other candidate and are not enough —
+sixteen ANSI slots and a background, with nothing for the layered surfaces a card
+needs. The per-family comments in `theme.ts` record how each palette's greys and
+accents were read onto the roles.
+
 #### Two macOS packaging traps this repo works around
 
 **A GUI launch has almost no PATH.** From the Dock or Spotlight an app inherits
@@ -320,10 +348,13 @@ fw sessions | panes | repos | doctor | install-hooks
 
 `fw open-pr` takes `owner/repo#123` or a full PR URL.
 
+Output is painted in the configured `theme` (see **Themes**), and drops to plain text
+under `NO_COLOR` or when piped.
+
 ## Layout
 
 ```
-packages/core     tmux client, process scanner, event folding, github, worktrees
+packages/core     tmux client, process scanner, event folding, github, worktrees, themes
 packages/hooks    the sh scripts installed into agent configs
 packages/cli      the fw command
 packages/app      Electron: main (which is also the collector) + React renderer

@@ -1,20 +1,27 @@
 /*
- * Rose Pine, matching the tmux theme. This panel sits next to the terminal all
- * day; sharing its palette keeps the two from fighting each other.
+ * Eleven colours, named for what they do rather than for what they are.
+ *
+ * This panel sits next to the terminal all day, so which palette fills them is a
+ * setting: `core/theme.ts` holds every theme, and the renderer writes the chosen
+ * one onto the document as these same custom properties. Nothing below this block
+ * names a colour, which is the point — adding a theme is data, never CSS.
+ *
+ * The values here are Rose Pine, the default and what tmux is running: they are
+ * what the panel paints for the one frame before the first snapshot arrives with
+ * the configured theme, so a cold start never flashes unstyled.
  */
 :root {
-  --base: #191724;
-  --surface: #1f1d2e;
-  --overlay: #26233a;
-  --muted: #6e6a86;
-  --subtle: #908caa;
+  --bg: #191724;
+  --panel: #1f1d2e;
+  --edge: #26233a;
+  --dim: #6e6a86;
+  --soft: #908caa;
   --text: #e0def4;
-  --love: #eb6f92;
-  --gold: #f6c177;
-  --rose: #ebbcba;
-  --pine: #31748f;
-  --foam: #9ccfd8;
-  --iris: #c4a7e7;
+  --danger: #eb6f92;
+  --warn: #f6c177;
+  --ok: #9ccfd8;
+  --accent: #c4a7e7;
+  --branch: #ebbcba;
   --radius: 8px;
 }
 
@@ -30,7 +37,7 @@ body,
 }
 
 body {
-  background: var(--base);
+  background: var(--bg);
   color: var(--text);
   font: 13px/1.45 ui-sans-serif, -apple-system, "SF Pro Text", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -57,8 +64,8 @@ button {
   /* Leaves room for the traffic lights under titleBarStyle: hiddenInset. */
   padding: 26px 12px 8px;
   -webkit-app-region: drag;
-  border-bottom: 1px solid var(--overlay);
-  background: var(--base);
+  border-bottom: 1px solid var(--edge);
+  background: var(--bg);
 }
 
 .header-row {
@@ -89,34 +96,34 @@ button {
   font-variant-numeric: tabular-nums;
   padding: 2px 7px;
   border-radius: 999px;
-  background: var(--overlay);
-  color: var(--subtle);
+  background: var(--edge);
+  color: var(--soft);
   white-space: nowrap;
 }
 
 .pill.blocked {
-  background: color-mix(in srgb, var(--love) 22%, var(--base));
-  color: var(--love);
+  background: color-mix(in srgb, var(--danger) 22%, var(--bg));
+  color: var(--danger);
 }
 .pill.working {
-  background: color-mix(in srgb, var(--foam) 18%, var(--base));
-  color: var(--foam);
+  background: color-mix(in srgb, var(--ok) 18%, var(--bg));
+  color: var(--ok);
 }
 
 .icon-button {
   width: 26px;
   height: 26px;
   border-radius: 6px;
-  color: var(--muted);
+  color: var(--dim);
   display: grid;
   place-items: center;
 }
 .icon-button:hover {
-  background: var(--overlay);
+  background: var(--edge);
   color: var(--text);
 }
 .icon-button.on {
-  color: var(--gold);
+  color: var(--warn);
 }
 
 .tabs {
@@ -128,18 +135,18 @@ button {
 .tab {
   padding: 4px 10px;
   border-radius: 6px;
-  color: var(--muted);
+  color: var(--dim);
   font-size: 12px;
 }
 .tab:hover {
   color: var(--text);
 }
 .tab.active {
-  background: var(--overlay);
+  background: var(--edge);
   color: var(--text);
 }
 .tab .count {
-  color: var(--muted);
+  color: var(--dim);
   margin-left: 5px;
   font-variant-numeric: tabular-nums;
 }
@@ -159,12 +166,12 @@ button {
   width: 8px;
 }
 .body::-webkit-scrollbar-thumb {
-  background: var(--overlay);
+  background: var(--edge);
   border-radius: 4px;
 }
 
 .empty {
-  color: var(--muted);
+  color: var(--dim);
   text-align: center;
   padding: 32px 16px;
   font-size: 12px;
@@ -173,14 +180,14 @@ button {
 /* --- session card -------------------------------------------------------- */
 
 .card {
-  background: var(--surface);
-  border: 1px solid var(--overlay);
+  background: var(--panel);
+  border: 1px solid var(--edge);
   border-radius: var(--radius);
   overflow: hidden;
 }
 
 .card.attention {
-  border-color: color-mix(in srgb, var(--love) 55%, var(--overlay));
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--edge));
 }
 
 .card-head {
@@ -202,12 +209,12 @@ button {
 }
 
 .card-head:hover {
-  background: color-mix(in srgb, var(--overlay) 45%, var(--surface));
+  background: color-mix(in srgb, var(--edge) 45%, var(--panel));
 }
 
 .card-head:hover .session-name {
   text-decoration: underline;
-  text-decoration-color: var(--muted);
+  text-decoration-color: var(--dim);
   text-underline-offset: 2px;
 }
 
@@ -216,7 +223,7 @@ button {
   padding: 0 10px 6px 22px;
   font-family: ui-monospace, SFMono-Regular, monospace;
   font-size: 10.5px;
-  color: var(--rose);
+  color: var(--branch);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -226,7 +233,7 @@ button {
   margin-left: auto;
   font-family: ui-monospace, SFMono-Regular, monospace;
   font-size: 10.5px;
-  color: var(--muted);
+  color: var(--dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -249,29 +256,29 @@ button {
 }
 
 .attached-dot {
-  color: var(--foam);
+  color: var(--ok);
   font-size: 9px;
   align-self: center;
 }
 .attached-dot.detached {
-  color: var(--muted);
+  color: var(--dim);
 }
 
 .badge {
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 4px;
-  background: var(--overlay);
-  color: var(--subtle);
+  background: var(--edge);
+  color: var(--soft);
   white-space: nowrap;
   flex: none;
 }
 .badge.kind {
-  color: var(--iris);
+  color: var(--accent);
 }
 
 .badge.branch {
-  color: var(--rose);
+  color: var(--branch);
   font-family: ui-monospace, SFMono-Regular, monospace;
   /* Branch names are the longest thing in a card head; let this one shrink. */
   flex: 0 1 auto;
@@ -281,11 +288,11 @@ button {
   white-space: nowrap;
 }
 .badge.pr {
-  color: var(--gold);
+  color: var(--warn);
 }
 
 .path {
-  color: var(--muted);
+  color: var(--dim);
   font-size: 11px;
   margin-left: auto;
   font-family: ui-monospace, SFMono-Regular, monospace;
@@ -314,24 +321,24 @@ button {
   font-size: 11px;
   padding: 3px 8px;
   border-radius: 5px;
-  color: var(--muted);
+  color: var(--dim);
   /* Squeezed chips were being drawn on top of the row's text. */
   flex: none;
   white-space: nowrap;
 }
 .chip:hover {
-  background: var(--overlay);
+  background: var(--edge);
   color: var(--text);
 }
 .chip.danger:hover {
-  background: color-mix(in srgb, var(--love) 25%, var(--surface));
-  color: var(--love);
+  background: color-mix(in srgb, var(--danger) 25%, var(--panel));
+  color: var(--danger);
 }
 
 /* --- agent row ----------------------------------------------------------- */
 
 .agents {
-  border-top: 1px solid var(--overlay);
+  border-top: 1px solid var(--edge);
 }
 
 .agent {
@@ -348,11 +355,11 @@ button {
 }
 
 .agent.clickable:hover {
-  background: color-mix(in srgb, var(--overlay) 45%, var(--surface));
+  background: color-mix(in srgb, var(--edge) 45%, var(--panel));
 }
 
 .agent + .agent {
-  border-top: 1px solid color-mix(in srgb, var(--overlay) 50%, var(--surface));
+  border-top: 1px solid color-mix(in srgb, var(--edge) 50%, var(--panel));
 }
 
 .status-dot {
@@ -362,28 +369,28 @@ button {
   flex: none;
 }
 .status-working {
-  background: var(--foam);
+  background: var(--ok);
   animation: pulse 1.6s ease-in-out infinite;
 }
 .status-blocked_permission {
-  background: var(--love);
+  background: var(--danger);
 }
 .status-blocked_input {
-  background: var(--gold);
+  background: var(--warn);
 }
 .status-compacting {
-  background: var(--iris);
+  background: var(--accent);
 }
 .status-idle,
 .status-starting {
-  background: var(--muted);
+  background: var(--dim);
 }
 .status-error {
-  background: var(--love);
+  background: var(--danger);
 }
 .status-gone {
   background: transparent;
-  border: 1px solid var(--muted);
+  border: 1px solid var(--dim);
 }
 
 @keyframes pulse {
@@ -402,20 +409,20 @@ button {
   flex: none;
 }
 .tool-claude {
-  color: var(--iris);
+  color: var(--accent);
 }
 .tool-cursor {
-  color: var(--foam);
+  color: var(--ok);
 }
 .tool-codex {
-  color: var(--gold);
+  color: var(--warn);
 }
 .tool-unknown {
-  color: var(--muted);
+  color: var(--dim);
 }
 
 .activity {
-  color: var(--subtle);
+  color: var(--soft);
   font-size: 11px;
   font-family: ui-monospace, SFMono-Regular, monospace;
   white-space: nowrap;
@@ -426,7 +433,7 @@ button {
 }
 
 .since {
-  color: var(--muted);
+  color: var(--dim);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   flex: none;
@@ -436,7 +443,7 @@ button {
    information, not a status. The dot and the activity stay the loudest things
    on the row. */
 .cost {
-  color: var(--muted);
+  color: var(--dim);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   flex: none;
@@ -455,7 +462,7 @@ button {
 }
 
 .nested {
-  color: var(--muted);
+  color: var(--dim);
   font-size: 10px;
   flex: none;
 }
@@ -471,7 +478,7 @@ button {
   font-size: 13px;
   line-height: 1;
   border-radius: 4px;
-  color: var(--muted);
+  color: var(--dim);
   opacity: 0.45;
 }
 .agent:hover .agent-kill,
@@ -479,16 +486,16 @@ button {
   opacity: 1;
 }
 .agent-kill:hover {
-  background: color-mix(in srgb, var(--love) 25%, var(--surface));
-  color: var(--love);
+  background: color-mix(in srgb, var(--danger) 25%, var(--panel));
+  color: var(--danger);
 }
 .agent-kill.confirming {
   opacity: 1;
   /* Now a word, not a glyph — a second click must be a deliberate one. */
   font-size: 10px;
   padding: 2px 6px;
-  background: color-mix(in srgb, var(--love) 22%, var(--surface));
-  color: var(--love);
+  background: color-mix(in srgb, var(--danger) 22%, var(--panel));
+  color: var(--danger);
   white-space: nowrap;
 }
 .agent-kill:disabled {
@@ -497,7 +504,7 @@ button {
 }
 
 .subagents {
-  color: var(--iris);
+  color: var(--accent);
   font-size: 10px;
   flex: none;
 }
@@ -511,8 +518,8 @@ button {
   flex-direction: column;
   gap: 3px;
   padding: 6px 12px 8px;
-  border-top: 1px solid color-mix(in srgb, var(--overlay) 60%, var(--surface));
-  background: color-mix(in srgb, var(--overlay) 20%, var(--surface));
+  border-top: 1px solid color-mix(in srgb, var(--edge) 60%, var(--panel));
+  background: color-mix(in srgb, var(--edge) 20%, var(--panel));
   flex: none;
 }
 
@@ -525,7 +532,7 @@ button {
 
 .limits-label {
   font-size: 10px;
-  color: var(--muted);
+  color: var(--dim);
   text-transform: lowercase;
   letter-spacing: 0.03em;
 }
@@ -535,7 +542,7 @@ button {
   align-items: center;
   gap: 6px;
   font-size: 10.5px;
-  color: var(--muted);
+  color: var(--dim);
   min-width: 0;
 }
 
@@ -552,7 +559,7 @@ button {
   min-width: 40px;
   height: 4px;
   border-radius: 2px;
-  background: color-mix(in srgb, var(--overlay) 80%, var(--surface));
+  background: color-mix(in srgb, var(--edge) 80%, var(--panel));
   overflow: hidden;
 }
 
@@ -565,15 +572,15 @@ button {
   display: block;
   height: 100%;
   border-radius: 2px;
-  background: var(--foam);
+  background: var(--ok);
 }
 
 .limit-fill.warn {
-  background: var(--gold);
+  background: var(--warn);
 }
 
 .limit-fill.critical {
-  background: var(--love);
+  background: var(--danger);
 }
 
 .limit-percent {
@@ -583,13 +590,13 @@ button {
 
 .limit-reset {
   flex: none;
-  color: var(--subtle);
+  color: var(--soft);
   font-variant-numeric: tabular-nums;
 }
 
 .limit-stale {
   font-size: 10px;
-  color: var(--subtle);
+  color: var(--soft);
   font-style: italic;
 }
 
@@ -599,8 +606,8 @@ button {
   margin: 0 10px 8px;
   padding: 8px;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--love) 12%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--love) 30%, var(--overlay));
+  background: color-mix(in srgb, var(--danger) 12%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--edge));
 }
 
 .prompt-question {
@@ -617,7 +624,7 @@ button {
 
 .prompt-option {
   font-size: 11px;
-  color: var(--subtle);
+  color: var(--soft);
   font-family: ui-monospace, SFMono-Regular, monospace;
 }
 .prompt-option.selected {
@@ -633,24 +640,24 @@ button {
   padding: 4px 12px;
   border-radius: 5px;
   font-size: 12px;
-  background: var(--overlay);
+  background: var(--edge);
 }
 .button:hover {
-  background: color-mix(in srgb, var(--text) 12%, var(--overlay));
+  background: color-mix(in srgb, var(--text) 12%, var(--edge));
 }
 .button.approve {
-  background: color-mix(in srgb, var(--foam) 22%, var(--surface));
-  color: var(--foam);
+  background: color-mix(in srgb, var(--ok) 22%, var(--panel));
+  color: var(--ok);
 }
 .button.approve:hover {
-  background: color-mix(in srgb, var(--foam) 34%, var(--surface));
+  background: color-mix(in srgb, var(--ok) 34%, var(--panel));
 }
 .button.deny {
-  background: color-mix(in srgb, var(--love) 20%, var(--surface));
-  color: var(--love);
+  background: color-mix(in srgb, var(--danger) 20%, var(--panel));
+  color: var(--danger);
 }
 .button.deny:hover {
-  background: color-mix(in srgb, var(--love) 32%, var(--surface));
+  background: color-mix(in srgb, var(--danger) 32%, var(--panel));
 }
 
 /* --- PR list ------------------------------------------------------------ */
@@ -659,7 +666,7 @@ button {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--muted);
+  color: var(--dim);
   margin: 4px 2px 0;
 }
 
@@ -668,8 +675,8 @@ button {
   flex-direction: column;
   gap: 3px;
   padding: 7px 10px;
-  background: var(--surface);
-  border: 1px solid var(--overlay);
+  background: var(--panel);
+  border: 1px solid var(--edge);
   border-radius: var(--radius);
   min-width: 0;
 }
@@ -689,11 +696,11 @@ button {
 }
 
 .pr:hover {
-  border-color: color-mix(in srgb, var(--iris) 40%, var(--overlay));
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--edge));
 }
 
 .pr-number {
-  color: var(--muted);
+  color: var(--dim);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   flex: none;
@@ -719,7 +726,7 @@ button {
   gap: 2px 8px;
   align-items: center;
   font-size: 10px;
-  color: var(--muted);
+  color: var(--dim);
   min-width: 0;
 }
 
@@ -732,30 +739,30 @@ button {
 }
 
 .checks-passing {
-  color: var(--foam);
+  color: var(--ok);
 }
 .checks-failing {
-  color: var(--love);
+  color: var(--danger);
 }
 .checks-pending {
-  color: var(--gold);
+  color: var(--warn);
 }
 .checks-none {
-  color: var(--muted);
+  color: var(--dim);
 }
 
 .review-APPROVED {
-  color: var(--foam);
+  color: var(--ok);
 }
 .review-CHANGES_REQUESTED {
-  color: var(--love);
+  color: var(--danger);
 }
 .review-REVIEW_REQUIRED {
-  color: var(--gold);
+  color: var(--warn);
 }
 
 .linked {
-  color: var(--foam);
+  color: var(--ok);
 }
 
 /* --- recently merged ---------------------------------------------------- */
@@ -776,7 +783,7 @@ button {
 }
 
 .section-title-row .owed {
-  color: var(--iris);
+  color: var(--accent);
 }
 
 /* Nothing is owed on these, so they stop competing for attention. */
@@ -793,23 +800,23 @@ button {
  * check glyphs already use, so the two sections read as one language.
  */
 .deploy-built {
-  color: var(--iris);
+  color: var(--accent);
   font-weight: 600;
 }
 .deploy-building,
 .deploy-deploying {
-  color: var(--gold);
+  color: var(--warn);
 }
 .deploy-deployed {
-  color: var(--foam);
+  color: var(--ok);
 }
 .deploy-failed {
-  color: var(--love);
+  color: var(--danger);
 }
 .deploy-checking,
 .deploy-waiting,
 .deploy-none {
-  color: var(--muted);
+  color: var(--dim);
 }
 
 .deploy-tag {
@@ -824,11 +831,11 @@ button {
  * the shorthand and render this pill larger than its neighbours.
  */
 .pill.to-deploy {
-  color: var(--iris);
-  background: color-mix(in srgb, var(--iris) 22%, var(--base));
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg));
 }
 .pill.to-deploy:hover {
-  background: color-mix(in srgb, var(--iris) 36%, var(--base));
+  background: color-mix(in srgb, var(--accent) 36%, var(--bg));
 }
 
 /* --- toast -------------------------------------------------------------- */
@@ -840,13 +847,13 @@ button {
   bottom: 10px;
   padding: 8px 10px;
   border-radius: 6px;
-  background: var(--overlay);
+  background: var(--edge);
   color: var(--text);
   font-size: 11.5px;
   box-shadow: 0 6px 20px rgb(0 0 0 / 45%);
 }
 .toast.error {
-  background: color-mix(in srgb, var(--love) 30%, var(--overlay));
+  background: color-mix(in srgb, var(--danger) 30%, var(--edge));
 }
 
 /* --- banner ------------------------------------------------------------- */
@@ -854,8 +861,8 @@ button {
 .banner {
   padding: 8px 10px;
   border-radius: var(--radius);
-  background: color-mix(in srgb, var(--gold) 15%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--gold) 35%, var(--overlay));
+  background: color-mix(in srgb, var(--warn) 15%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--edge));
   font-size: 11.5px;
   display: flex;
   align-items: center;
@@ -867,18 +874,18 @@ button {
 .new-task {
   padding: 7px 10px;
   border-radius: var(--radius);
-  border: 1px dashed var(--overlay);
-  color: var(--muted);
+  border: 1px dashed var(--edge);
+  color: var(--dim);
   font-size: 12px;
   text-align: left;
 }
 .new-task:hover {
-  border-color: var(--iris);
+  border-color: var(--accent);
   color: var(--text);
 }
 
 .task-repos {
-  border-top: 1px solid var(--overlay);
+  border-top: 1px solid var(--edge);
 }
 
 .task-repo {
@@ -891,7 +898,7 @@ button {
 }
 
 .task-repo + .task-repo {
-  border-top: 1px solid color-mix(in srgb, var(--overlay) 45%, var(--surface));
+  border-top: 1px solid color-mix(in srgb, var(--edge) 45%, var(--panel));
 }
 
 .task-repo-name {
@@ -905,19 +912,19 @@ button {
 }
 
 .clean {
-  color: var(--muted);
+  color: var(--dim);
   font-size: 10.5px;
   flex: none;
 }
 .dirty {
-  color: var(--gold);
+  color: var(--warn);
   font-size: 10.5px;
   flex: none;
 }
 
 /* Only shown when a repo has drifted off the task's branch, which is worth a warning. */
 .off-branch {
-  color: var(--love);
+  color: var(--danger);
   font-size: 10px;
   font-family: ui-monospace, SFMono-Regular, monospace;
   white-space: nowrap;
@@ -936,10 +943,10 @@ button {
 .task-repo .chip {
   font-size: 10px;
   padding: 1px 5px;
-  color: var(--muted);
+  color: var(--dim);
 }
 .task-repo .chip:hover {
-  color: var(--foam);
+  color: var(--ok);
 }
 
 /*
@@ -949,11 +956,11 @@ button {
  * one must not push every other task off a panel this narrow.
  */
 .task-notes {
-  border-top: 1px solid var(--overlay);
+  border-top: 1px solid var(--edge);
   padding: 6px 10px 7px;
   font-size: 11.5px;
   line-height: 1.5;
-  color: var(--subtle);
+  color: var(--soft);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   max-height: 116px;
@@ -965,14 +972,14 @@ button {
 }
 
 .task-notes-edit {
-  border-top: 1px solid var(--overlay);
+  border-top: 1px solid var(--edge);
   padding: 6px 10px 7px;
 }
 
 .task-notes-edit textarea {
   width: 100%;
-  background: var(--base);
-  border: 1px solid var(--overlay);
+  background: var(--bg);
+  border: 1px solid var(--edge);
   border-radius: 5px;
   color: var(--text);
   font: inherit;
@@ -983,7 +990,7 @@ button {
   resize: vertical;
 }
 .task-notes-edit textarea:focus {
-  border-color: var(--iris);
+  border-color: var(--accent);
 }
 
 .task-notes-actions {
@@ -995,7 +1002,7 @@ button {
 
 .task-notes-hint {
   margin-right: auto;
-  color: var(--muted);
+  color: var(--dim);
   font-size: 10px;
 }
 
@@ -1008,8 +1015,8 @@ button {
 .add-repo input {
   flex: 1;
   min-width: 0;
-  background: var(--base);
-  border: 1px solid var(--overlay);
+  background: var(--bg);
+  border: 1px solid var(--edge);
   border-radius: 5px;
   color: var(--text);
   font: inherit;
@@ -1018,7 +1025,7 @@ button {
   outline: none;
 }
 .add-repo input:focus {
-  border-color: var(--iris);
+  border-color: var(--accent);
 }
 
 /* --- modal (new task) ---------------------------------------------------- */
@@ -1033,8 +1040,8 @@ button {
 }
 
 .modal {
-  background: var(--surface);
-  border: 1px solid var(--overlay);
+  background: var(--panel);
+  border: 1px solid var(--edge);
   border-radius: var(--radius);
   padding: 10px;
   display: flex;
@@ -1048,12 +1055,12 @@ button {
 .modal-title {
   font-weight: 600;
   font-size: 12px;
-  color: var(--subtle);
+  color: var(--soft);
 }
 
 .field {
-  background: var(--base);
-  border: 1px solid var(--overlay);
+  background: var(--bg);
+  border: 1px solid var(--edge);
   border-radius: 5px;
   color: var(--text);
   font: inherit;
@@ -1063,7 +1070,7 @@ button {
   resize: vertical;
 }
 .field:focus {
-  border-color: var(--iris);
+  border-color: var(--accent);
 }
 
 .field-row {
@@ -1074,20 +1081,20 @@ button {
 .type-chip {
   padding: 3px 10px;
   border-radius: 5px;
-  background: var(--overlay);
-  color: var(--muted);
+  background: var(--edge);
+  color: var(--dim);
   font-size: 11.5px;
 }
 .type-chip.on {
-  background: color-mix(in srgb, var(--iris) 30%, var(--surface));
+  background: color-mix(in srgb, var(--accent) 30%, var(--panel));
   color: var(--text);
 }
 
 .branch-preview {
   font-family: ui-monospace, SFMono-Regular, monospace;
   font-size: 11.5px;
-  color: var(--gold);
-  background: var(--base);
+  color: var(--warn);
+  background: var(--bg);
   border-radius: 5px;
   padding: 5px 8px;
   white-space: nowrap;
@@ -1096,7 +1103,7 @@ button {
 }
 
 .repo-picker {
-  border: 1px solid var(--overlay);
+  border: 1px solid var(--edge);
   border-radius: 5px;
   max-height: 220px;
   overflow-y: auto;
@@ -1112,10 +1119,10 @@ button {
   min-width: 0;
 }
 .repo-option:hover {
-  background: var(--overlay);
+  background: var(--edge);
 }
 .repo-option.on {
-  background: color-mix(in srgb, var(--iris) 14%, var(--surface));
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel));
 }
 .repo-option span:first-of-type {
   font-family: ui-monospace, SFMono-Regular, monospace;
@@ -1123,7 +1130,7 @@ button {
 
 .repo-branch-hint {
   margin-left: auto;
-  color: var(--muted);
+  color: var(--dim);
   font-size: 10px;
   font-family: ui-monospace, SFMono-Regular, monospace;
   white-space: nowrap;
@@ -1139,8 +1146,94 @@ button {
 }
 
 .modal-note {
-  color: var(--muted);
+  color: var(--dim);
   font-size: 10.5px;
   flex: 1;
   min-width: 0;
+}
+
+/* --- theme picker -------------------------------------------------------- */
+
+.theme-picker {
+  position: relative;
+  -webkit-app-region: no-drag;
+  flex: none;
+}
+
+/*
+ * Anchored to the button and right-aligned, because the button is near the
+ * window's right edge and a left-aligned menu would hang off it.
+ */
+.theme-menu {
+  position: absolute;
+  top: 30px;
+  right: 0;
+  z-index: 30;
+  min-width: 168px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+}
+
+.theme-family {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dim);
+  padding: 5px 6px 3px;
+}
+
+.theme-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 4px 6px;
+  border-radius: 5px;
+  font-size: 11.5px;
+  color: var(--soft);
+  text-align: left;
+}
+.theme-option:hover {
+  background: var(--edge);
+  color: var(--text);
+}
+.theme-option.on {
+  color: var(--text);
+}
+
+/*
+ * The row's own colours, not the active theme's — this is the one place in the
+ * app that has to render a palette it is not painted in, so the swatches carry
+ * inline backgrounds and sit on the candidate's own `bg`.
+ */
+.theme-swatches {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 4px;
+  flex: none;
+}
+
+.theme-swatch {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+}
+
+.theme-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.theme-check {
+  flex: none;
+  width: 8px;
+  font-size: 10px;
+  color: var(--accent);
 }

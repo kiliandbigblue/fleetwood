@@ -123,7 +123,7 @@ export function SessionCard({ session, onResult }: Props): React.JSX.Element {
         </div>
       ) : (
         <div className="agent">
-          <span className="activity" style={{ color: 'var(--muted)' }}>
+          <span className="activity" style={{ color: 'var(--dim)' }}>
             no agents · {paneCount} pane{paneCount === 1 ? '' : 's'}
           </span>
         </div>

@@ -15,7 +15,7 @@ import {
   tmux,
 } from '@fleetwood/core';
 import type { FleetState, MergedPr, PlanLimits, PullRequest } from '@fleetwood/core';
-import { c, pad, relativeAge, tildify, width } from './ui.ts';
+import { c, pad, relativeAge, tildify, useTheme, width } from './ui.ts';
 import { renderAgentLine, renderFleet, renderLimits } from './render.ts';
 
 const HELP = `${c.bold('fleetwood')} — tmux-native cockpit for coding agents
@@ -147,13 +147,13 @@ async function cmdSessions(json: boolean): Promise<void> {
   }
   const nameWidth = Math.max(...sessions.map((s) => width(s.name)), 10);
   for (const s of sessions) {
-    const dot = s.attached > 0 ? c.foam('●') : c.muted('○');
+    const dot = s.attached > 0 ? c.ok('●') : c.muted('○');
     const panes = s.windows.reduce((n, w) => n + w.panes.length, 0);
     const meta = [
-      s.meta.kind && c.iris(s.meta.kind),
-      s.meta.repo && c.rose(s.meta.repo),
-      s.meta.branch && c.gold(s.meta.branch),
-      s.meta.pr && c.love(s.meta.pr),
+      s.meta.kind && c.accent(s.meta.kind),
+      s.meta.repo && c.branch(s.meta.repo),
+      s.meta.branch && c.warn(s.meta.branch),
+      s.meta.pr && c.danger(s.meta.pr),
     ]
       .filter(Boolean)
       .join(c.muted(' · '));
@@ -188,7 +188,7 @@ async function cmdPanes(json: boolean): Promise<void> {
   for (const r of rows) {
     const agents =
       r.agents.length > 0
-        ? r.agents.map((a) => `${c.iris(a.tool)} ${c.muted(`pid ${a.pid}`)}`).join(' ')
+        ? r.agents.map((a) => `${c.accent(a.tool)} ${c.muted(`pid ${a.pid}`)}`).join(' ')
         : c.muted(r.command);
     process.stdout.write(
       `${pad(r.session, w1)} ${c.muted(pad(r.pane, 4))} ${pad(agents, 28)} ${c.dim(tildify(r.cwd))}\n`,
@@ -201,7 +201,7 @@ async function cmdInstallHooks(json: boolean): Promise<void> {
   if (json) return jsonOut(report);
 
   process.stdout.write(`${c.bold('hook scripts')} ${c.muted(report.hooksDir)}\n`);
-  for (const s of report.scripts) process.stdout.write(`  ${c.foam('✓')} ${c.dim(s)}\n`);
+  for (const s of report.scripts) process.stdout.write(`  ${c.ok('✓')} ${c.dim(s)}\n`);
 
   const section = (
     title: string,
@@ -209,7 +209,7 @@ async function cmdInstallHooks(json: boolean): Promise<void> {
   ): void => {
     process.stdout.write(`\n${c.bold(title)} ${c.muted(r.path)}\n`);
     if (r.error) {
-      process.stdout.write(`  ${c.love('✗')} ${r.error}\n`);
+      process.stdout.write(`  ${c.danger('✗')} ${r.error}\n`);
       return;
     }
     if (r.skipped) {
@@ -218,7 +218,7 @@ async function cmdInstallHooks(json: boolean): Promise<void> {
     }
     if (r.backup) process.stdout.write(`  ${c.dim(`backup → ${r.backup}`)}\n`);
     if (r.added.length > 0) {
-      process.stdout.write(`  ${c.foam('✓')} added ${r.added.length}: ${c.dim(r.added.join(', '))}\n`);
+      process.stdout.write(`  ${c.ok('✓')} added ${r.added.length}: ${c.dim(r.added.join(', '))}\n`);
     }
     if (r.alreadyPresent.length > 0) {
       process.stdout.write(`  ${c.muted(`already present: ${r.alreadyPresent.length}`)}\n`);
@@ -233,9 +233,9 @@ async function cmdInstallHooks(json: boolean): Promise<void> {
     process.stdout.write(`  ${c.muted(`skipped — ${report.codex.skipped}`)}\n`);
   } else if (report.codex.instructions) {
     process.stdout.write(`  ${c.muted('TOML is not edited automatically. Add this line yourself:')}\n`);
-    process.stdout.write(`    ${c.gold(report.codex.instructions)}\n`);
+    process.stdout.write(`    ${c.warn(report.codex.instructions)}\n`);
   } else {
-    process.stdout.write(`  ${c.foam('✓')} already configured\n`);
+    process.stdout.write(`  ${c.ok('✓')} already configured\n`);
   }
 
   process.stdout.write(
@@ -344,7 +344,7 @@ async function cmdDoctor(json: boolean): Promise<void> {
   if (json) return jsonOut(checks);
 
   for (const check of checks) {
-    const mark = check.ok === true ? c.foam('✓') : check.ok === 'warn' ? c.gold('!') : c.love('✗');
+    const mark = check.ok === true ? c.ok('✓') : check.ok === 'warn' ? c.warn('!') : c.danger('✗');
     process.stdout.write(`${mark} ${pad(check.name, 16)} ${c.muted(check.detail)}\n`);
   }
   if (checks.some((k) => k.ok === false)) process.exitCode = 1;
@@ -353,11 +353,11 @@ async function cmdDoctor(json: boolean): Promise<void> {
 function checksMark(pr: PullRequest): string {
   switch (pr.checks) {
     case 'passing':
-      return c.foam('✓');
+      return c.ok('✓');
     case 'failing':
-      return c.love('✗');
+      return c.danger('✗');
     case 'pending':
-      return c.gold('◍');
+      return c.warn('◍');
     default:
       return c.dim('·');
   }
@@ -366,11 +366,11 @@ function checksMark(pr: PullRequest): string {
 function reviewMark(pr: PullRequest): string {
   switch (pr.reviewDecision) {
     case 'APPROVED':
-      return c.foam('approved');
+      return c.ok('approved');
     case 'CHANGES_REQUESTED':
-      return c.love('changes');
+      return c.danger('changes');
     case 'REVIEW_REQUIRED':
-      return c.gold('needs review');
+      return c.warn('needs review');
     default:
       return c.dim('—');
   }
@@ -385,19 +385,19 @@ function reviewMark(pr: PullRequest): string {
 function deployMark(pr: MergedPr): { glyph: string; label: string } {
   // A hand-mark overrides the badge; the CI state is still in the JSON output.
   if (pr.deployedByHand !== undefined) {
-    return { glyph: c.foam('✓'), label: c.foam('deployed by hand') };
+    return { glyph: c.ok('✓'), label: c.ok('deployed by hand') };
   }
   switch (pr.deploy.state) {
     case 'built':
-      return { glyph: c.iris('⬆'), label: c.iris(c.bold('deploy')) };
+      return { glyph: c.accent('⬆'), label: c.accent(c.bold('deploy')) };
     case 'building':
-      return { glyph: c.gold('◍'), label: c.gold('building') };
+      return { glyph: c.warn('◍'), label: c.warn('building') };
     case 'deploying':
-      return { glyph: c.gold('◍'), label: c.gold('deploying') };
+      return { glyph: c.warn('◍'), label: c.warn('deploying') };
     case 'deployed':
-      return { glyph: c.foam('✓'), label: c.foam('deployed') };
+      return { glyph: c.ok('✓'), label: c.ok('deployed') };
     case 'failed':
-      return { glyph: c.love('✗'), label: c.love('ci failed') };
+      return { glyph: c.danger('✗'), label: c.danger('ci failed') };
     case 'checking':
       return { glyph: c.dim('◍'), label: c.dim('checks') };
     case 'waiting':
@@ -423,7 +423,7 @@ async function cmdPrs(json: boolean): Promise<void> {
   if (json) return jsonOut({ ...lists, merged: recentlyMerged });
 
   if (lists.degraded) {
-    process.stdout.write(`${c.love('gh returned nothing')} ${c.muted('— check `gh auth status`')}\n`);
+    process.stdout.write(`${c.danger('gh returned nothing')} ${c.muted('— check `gh auth status`')}\n`);
     return;
   }
 
@@ -437,7 +437,7 @@ async function cmdPrs(json: boolean): Promise<void> {
     }
     for (const pr of prs) {
       const key = `${pr.repo}#${pr.number}`;
-      const session = linked.has(key) ? c.foam(' ⇄ session') : '';
+      const session = linked.has(key) ? c.ok(' ⇄ session') : '';
       const draft = pr.isDraft ? c.dim(' draft') : '';
       process.stdout.write(
         `  ${checksMark(pr)} ${c.bold(pad(`#${pr.number}`, 7))} ${c.muted(pad(pr.repo, 24))} ${pad(pr.title.slice(0, 46), 46)} ${pad(reviewMark(pr), 14)}${draft}${session}\n`,
@@ -446,11 +446,11 @@ async function cmdPrs(json: boolean): Promise<void> {
   };
 
   const owed = recentlyMerged.filter((pr) => github.needsDeploy(pr)).length;
-  const heading = owed > 0 ? `recently merged ${c.iris(`(${owed} to deploy)`)}` : 'recently merged';
+  const heading = owed > 0 ? `recently merged ${c.accent(`(${owed} to deploy)`)}` : 'recently merged';
   process.stdout.write(`\n${c.bold(heading)} ${c.muted(`(${recentlyMerged.length})`)}\n`);
   if (mergedList.degraded) {
     // An empty list means nothing merged; say so only when we actually looked.
-    process.stdout.write(`  ${c.love('could not read merge history')}\n`);
+    process.stdout.write(`  ${c.danger('could not read merge history')}\n`);
   } else if (recentlyMerged.length === 0) {
     process.stdout.write(`  ${c.dim('nothing')}\n`);
   }
@@ -478,13 +478,13 @@ function parsePrRef(ref: string): { repo: string; number: number } | undefined {
 
 async function cmdOpenPr(ref: string | undefined, background: boolean): Promise<void> {
   if (!ref) {
-    process.stderr.write(`${c.love('usage')} fw open-pr <owner/repo#number | pr-url>\n`);
+    process.stderr.write(`${c.danger('usage')} fw open-pr <owner/repo#number | pr-url>\n`);
     process.exitCode = 2;
     return;
   }
   const parsed = parsePrRef(ref);
   if (!parsed) {
-    process.stderr.write(`${c.love('could not parse')} ${ref}\n`);
+    process.stderr.write(`${c.danger('could not parse')} ${ref}\n`);
     process.exitCode = 2;
     return;
   }
@@ -507,18 +507,18 @@ async function cmdOpenPr(ref: string | undefined, background: boolean): Promise<
     } satisfies PullRequest);
 
   const result = await prSession.openPr(pr, { background });
-  process.stdout.write(`${result.ok ? c.foam('✓') : c.love('✗')} ${result.detail}\n`);
+  process.stdout.write(`${result.ok ? c.ok('✓') : c.danger('✗')} ${result.detail}\n`);
   if (!result.ok) process.exitCode = 1;
 }
 
 async function cmdFocus(name: string | undefined): Promise<void> {
   if (!name) {
-    process.stderr.write(`${c.love('usage')} fw focus <session>\n`);
+    process.stderr.write(`${c.danger('usage')} fw focus <session>\n`);
     process.exitCode = 2;
     return;
   }
   const result = await actions.focusSession(name);
-  process.stdout.write(`${result.ok ? c.foam('✓') : c.love('✗')} ${result.detail}\n`);
+  process.stdout.write(`${result.ok ? c.ok('✓') : c.danger('✗')} ${result.detail}\n`);
   if (!result.ok) process.exitCode = 1;
 }
 
@@ -532,27 +532,27 @@ async function cmdAnswer(target: string | undefined, kind: 'approve' | 'deny'): 
   const agent = target ? blocked.find((a) => a.pane === target) : blocked[0];
   if (!agent?.prompt) {
     process.stderr.write(
-      `${c.love('no blocked agent')} ${c.muted(target ? `in ${target}` : 'with a readable prompt')}\n`,
+      `${c.danger('no blocked agent')} ${c.muted(target ? `in ${target}` : 'with a readable prompt')}\n`,
     );
     process.exitCode = 1;
     return;
   }
   if (!target && blocked.length > 1) {
-    process.stderr.write(`${c.love('ambiguous')} ${blocked.length} agents are blocked — name a pane\n`);
+    process.stderr.write(`${c.danger('ambiguous')} ${blocked.length} agents are blocked — name a pane\n`);
     process.exitCode = 2;
     return;
   }
 
   const key = kind === 'approve' ? agent.prompt.approve : agent.prompt.deny;
   if (!key) {
-    process.stderr.write(`${c.love('no obvious')} ${kind} option in: ${agent.prompt.question ?? '?'}\n`);
+    process.stderr.write(`${c.danger('no obvious')} ${kind} option in: ${agent.prompt.question ?? '?'}\n`);
     process.exitCode = 1;
     return;
   }
 
   process.stdout.write(`${c.muted(agent.prompt.question ?? '')}\n`);
   const result = await actions.answerPrompt(agent.pane as string, key);
-  process.stdout.write(`${result.ok ? c.foam('✓') : c.love('✗')} ${result.detail}\n`);
+  process.stdout.write(`${result.ok ? c.ok('✓') : c.danger('✗')} ${result.detail}\n`);
 }
 
 /**
@@ -571,17 +571,17 @@ async function cmdKillAgent(target: string | undefined, json: boolean): Promise<
 
   if (matches.length === 0) {
     process.stderr.write(
-      `${c.love('no live agent')} ${c.muted(target ? `matching ${target}` : 'to close')}\n`,
+      `${c.danger('no live agent')} ${c.muted(target ? `matching ${target}` : 'to close')}\n`,
     );
     process.exitCode = 1;
     return;
   }
   if (matches.length > 1) {
     process.stderr.write(
-      `${c.love('ambiguous')} ${matches.length} agents match — name one by key:\n`,
+      `${c.danger('ambiguous')} ${matches.length} agents match — name one by key:\n`,
     );
     for (const a of matches) {
-      process.stderr.write(`  ${c.iris(pad(a.tool, 7))} ${c.muted(pad(a.pane ?? '—', 5))} ${c.dim(a.key)}\n`,
+      process.stderr.write(`  ${c.accent(pad(a.tool, 7))} ${c.muted(pad(a.pane ?? '—', 5))} ${c.dim(a.key)}\n`,
       );
     }
     process.exitCode = 2;
@@ -591,7 +591,7 @@ async function cmdKillAgent(target: string | undefined, json: boolean): Promise<
   const agent = matches[0] as (typeof matches)[number];
   const result = await actions.killAgent(agent);
   if (json) return jsonOut(result);
-  process.stdout.write(`${result.ok ? c.foam('✓') : c.love('✗')} ${result.detail}\n`);
+  process.stdout.write(`${result.ok ? c.ok('✓') : c.danger('✗')} ${result.detail}\n`);
   // The state file belongs to the collector (the app), so we don't write `gone`
   // into it from here — a dead process is enough for every case it reconciles.
   if (!result.ok) process.exitCode = 1;
@@ -608,7 +608,7 @@ async function cmdRepos(json: boolean): Promise<void> {
     )}\n`,
   );
   for (const repo of withRemote) {
-    process.stdout.write(`  ${pad(c.iris(repo.nameWithOwner as string), 34)} ${c.dim(tildify(repo.path))}\n`);
+    process.stdout.write(`  ${pad(c.accent(repo.nameWithOwner as string), 34)} ${c.dim(tildify(repo.path))}\n`);
   }
   for (const repo of plain) {
     process.stdout.write(`  ${pad(c.muted('—'), 34)} ${c.dim(tildify(repo.path))}\n`);
@@ -657,7 +657,7 @@ async function cmdTaskNew(argv: string[], json: boolean): Promise<void> {
   const summary = summaryParts.join(' ');
   if (!type || !microservice || summary.length === 0) {
     process.stderr.write(
-      `${c.love('usage')} fw task new <type> <microservice> <summary> --repo <name> [--repo <name>]...\n` +
+      `${c.danger('usage')} fw task new <type> <microservice> <summary> --repo <name> [--repo <name>]...\n` +
         `${c.muted('e.g.')} fw task new fix flow "execution labels" --repo proto --repo graphy\n`,
     );
     process.exitCode = 2;
@@ -667,13 +667,13 @@ async function cmdTaskNew(argv: string[], json: boolean): Promise<void> {
   const repos = repoFlags(argv);
   const branch = taskApi.buildBranch(type, microservice, summary);
   if (repos.length === 0) {
-    process.stderr.write(`${c.love('no repos')} — pass at least one --repo. branch would be ${c.gold(branch)}\n`);
+    process.stderr.write(`${c.danger('no repos')} — pass at least one --repo. branch would be ${c.warn(branch)}\n`);
     process.exitCode = 2;
     return;
   }
 
   // Show what will happen before touching any repo.
-  process.stdout.write(`${c.bold('branch')} ${c.gold(branch)}\n`);
+  process.stdout.write(`${c.bold('branch')} ${c.warn(branch)}\n`);
   for (const repo of await taskApi.expandRepoGroups(repos)) {
     process.stdout.write(`  ${c.muted(pad(repo, 22))} ${c.dim(branch)}\n`);
   }
@@ -691,9 +691,9 @@ async function cmdTaskNew(argv: string[], json: boolean): Promise<void> {
 
   if (json) return jsonOut(result);
   for (const r of result.repoResults) {
-    process.stdout.write(`${r.ok ? c.foam('✓') : c.love('✗')} ${pad(r.repo, 22)} ${c.muted(r.detail)}\n`);
+    process.stdout.write(`${r.ok ? c.ok('✓') : c.danger('✗')} ${pad(r.repo, 22)} ${c.muted(r.detail)}\n`);
   }
-  process.stdout.write(`\n${result.ok ? c.foam('✓') : c.love('✗')} ${result.detail}\n`);
+  process.stdout.write(`\n${result.ok ? c.ok('✓') : c.danger('✗')} ${result.detail}\n`);
   if (result.task?.dir) process.stdout.write(`${c.muted(tildify(result.task.dir))}\n`);
   if (!result.ok) process.exitCode = 1;
 }
@@ -703,13 +703,13 @@ async function cmdTaskAdd(argv: string[], json: boolean): Promise<void> {
   const slug = positional[2];
   const repo = positional[3];
   if (!slug || !repo) {
-    process.stderr.write(`${c.love('usage')} fw task add <slug> <repo> [--branch <name>]\n`);
+    process.stderr.write(`${c.danger('usage')} fw task add <slug> <repo> [--branch <name>]\n`);
     process.exitCode = 2;
     return;
   }
   const result = await taskApi.addRepoToTask(slug, repo, flagValue(argv, '--branch'));
   if (json) return jsonOut(result);
-  process.stdout.write(`${result.ok ? c.foam('✓') : c.love('✗')} ${result.detail}\n`);
+  process.stdout.write(`${result.ok ? c.ok('✓') : c.danger('✗')} ${result.detail}\n`);
   if (!result.ok) process.exitCode = 1;
 }
 
@@ -721,14 +721,14 @@ async function cmdTaskList(json: boolean): Promise<void> {
     return;
   }
   for (const t of tasks) {
-    const live = t.session ? c.foam('●') : c.muted('○');
+    const live = t.session ? c.ok('●') : c.muted('○');
     process.stdout.write(
-      `${live} ${c.bold(t.slug)} ${c.gold(t.branch)} ${c.muted(`${t.repos.length} repo${t.repos.length === 1 ? '' : 's'}`)}` +
+      `${live} ${c.bold(t.slug)} ${c.warn(t.branch)} ${c.muted(`${t.repos.length} repo${t.repos.length === 1 ? '' : 's'}`)}` +
         `${t.session ? c.dim(` session ${t.session}`) : ''}\n`,
     );
     for (const repo of t.repos) {
-      const dirty = repo.dirty > 0 ? c.gold(`${repo.dirty} dirty`) : c.muted('clean');
-      const offBranch = repo.branch && repo.branch !== t.branch ? c.love(` on ${repo.branch}`) : '';
+      const dirty = repo.dirty > 0 ? c.warn(`${repo.dirty} dirty`) : c.muted('clean');
+      const offBranch = repo.branch && repo.branch !== t.branch ? c.danger(` on ${repo.branch}`) : '';
       process.stdout.write(`    ${pad(repo.name, 22)} ${dirty}${offBranch}\n`);
     }
   }
@@ -737,14 +737,14 @@ async function cmdTaskList(json: boolean): Promise<void> {
 async function cmdTaskArchive(argv: string[], json: boolean): Promise<void> {
   const slug = positionalArgs(argv)[2];
   if (!slug) {
-    process.stderr.write(`${c.love('usage')} fw task archive <slug> [--force]\n`);
+    process.stderr.write(`${c.danger('usage')} fw task archive <slug> [--force]\n`);
     process.exitCode = 2;
     return;
   }
   const result = await taskApi.archiveTask(slug, argv.includes('--force'));
   if (json) return jsonOut(result);
-  process.stdout.write(`${result.ok ? c.foam('✓') : c.love('✗')} ${result.detail}\n`);
-  for (const k of result.kept) process.stdout.write(`  ${c.gold('kept')} ${k}\n`);
+  process.stdout.write(`${result.ok ? c.ok('✓') : c.danger('✗')} ${result.detail}\n`);
+  for (const k of result.kept) process.stdout.write(`  ${c.warn('kept')} ${k}\n`);
   if (!result.ok) process.exitCode = 1;
 }
 
@@ -761,7 +761,7 @@ async function cmdTask(argv: string[], json: boolean): Promise<void> {
     case 'archive':
       return cmdTaskArchive(argv, json);
     default:
-      process.stderr.write(`${c.love('unknown')} fw task ${sub}\n`);
+      process.stderr.write(`${c.danger('unknown')} fw task ${sub}\n`);
       process.exitCode = 2;
   }
 }
@@ -777,6 +777,14 @@ async function main(): Promise<void> {
   const command = positional[0] ?? 'status';
   const arg = positional[1];
   const background = argv.includes('--background');
+
+  /*
+   * Before anything prints. `fw` is one-shot, so this is the only chance to
+   * honour the configured palette — and the panel writes that same key, which is
+   * what keeps `fw status` from coming out in a different theme than the window
+   * beside it.
+   */
+  useTheme((await configModule.loadConfig()).theme);
 
   switch (command) {
     case 'status':
@@ -834,7 +842,7 @@ async function main(): Promise<void> {
       process.stdout.write(HELP);
       break;
     default:
-      process.stderr.write(`${c.love('unknown command')} ${command}\n\n${HELP}`);
+      process.stderr.write(`${c.danger('unknown command')} ${command}\n\n${HELP}`);
       process.exitCode = 2;
   }
 }

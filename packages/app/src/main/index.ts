@@ -14,6 +14,7 @@ import {
   repoIndex,
   spool,
   task as taskApi,
+  THEMES,
 } from '@fleetwood/core';
 import type { MergedPr, MergedPrs, PlanLimits, PrLists, Task } from '@fleetwood/core';
 import { repairPath } from './path.ts';
@@ -146,6 +147,7 @@ async function buildSnapshot(): Promise<Snapshot> {
     prSessions,
     hooksInstalled: hookState.claude.installed > 0,
     editor: settings.editor,
+    theme: settings.theme,
     limits: planLimits,
   };
 }
@@ -432,6 +434,15 @@ async function handle(request: Request): Promise<Response> {
         ok: true,
         detail: `claude: +${report.claude.added.length}, cursor: +${report.cursor.added.length}`,
       };
+    }
+
+    case 'setTheme': {
+      // Only this key is written, so a hand-written config keeps its shape and
+      // its comments-by-omission. The push is what actually repaints.
+      await configModule.saveTheme(request.theme);
+      await pushSnapshot();
+      const theme = THEMES[request.theme];
+      return { ok: true, detail: `${theme.family} ${theme.label}` };
     }
 
     case 'setAlwaysOnTop':

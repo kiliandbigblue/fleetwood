@@ -1,4 +1,12 @@
-import type { ActionResult, FleetState, MergedPrs, PlanLimits, PrLists, Task } from '@fleetwood/core';
+import type {
+  ActionResult,
+  FleetState,
+  MergedPrs,
+  PlanLimits,
+  PrLists,
+  Task,
+  ThemeName,
+} from '@fleetwood/core';
 
 /** Everything the renderer knows. Pushed whole; it is small and simplifies the UI. */
 export interface Snapshot {
@@ -19,6 +27,14 @@ export interface Snapshot {
   hooksInstalled: boolean;
   /** The editor `openEditor` will run, so the button says what it does. */
   editor: string;
+  /**
+   * The configured colour theme.
+   *
+   * Pushed with everything else rather than fetched once at boot, so a theme
+   * changed in `~/.fleetwood/config.json` by hand — or by another window — lands
+   * on the next poll without a relaunch.
+   */
+  theme: ThemeName;
   /** Plan quota bars. Absent unless `limits.tokenCommand` is configured. */
   limits?: PlanLimits;
 }
@@ -69,7 +85,9 @@ export type Request =
   | { kind: 'listProjects' }
   | { kind: 'openExternal'; url: string }
   | { kind: 'installHooks' }
-  | { kind: 'setAlwaysOnTop'; value: boolean };
+  | { kind: 'setAlwaysOnTop'; value: boolean }
+  /** Repaint, and remember it: written to the config the CLI reads too. */
+  | { kind: 'setTheme'; theme: ThemeName };
 
 export type Response =
   | ({ ok: boolean; detail: string } & Partial<ActionResult>)

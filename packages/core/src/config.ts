@@ -2,6 +2,8 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { CONFIG_FILE, ensureDirs } from './paths.ts';
+import { DEFAULT_THEME, isThemeName } from './theme.ts';
+import type { ThemeName } from './theme.ts';
 
 /**
  * How a workflow run's name is read as deploy / build / pre-flight.
@@ -94,6 +96,17 @@ export interface Config {
    */
   editor: string;
   /**
+   * The colour theme, for the panel and for `fw` alike.
+   *
+   * One key rather than two because the two surfaces are looked at together: the
+   * panel sits beside the terminal all day, and a `fw status` printed in Rose Pine
+   * inside a Catppuccin window is the exact clash this setting exists to end.
+   *
+   * Written by the panel's picker, and safe to edit by hand — an unknown name
+   * falls back to the default rather than painting nothing.
+   */
+  theme: ThemeName;
+  /**
    * The plan's quota bars — the same numbers Claude Code's `/usage` shows.
    *
    * Off until `tokenCommand` is set, because reading it means handing fleetwood
@@ -132,6 +145,7 @@ export const DEFAULT_CONFIG: Config = {
   poll: { tmuxMs: 1_000, processMs: 2_000 },
   capture: true,
   editor: 'nvim',
+  theme: DEFAULT_THEME,
   limits: { tokenCommand: '', pollSeconds: 300 },
 };
 
@@ -150,6 +164,10 @@ export async function loadConfig(): Promise<Config> {
       poll: { ...DEFAULT_CONFIG.poll, ...raw.poll },
       limits: { ...DEFAULT_CONFIG.limits, ...raw.limits },
       repoGroups: { ...DEFAULT_CONFIG.repoGroups, ...raw.repoGroups },
+      // Validated rather than merged: every other field degrades legibly when
+      // it's wrong, but a misspelt theme name would leave both UIs with no
+      // palette at all.
+      theme: isThemeName(raw.theme) ? raw.theme : DEFAULT_CONFIG.theme,
     };
   } catch {
     return DEFAULT_CONFIG;
@@ -159,4 +177,25 @@ export async function loadConfig(): Promise<Config> {
 export async function saveConfig(config: Config): Promise<void> {
   await ensureDirs();
   await writeFile(CONFIG_FILE, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+}
+
+/**
+ * Persist just the theme, leaving the rest of the file exactly as written.
+ *
+ * Not `saveConfig({ ...(await loadConfig()), theme })`: that would bake every
+ * current default into the file, and the whole point of the shallow merge above
+ * is that a config listing only what you care about keeps picking up new ones.
+ */
+export async function saveTheme(theme: ThemeName): Promise<void> {
+  let raw: Record<string, unknown> = {};
+  try {
+    raw = JSON.parse(await readFile(CONFIG_FILE, 'utf8')) as Record<string, unknown>;
+  } catch (error) {
+    // No file yet is fine — write one holding just the theme. Anything else means
+    // there is a config there we could not parse, and clobbering a config to
+    // record a colour scheme is not a trade worth making.
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  await ensureDirs();
+  await writeFile(CONFIG_FILE, `${JSON.stringify({ ...raw, theme }, null, 2)}\n`, 'utf8');
 }

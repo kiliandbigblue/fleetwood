@@ -20,6 +20,9 @@ export * as repoIndex from './repoIndex.ts';
 export * as worktree from './worktree.ts';
 export * as prSession from './prSession.ts';
 export * as task from './task.ts';
+// Flat, because both renderers paint from the same palettes and neither may
+// import the barrel for them (which pulls in tmux and process scanning).
+export { THEMES, THEME_NAMES, DEFAULT_THEME, isThemeName, paletteFor, rgbTriplet } from './theme.ts';
 
 // Types consumers need by name (namespace re-exports don't surface them).
 export type { PullRequest, ChecksState, PrLists } from './github.ts';
@@ -38,6 +41,7 @@ export type { AgentState, AgentEvent, SpoolRecord } from './events.ts';
 export type { LocalRepo, RepoIndex } from './repoIndex.ts';
 export type { Worktree } from './worktree.ts';
 export type { Config, MergedConfig, DeployPatterns } from './config.ts';
+export type { Palette, Theme, ThemeName } from './theme.ts';
 export type { Task, TaskRepo, CreateTaskInput, TaskResult } from './task.ts';
 export type { ActionResult } from './actions.ts';
 export type { PromptOption, ScreenRead } from './screen.ts';

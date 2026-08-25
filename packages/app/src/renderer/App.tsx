@@ -7,9 +7,11 @@ import { TaskList } from './TaskList.tsx';
 import { NewTask } from './NewTask.tsx';
 import { Palette } from './Palette.tsx';
 import { LimitBars } from './LimitBars.tsx';
+import { ThemePicker } from './ThemePicker.tsx';
 // The leaf module: the barrel re-exports tmux and process scanning, which fail
 // the renderer bundle on `node:child_process`.
 import { needsDeploy } from '@fleetwood/core/deployState';
+import { applyTheme } from './theme.ts';
 import { money, send } from './api.ts';
 import { api } from './api.ts';
 
@@ -27,8 +29,19 @@ export function App(): React.JSX.Element {
   const [pinned, setPinned] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [newTaskOpen, setNewTaskOpen] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
 
   useEffect(() => api.onSnapshot(setSnapshot), []);
+
+  /*
+   * Repaint whenever the configured theme changes — including the very first
+   * snapshot, which is what actually applies the config on a cold start. Keyed on
+   * the name alone, so the 1s snapshot poll is not writing eleven custom
+   * properties a second.
+   */
+  useEffect(() => {
+    if (snapshot) applyTheme(snapshot.theme);
+  }, [snapshot?.theme]);
 
   useEffect(() => {
     if (!toast) return;
@@ -112,6 +125,14 @@ export function App(): React.JSX.Element {
               </span>
             )}
           </div>
+          {snapshot && (
+            <ThemePicker
+              current={snapshot.theme}
+              open={themeOpen}
+              onToggle={() => setThemeOpen((open) => !open)}
+              onClose={() => setThemeOpen(false)}
+            />
+          )}
           <button
             className={`icon-button${pinned ? ' on' : ''}`}
             title="keep on top of other windows"

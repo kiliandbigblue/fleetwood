@@ -77,8 +77,8 @@ export function Palette({ open, onClose, sessions, onResult }: Props): React.JSX
     >
       <div
         style={{
-          background: 'var(--surface)',
-          border: '1px solid var(--overlay)',
+          background: 'var(--panel)',
+          border: '1px solid var(--edge)',
           borderRadius: 'var(--radius)',
           overflow: 'hidden',
           maxHeight: '80%',
@@ -105,7 +105,7 @@ export function Palette({ open, onClose, sessions, onResult }: Props): React.JSX
             padding: '10px 12px',
             background: 'transparent',
             border: 0,
-            borderBottom: '1px solid var(--overlay)',
+            borderBottom: '1px solid var(--edge)',
             color: 'var(--text)',
             font: 'inherit',
             outline: 'none',
@@ -123,11 +123,11 @@ export function Palette({ open, onClose, sessions, onResult }: Props): React.JSX
                 gap: 8,
                 alignItems: 'baseline',
                 padding: '6px 12px',
-                background: index === cursor ? 'var(--overlay)' : 'transparent',
+                background: index === cursor ? 'var(--edge)' : 'transparent',
                 cursor: 'pointer',
               }}
             >
-              <span style={{ color: item.kind === 'session' ? 'var(--foam)' : 'var(--muted)', fontSize: 10 }}>
+              <span style={{ color: item.kind === 'session' ? 'var(--ok)' : 'var(--dim)', fontSize: 10 }}>
                 {item.kind === 'session' ? 'session' : 'project'}
               </span>
               <span>{item.name}</span>

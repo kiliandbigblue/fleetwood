@@ -1,4 +1,6 @@
 import { homedir } from 'node:os';
+import { DEFAULT_THEME, THEMES, isThemeName, rgbTriplet } from '@fleetwood/core/theme';
+import type { Palette } from '@fleetwood/core/theme';
 
 const useColor = process.stdout.isTTY && process.env.NO_COLOR === undefined;
 
@@ -6,18 +8,42 @@ function wrap(open: string): (s: string) => string {
   return (s) => (useColor ? `\x1b[${open}m${s}\x1b[0m` : s);
 }
 
-/** Rose Pine, to match the tmux theme. */
+/**
+ * The palette in force, swapped by `useTheme` once the config has been read.
+ *
+ * Mutable, and read at paint time rather than captured when `c` is built:
+ * `render.ts` assembles its status table at module load, before `main` has had a
+ * chance to read anything off disk. Late-binding the lookup is what lets those
+ * module-level references still honour the setting.
+ */
+let palette: Palette = THEMES[DEFAULT_THEME].palette;
+
+/** Point `c` at a theme. An unknown name falls back rather than throwing. */
+export function useTheme(name: unknown): void {
+  palette = THEMES[isThemeName(name) ? name : DEFAULT_THEME].palette;
+}
+
+function role(name: keyof Palette): (s: string) => string {
+  return (s) => (useColor ? `\x1b[38;2;${rgbTriplet(palette[name])}m${s}\x1b[0m` : s);
+}
+
+/**
+ * The colours, named for their job — the same eleven roles the panel paints with,
+ * minus the surfaces, which a terminal supplies itself.
+ *
+ * `dim` and `muted` are both here and are not the same thing: `dim` is SGR 2, the
+ * terminal's own faint attribute, which stays legible whatever the theme; `muted`
+ * is the palette's dimmest colour.
+ */
 export const c = {
   dim: wrap('2'),
   bold: wrap('1'),
-  love: wrap('38;2;235;111;146'), // red — blocked / error
-  gold: wrap('38;2;246;193;119'), // yellow — waiting
-  rose: wrap('38;2;234;154;151'),
-  pine: wrap('38;2;49;116;143'), // teal — idle
-  foam: wrap('38;2;156;207;216'), // cyan — working
-  iris: wrap('38;2;196;167;231'), // purple — accents
-  muted: wrap('38;2;110;106;134'),
-  text: wrap('38;2;224;222;244'),
+  danger: role('danger'), // blocked / error
+  warn: role('warn'), // waiting
+  branch: role('branch'), // branch and repo names
+  ok: role('ok'), // working
+  accent: role('accent'), // the agent tool, and other accents
+  muted: role('dim'),
 };
 
 /** Collapse $HOME to ~ so paths stay scannable. */

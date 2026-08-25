@@ -22,12 +22,12 @@ export function renderLimits(limits: PlanLimits): string {
   if (limits.windows.length === 0) return '';
   const now = Math.floor(Date.now() / 1000);
   const titleWidth = Math.max(...limits.windows.map((w) => width(w.title)));
-  const lines: string[] = [`  ${c.iris('claude')} ${c.muted('plan usage')}`];
+  const lines: string[] = [`  ${c.accent('claude')} ${c.muted('plan usage')}`];
 
   for (const window of limits.windows) {
     const percent = Math.round(window.utilization * 100);
     const filled = Math.max(1, Math.round(window.utilization * 16));
-    const paint = percent >= 90 ? c.love : percent >= 75 ? c.gold : c.foam;
+    const paint = percent >= 90 ? c.danger : percent >= 75 ? c.warn : c.ok;
     const bar = `${paint('█'.repeat(filled))}${c.dim('░'.repeat(16 - filled))}`;
     const reset =
       window.resetsAt === undefined
@@ -52,13 +52,13 @@ interface Style {
 }
 
 const STYLES: Record<AgentStatus, Style> = {
-  working: { glyph: '▶', paint: c.foam, label: 'working' },
-  blocked_permission: { glyph: '✋', paint: c.love, label: 'permission' },
-  blocked_input: { glyph: '✋', paint: c.gold, label: 'waiting' },
-  compacting: { glyph: '⟳', paint: c.iris, label: 'compacting' },
+  working: { glyph: '▶', paint: c.ok, label: 'working' },
+  blocked_permission: { glyph: '✋', paint: c.danger, label: 'permission' },
+  blocked_input: { glyph: '✋', paint: c.warn, label: 'waiting' },
+  compacting: { glyph: '⟳', paint: c.accent, label: 'compacting' },
   idle: { glyph: '○', paint: c.muted, label: 'idle' },
   starting: { glyph: '◌', paint: c.muted, label: 'starting' },
-  error: { glyph: '✗', paint: c.love, label: 'error' },
+  error: { glyph: '✗', paint: c.danger, label: 'error' },
   gone: { glyph: '×', paint: c.dim, label: 'gone' },
 };
 
@@ -78,11 +78,11 @@ function duration(seconds: number): string {
 function toolLabel(tool: string): string {
   switch (tool) {
     case 'claude':
-      return c.iris('claude');
+      return c.accent('claude');
     case 'cursor':
-      return c.foam('cursor');
+      return c.ok('cursor');
     case 'codex':
-      return c.gold('codex ');
+      return c.warn('codex ');
     default:
       return c.muted(tool);
   }
@@ -124,7 +124,7 @@ export function renderAgentLine(agent: FleetAgent, indent = '    '): string {
   const forTime = c.muted(pad(age, 8));
   // ⤶ a nested agent, ⇢ one hosted by the claude daemon and matched to this pane.
   const nested = agent.nested ? c.dim('⤶') : agent.hosted ? c.dim('⇢') : ' ';
-  const subagents = agent.subagents > 0 ? c.iris(` +${agent.subagents}`) : '';
+  const subagents = agent.subagents > 0 ? c.accent(` +${agent.subagents}`) : '';
   const activity = agent.activity ? c.dim(` ${agent.activity}`) : '';
   const pane = c.muted(pad(agent.pane ?? '—', 4));
   return `${indent}${status}${provenanceMark(agent)} ${pane} ${toolLabel(agent.tool)}${nested}${subagents} ${forTime}${costColumn(agent.usage)}${activity}`;
@@ -135,13 +135,13 @@ export function renderFleet(fleet: FleetState, limits?: PlanLimits): string {
   const { counts } = fleet;
 
   const summary = [
-    counts.working > 0 ? c.foam(`${counts.working} working`) : '',
+    counts.working > 0 ? c.ok(`${counts.working} working`) : '',
     counts.blocked_permission + counts.blocked_input > 0
-      ? c.love(`${counts.blocked_permission + counts.blocked_input} blocked`)
+      ? c.danger(`${counts.blocked_permission + counts.blocked_input} blocked`)
       : '',
     counts.idle > 0 ? c.muted(`${counts.idle} idle`) : '',
     // Summed over sessions and orphans alike, so the header agrees with the rows.
-    counts.costUsd > 0 ? c.gold(formatMoney(counts.costUsd)) : '',
+    counts.costUsd > 0 ? c.warn(formatMoney(counts.costUsd)) : '',
   ].filter(Boolean);
 
   lines.push(
@@ -159,11 +159,11 @@ export function renderFleet(fleet: FleetState, limits?: PlanLimits): string {
   const nameWidth = Math.max(...fleet.sessions.map((s) => width(s.name)), 10);
 
   for (const session of fleet.sessions) {
-    const attached = session.attached > 0 ? c.foam('●') : c.muted('○');
-    const attention = session.needsAttention ? c.love(' ✋') : '';
-    const kind = session.meta.kind ? c.iris(session.meta.kind) : '';
-    const pr = session.meta.pr ? c.gold(` ${session.meta.pr}`) : '';
-    const branch = session.meta.branch ? c.rose(` ${session.meta.branch}`) : '';
+    const attached = session.attached > 0 ? c.ok('●') : c.muted('○');
+    const attention = session.needsAttention ? c.danger(' ✋') : '';
+    const kind = session.meta.kind ? c.accent(session.meta.kind) : '';
+    const pr = session.meta.pr ? c.warn(` ${session.meta.pr}`) : '';
+    const branch = session.meta.branch ? c.branch(` ${session.meta.branch}`) : '';
 
     const spend = session.usage?.costUsd ? ` ${c.muted(formatCost(session.usage))}` : '';
 
