@@ -27,19 +27,6 @@ export function duration(seconds: number): string {
   return minutes % 60 === 0 ? `${hours}h` : `${hours}h${minutes % 60}m`;
 }
 
-/**
- * Spend formatting lives in core, beside the data and shared with the CLI.
- *
- * Imported from the leaf module rather than the package barrel on purpose: the
- * barrel re-exports tmux and process scanning, so `@fleetwood/core` in a
- * renderer file fails the bundle on `node:child_process`.
- */
-export {
-  formatCost as cost,
-  formatMoney as money,
-  describeUsage as usageTitle,
-} from '@fleetwood/core/usageFormat';
-
 export function tildify(path: string): string {
   return path.replace(/^\/Users\/[^/]+/, '~');
 }

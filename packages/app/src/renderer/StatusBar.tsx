@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import type { FleetState, LimitWindow, PlanLimits } from '@fleetwood/core';
-import { duration, money } from './api.ts';
+import { duration } from './api.ts';
 import { useDismiss } from './useDismiss.ts';
 
 interface Props {
@@ -137,8 +137,8 @@ function Quota({ limits }: { limits: PlanLimits }): React.JSX.Element | null {
  * The counterweight to the top rail. Up there is everything that is waiting on
  * you and every way to get to it; down here is everything that is merely true —
  * ambient, never actionable, and so never in the way of the list between them.
- * That split is why `blocked` moved up out of this row and `working`, `idle` and
- * the fleet's spend moved down into it.
+ * That split is why `blocked` moved up out of this row and `working` and `idle`
+ * moved down into it.
  *
  * `working` and `idle` do not have to add up to the fleet: `starting` and
  * `compacting` are real states that pass too quickly to be worth a word here, and
@@ -164,11 +164,6 @@ export function StatusBar({ counts, limits }: Props): React.JSX.Element {
         >
           {counts.total === 0 ? 'no agents' : `${counts.idle} idle`}
         </span>
-        {counts.costUsd > 0 && (
-          <span className="vital" title="what the whole fleet has spent, estimated at API rates">
-            {money(counts.costUsd)}
-          </span>
-        )}
       </div>
       {limits && <Quota limits={limits} />}
     </footer>

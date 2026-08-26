@@ -663,28 +663,6 @@ button {
   flex: none;
 }
 
-/* Deliberately the same weight as the duration beside it: spend is reference
-   information, not a status. The dot and the activity stay the loudest things
-   on the row. */
-.cost {
-  color: var(--dim);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  flex: none;
-}
-
-/* Right edge of the card header — unless the path is there, having already
-   claimed the free space with its own auto margin, in which case cost trails it. */
-.session-cost {
-  margin-left: auto;
-  font-family: var(--mono);
-  font-size: 10.5px;
-}
-
-.head-path + .session-cost {
-  margin-left: 0;
-}
-
 .nested {
   color: var(--dim);
   font-size: 10px;

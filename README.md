@@ -51,8 +51,9 @@ repeating the same cumulative usage (measured: 738 lines for 377 real messages),
 so identity is the message id; and cache reads dominate any token count, which is
 why the row shows dollars. A session measured at 130M tokens cost $101, ~95% of
 those tokens being reads at a tenth of the input rate — "130M" reads as enormous
-whatever the agent actually did. Reads are incremental from a byte offset, so the
-1s poll re-parses only what was appended.
+whatever the agent actually did. Reads are incremental from a byte offset, so a
+repeated poll re-parses only what was appended. This is a CLI figure: the app's
+panel carries the plan's runway instead, and asks for no spend at all.
 
 How much *runway* is left is a different thing entirely, and it isn't on disk:
 the plan's usage windows come from the same endpoint `/usage` uses. That needs an
@@ -119,9 +120,9 @@ guessed onto the wrong terminal. `fw doctor` reports both numbers.
 - **Live agent status per pane** — working / needs-permission / waiting / idle /
   compacting / gone, with what the agent is doing, how long it's been in that
   state, its subagent count and error count.
-- **What each agent has cost**, folded from its own transcript, with the plan's
-  usage windows above it — so "which pane is burning the budget" and "how much
-  runway is left" are both answerable at a glance.
+- **How much runway is left**, as the plan's usage windows — one gauge in the
+  panel's bottom rail that expands into all of them. What each agent has *cost*,
+  folded from its own transcript, is a `fw` figure rather than a panel one.
 - **Approve or deny from the panel.** A blocked agent's actual prompt is read off
   the pane and rendered with buttons; clicking one sends the keystroke. This is the
   feature that makes the app worth keeping open.

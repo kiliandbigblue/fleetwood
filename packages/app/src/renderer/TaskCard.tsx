@@ -4,7 +4,7 @@ import type { FleetAgent, FleetSession, Task, TaskRepo } from '@fleetwood/core';
 // renderer bundle on `node:child_process`.
 import { partitionAgents, repoSummary } from '@fleetwood/core/taskView';
 import { AgentRow } from './AgentRow.tsx';
-import { cost, send, usageTitle } from './api.ts';
+import { send } from './api.ts';
 
 interface Props {
   task: Task;
@@ -186,12 +186,6 @@ export function TaskCard({ task, session, editor, onResult }: Props): React.JSX.
           {expanded ? '▾ ' : '▸ '}
           {repoSummary(task.repos, task.branch)}
         </button>
-        {/* What this task has cost across its agents. */}
-        {session?.usage && (
-          <span className="cost session-cost" title={usageTitle(session.usage)}>
-            {cost(session.usage)}
-          </span>
-        )}
       </div>
 
       <div className="branch-line" title={task.branch}>

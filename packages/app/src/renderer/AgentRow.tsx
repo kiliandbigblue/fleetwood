@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { FleetAgent } from '@fleetwood/core';
-import { cost, duration, send, usageTitle } from './api.ts';
+import { duration, send } from './api.ts';
 
 interface Props {
   agent: FleetAgent;
@@ -92,15 +92,6 @@ export function AgentRow({ agent, onResult }: Props): React.JSX.Element {
           </span>
         )}
         <span className="activity">{label}</span>
-        {/* Cost, not tokens: cache reads are the bulk of any token figure, so
-            "1.6M" says nothing about whether this agent is the expensive one.
-            Absent when we have no source (Claude transcript / Cursor stop) —
-            "$0" would be a claim. */}
-        {agent.usage && (
-          <span className="cost" title={usageTitle(agent.usage)}>
-            {cost(agent.usage)}
-          </span>
-        )}
         {/* "up 6h" reads as uptime. A bare "6h" against a status nothing timed —
             a process we only found in `ps` — claims it has been working that long. */}
         <span
