@@ -303,12 +303,30 @@ fw task archive flow-execution-labels
 
 The session's first window is rooted at the task folder, so **an agent there can grep
 and edit across every involved repo** — that's what removes the upfront guessing.
-⌘T opens the form in the app, and so does ⌘K: the palette's last row is always
-**new task**, carrying whatever you typed as the summary. That row is the answer to
-the search that found nothing — you went looking for the work by name, and the
-reason it wasn't there is that it doesn't exist yet. It hands off to the same form
-rather than creating anything, because a microservice and a repo set are not
-things a one-line query can supply.
+⌘T opens it in the app, and so does ⌘K: the palette's last row is always **new
+task**, carrying whatever you typed as the summary. That row is the answer to the
+search that found nothing — you went looking for the work by name, and the reason
+it wasn't there is that it doesn't exist yet.
+
+**It asks one question at a time**, keyed the way `gum` keys a shell script: ↑↓
+move, `↵` takes what you are on, `tab` builds a set out of several, `esc` steps
+back. Repos first, then the type, the microservice, the summary, and a goal you
+may skip. The answers stack up above the current question as lines you can click
+to go back to, and the branch the whole convention is aimed at is shown from the
+microservice onwards — as `feature/flow-…` while it is still a fragment, so a
+half-built name cannot pass for a finished one.
+
+Repos lead because that answer is what decides how much the rest of it matters: a
+task is a folder of worktrees, and picking none of them is the one way to fill
+every field in and have created nothing worth having. It is also the only question
+here you answer by recognising something rather than composing it.
+
+`↵` doing two jobs is what keeps `tab` from being a mode: it takes the set you
+built if you built one, and the row you are standing on if you did not — so the
+one-repo case, which is most of them, never has to find out the multi-select is
+there. The five questions were five fields on one form before, which read as five
+things to settle before anything would happen; they are one decision each, and
+only the first is hard.
 
 **Creating a task starts no agent.** Those are two decisions and only the first one
 is being made at that moment — the repo set is still a guess, and a task often sits

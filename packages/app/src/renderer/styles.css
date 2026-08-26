@@ -1388,10 +1388,24 @@ button {
   padding: 34px 10px 10px;
   z-index: 20;
   display: flex;
+  /* Not stretched: the flow is a card near the top, and a box grown to the
+     window's height would put its buttons an inch below the last thing it asked. */
+  align-items: flex-start;
 }
 
+/*
+ * Solid, unlike the cards under it, and for the same reason the theme popover is:
+ * one question on screen at a time means the question is the only thing to read,
+ * and a `panel` thinned by `bgOpacity` let the fleet list behind it read straight
+ * through the sentence. The backdrop dims that list; it does not stop it showing.
+ *
+ * `min-height` with the foot pushed to the bottom keeps the box one size across
+ * all five steps. Sized to the tallest of them, so the buttons do not walk up the
+ * window when a list of repos gives way to a single input — a primary button that
+ * moves between steps is one you learn not to aim for.
+ */
 .modal {
-  background: var(--panel);
+  background: var(--panel-solid);
   border: 1px solid var(--edge);
   border-radius: var(--radius);
   padding: 10px;
@@ -1399,8 +1413,16 @@ button {
   flex-direction: column;
   gap: 6px;
   width: 100%;
+  min-height: 330px;
   max-height: 100%;
   overflow-y: auto;
+  outline: none;
+}
+
+/* Takes the difference between the tallest step and this one. */
+.step-fill {
+  flex: 1;
+  min-height: 0;
 }
 
 .modal-title {
@@ -1424,23 +1446,93 @@ button {
   border-color: var(--accent);
 }
 
-.field-row {
+/*
+ * The flow's scrollback: one line per question already answered, and the way
+ * back to it. A link rather than a filled-in field, because it is a record of a
+ * decision — re-opening it is a deliberate act, not something a stray keystroke
+ * in a form you scrolled past can do.
+ */
+.step-done {
   display: flex;
-  gap: 4px;
-}
-
-.type-chip {
-  padding: 3px 10px;
-  border-radius: 5px;
-  background: var(--edge);
-  color: var(--dim);
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 8px;
   font-size: 11.5px;
+  color: var(--dim);
+  text-align: left;
+  min-width: 0;
 }
-.type-chip.on {
-  background: color-mix(in srgb, var(--accent) 30%, var(--panel));
+.step-done:hover {
   color: var(--text);
 }
+.step-done-key {
+  color: var(--soft);
+  flex: none;
+  width: 92px;
+}
+.step-done-key::before {
+  content: '✓ ';
+  color: var(--ok);
+}
+.step-done-value {
+  font-family: var(--mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
+.step-question {
+  font-size: 12px;
+  color: var(--text);
+  padding: 4px 8px 0;
+}
+
+.choices {
+  border: 1px solid var(--edge);
+  border-radius: 5px;
+  max-height: 190px;
+  overflow-y: auto;
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 8px;
+  font-size: 11.5px;
+  cursor: pointer;
+  min-width: 0;
+}
+/*
+ * Two different things, so they are drawn differently rather than in two
+ * strengths of the same fill: `at` is where the keyboard is standing and moves
+ * with every arrow, `on` is a choice you made and stays until you undo it.
+ */
+.choice.at {
+  background: var(--edge);
+}
+.choice.on {
+  color: var(--text);
+}
+.choice.on .choice-mark {
+  color: var(--ok);
+}
+.choice-mark {
+  flex: none;
+  width: 10px;
+  color: var(--accent);
+}
+.choice-name {
+  font-family: var(--mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * The branch the whole convention is aimed at, so it is the one line here set in
+ * the terminal's face and coloured as a value rather than as chrome.
+ */
 .branch-preview {
   font-family: var(--mono);
   font-size: 11.5px;
@@ -1453,41 +1545,19 @@ button {
   text-overflow: ellipsis;
 }
 
-.repo-picker {
-  border: 1px solid var(--edge);
-  border-radius: 5px;
-  max-height: 220px;
-  overflow-y: auto;
-}
-
-.repo-option {
+/* The keys, kept under the thing they drive rather than in a legend. */
+.step-foot {
   display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 8px;
-  font-size: 11.5px;
-  cursor: pointer;
-  min-width: 0;
-}
-.repo-option:hover {
-  background: var(--edge);
-}
-.repo-option.on {
-  background: color-mix(in srgb, var(--accent) 14%, var(--panel));
-}
-.repo-option span:first-of-type {
-  font-family: var(--mono);
+  align-items: baseline;
+  gap: 6px;
+  padding: 0 8px;
 }
 
-.repo-branch-hint {
-  margin-left: auto;
+.step-count {
   color: var(--dim);
-  font-size: 10px;
+  font-size: 10.5px;
   font-family: var(--mono);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 55%;
+  flex: none;
 }
 
 .modal-actions {
