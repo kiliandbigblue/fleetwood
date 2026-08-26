@@ -8,7 +8,6 @@ export * as proc from './procScan.ts';
 export * as claudeDaemon from './claudeDaemon.ts';
 export * as spool from './spool.ts';
 export * as screen from './screen.ts';
-export * as usage from './usage.ts';
 export * as limits from './limits.ts';
 export * as hooks from './hookInstall.ts';
 export * as actions from './actions.ts';
@@ -57,10 +56,5 @@ export type { Palette, Theme, ThemeName } from './theme.ts';
 export type { Task, TaskRepo, CreateTaskInput, TaskResult } from './task.ts';
 export type { ActionResult } from './actions.ts';
 export type { PromptOption, ScreenRead } from './screen.ts';
-export type { AgentUsage, CursorTurnUsage } from './usage.ts';
 export type { PlanLimits, LimitWindow } from './limits.ts';
-
-// Flat, because both renderers format spend and neither should reimplement it.
-// The rest of usage.ts stays namespaced — `resetCache` is too generic to hoist.
-export { describeUsage, formatCost, formatMoney, formatTokens } from './usage.ts';
 export type { DaemonWorker } from './claudeDaemon.ts';

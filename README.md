@@ -43,26 +43,21 @@ inferred ones are marked (`~` screen, `?` process-only, `…` stale) so an infer
 never looks as solid as a report. Durations say what they measure: a status nobody
 timed is shown as uptime (`up 18h`), never as time spent working.
 
-**Spend has two separate sources, and they answer different questions.** What an
-agent *cost* is folded from its own transcript — Claude Code records per-message
-`usage` there, and the hook already tells us the path. Two things make the naive
-reading wrong: one assistant turn is written as one line per content block, each
-repeating the same cumulative usage (measured: 738 lines for 377 real messages),
-so identity is the message id; and cache reads dominate any token count, which is
-why the row shows dollars. A session measured at 130M tokens cost $101, ~95% of
-those tokens being reads at a tenth of the input rate — "130M" reads as enormous
-whatever the agent actually did. Reads are incremental from a byte offset, so a
-repeated poll re-parses only what was appended. This is a CLI figure: the app's
-panel carries the plan's runway instead, and asks for no spend at all.
+**Runway is measured, spend is not.** Fleetwood used to price every agent off its
+transcript and show the dollars per row, per session and per fleet. It doesn't any
+more, in either front end: what an agent has already spent is history, no control
+here makes it smaller, and it sat next to the one figure that does change what you
+do next. So the question this answers is how much runway is left, and nothing else
+about money.
 
-How much *runway* is left is a different thing entirely, and it isn't on disk:
-the plan's usage windows come from the same endpoint `/usage` uses. That needs an
-OAuth credential, so **fleetwood ships no credential reader of its own** — you
-set `limits.tokenCommand` to a command that prints yours, and the feature is
-inert until you do. Neither source can take the panel down: an unknown model
-still counts tokens and marks the figure a floor with `~`, an endpoint that
-changed shape yields an empty gauge, and a failed poll keeps the last bars with
-an "as of" note rather than blanking them.
+That number isn't on disk — the plan's usage windows come from the same endpoint
+`/usage` uses. It needs an OAuth credential, so **fleetwood ships no credential
+reader of its own**: you set `limits.tokenCommand` to a command that prints
+yours, and the feature is inert until you do. It cannot take the panel down
+either. An endpoint that changed shape yields an empty gauge, and a failed poll
+keeps the last bars with an "as of" note rather than blanking them. The gauge
+shows the window closest to stopping you rather than the first one, because a
+session at 20% while the week sits at 94% reads green right up to the stall.
 
 **"Deployed" is mostly not a fact GitHub holds, so the badge doesn't claim it.**
 Across every repo here there are no Deployments-API entries and no job-level
@@ -121,8 +116,8 @@ guessed onto the wrong terminal. `fw doctor` reports both numbers.
   compacting / gone, with what the agent is doing, how long it's been in that
   state, its subagent count and error count.
 - **How much runway is left**, as the plan's usage windows — one gauge in the
-  panel's bottom rail that expands into all of them. What each agent has *cost*,
-  folded from its own transcript, is a `fw` figure rather than a panel one.
+  panel's bottom rail that expands into all of them, and `fw limits` in the
+  terminal. It is the only money-shaped number here; per-agent spend is gone.
 - **Approve or deny from the panel.** A blocked agent's actual prompt is read off
   the pane and rendered with buttons; clicking one sends the keystroke. This is the
   feature that makes the app worth keeping open.

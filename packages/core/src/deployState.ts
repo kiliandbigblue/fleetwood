@@ -5,7 +5,7 @@ import type { DeployPatterns, MergedConfig } from './config.ts';
  *
  * A leaf module on purpose: `github.ts` reaches `node:child_process` through
  * `exec.ts`, so a renderer file importing these from there would fail the Vite
- * bundle. Same reason `usageFormat.ts` exists separately.
+ * bundle. Same reason `taskView.ts` exists separately.
  */
 /**
  * What the CI on the base branch did with a merge commit.

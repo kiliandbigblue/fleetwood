@@ -1,11 +1,4 @@
-import { formatCost, formatMoney } from '@fleetwood/core';
-import type {
-  AgentStatus,
-  AgentUsage,
-  FleetAgent,
-  FleetState,
-  PlanLimits,
-} from '@fleetwood/core';
+import type { AgentStatus, FleetAgent, FleetState, PlanLimits } from '@fleetwood/core';
 import { c, pad, relativeAge, tildify, width } from './ui.ts';
 
 /**
@@ -102,19 +95,6 @@ function provenanceMark(agent: FleetAgent): string {
   }
 }
 
-/**
- * Spend, or blank space where we have none.
- *
- * Cost rather than tokens: cache reads are the bulk of any token count, so the
- * token figure is enormous for every busy agent and says nothing about which one
- * is expensive. `~` marks a floor — some model had no published rate on file.
- * The column is padded either way so the durations after it stay aligned.
- */
-function costColumn(usage: AgentUsage | undefined): string {
-  if (!usage || usage.costUsd <= 0) return pad('', 8);
-  return c.muted(pad(formatCost(usage), 8));
-}
-
 export function renderAgentLine(agent: FleetAgent, indent = '    '): string {
   const style = STYLES[agent.status];
   const status = `${style.paint(style.glyph)} ${pad(style.paint(style.label), 11)}`;
@@ -127,7 +107,7 @@ export function renderAgentLine(agent: FleetAgent, indent = '    '): string {
   const subagents = agent.subagents > 0 ? c.accent(` +${agent.subagents}`) : '';
   const activity = agent.activity ? c.dim(` ${agent.activity}`) : '';
   const pane = c.muted(pad(agent.pane ?? '—', 4));
-  return `${indent}${status}${provenanceMark(agent)} ${pane} ${toolLabel(agent.tool)}${nested}${subagents} ${forTime}${costColumn(agent.usage)}${activity}`;
+  return `${indent}${status}${provenanceMark(agent)} ${pane} ${toolLabel(agent.tool)}${nested}${subagents} ${forTime}${activity}`;
 }
 
 export function renderFleet(fleet: FleetState, limits?: PlanLimits): string {
@@ -140,8 +120,6 @@ export function renderFleet(fleet: FleetState, limits?: PlanLimits): string {
       ? c.danger(`${counts.blocked_permission + counts.blocked_input} blocked`)
       : '',
     counts.idle > 0 ? c.muted(`${counts.idle} idle`) : '',
-    // Summed over sessions and orphans alike, so the header agrees with the rows.
-    counts.costUsd > 0 ? c.warn(formatMoney(counts.costUsd)) : '',
   ].filter(Boolean);
 
   lines.push(
@@ -165,10 +143,8 @@ export function renderFleet(fleet: FleetState, limits?: PlanLimits): string {
     const pr = session.meta.pr ? c.warn(` ${session.meta.pr}`) : '';
     const branch = session.meta.branch ? c.branch(` ${session.meta.branch}`) : '';
 
-    const spend = session.usage?.costUsd ? ` ${c.muted(formatCost(session.usage))}` : '';
-
     lines.push(
-      `${attached} ${c.bold(pad(session.name, nameWidth))}${attention} ${kind}${branch}${pr} ${c.muted(tildify(session.path))} ${c.dim(relativeAge(session.createdAt))}${spend}`,
+      `${attached} ${c.bold(pad(session.name, nameWidth))}${attention} ${kind}${branch}${pr} ${c.muted(tildify(session.path))} ${c.dim(relativeAge(session.createdAt))}`,
     );
 
     if (session.agents.length === 0) {

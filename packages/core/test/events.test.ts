@@ -66,7 +66,7 @@ test('normalize reads cursor events from argv, mapped onto Claude vocabulary', (
   assert.equal(e?.activity, 'Shell: rm -rf build');
 });
 
-test('cursor stop carries per-turn token fields; other cursor events do not', () => {
+test('cursor stop maps onto Stop and keeps the transcript path it was handed', () => {
   const stop = normalize({
     source: 'cursor',
     pane: '%9',
@@ -74,82 +74,23 @@ test('cursor stop carries per-turn token fields; other cursor events do not', ()
     recvAt: 10,
     payload: {
       conversation_id: 'conv-9',
-      model: 'grok-4.5',
       transcript_path: '/tmp/conv-9.jsonl',
-      input_tokens: 191_551,
-      output_tokens: 1_789,
-      cache_read_tokens: 176_032,
-      cache_write_tokens: 0,
+      status: 'completed',
     },
   });
   assert.equal(stop?.event, 'Stop');
+  assert.equal(stop?.sessionId, 'conv-9');
   assert.equal(stop?.transcript, '/tmp/conv-9.jsonl');
-  assert.deepEqual(stop?.turnUsage, {
-    model: 'grok-4.5',
-    inputTokens: 191_551,
-    outputTokens: 1_789,
-    cacheReadTokens: 176_032,
-    cacheWriteTokens: 0,
-  });
 
-  const submit = normalize({
-    source: 'cursor',
-    arg: 'beforeSubmitPrompt',
-    recvAt: 9,
-    payload: { conversation_id: 'conv-9', prompt: 'hi', input_tokens: 99 },
-  });
-  // Token fields on a non-stop event are ignored — only stop is authoritative.
-  assert.equal(submit?.turnUsage, undefined);
-});
-
-test('cursor stop without token fields is still a stop, just unpriced', () => {
-  const e = normalize({
+  // A payload carrying none of the optional fields is still a stop.
+  const bare = normalize({
     source: 'cursor',
     arg: 'stop',
     recvAt: 11,
-    payload: { conversation_id: 'conv-10', status: 'completed', loop_count: 0 },
+    payload: { conversation_id: 'conv-10', loop_count: 0 },
   });
-  assert.equal(e?.event, 'Stop');
-  assert.equal(e?.turnUsage, undefined);
-});
-
-test('cursor stop turns accumulate spend on the agent state', () => {
-  const first = normalize({
-    source: 'cursor',
-    arg: 'stop',
-    recvAt: 20,
-    payload: {
-      conversation_id: 'c1',
-      model: 'composer-2.5',
-      input_tokens: 1_000_000,
-      output_tokens: 1_000_000,
-      cache_read_tokens: 0,
-      cache_write_tokens: 0,
-    },
-  });
-  const second = normalize({
-    source: 'cursor',
-    arg: 'stop',
-    recvAt: 30,
-    payload: {
-      conversation_id: 'c1',
-      model: 'composer-2.5',
-      input_tokens: 500_000,
-      output_tokens: 0,
-      cache_read_tokens: 400_000,
-      cache_write_tokens: 0,
-    },
-  });
-  assert.ok(first && second);
-  const state = fold([first, second]);
-  assert.ok(state.usage);
-  // First turn: 1M in @ $3 + 1M out @ $15 = $18.
-  // Second: 100k fresh @ $3 + 400k read @ $0.20 = $0.30 + $0.08 = $0.38.
-  assert.equal(state.usage.costUsd, 18.38);
-  assert.equal(state.usage.messages, 2);
-  assert.equal(state.usage.inputTokens, 1_100_000);
-  assert.equal(state.usage.cacheReadTokens, 400_000);
-  assert.deepEqual(state.usage.models, ['composer-2.5']);
+  assert.equal(bare?.event, 'Stop');
+  assert.equal(bare?.transcript, undefined);
 });
 
 test('describeToolUse summarises the tools that matter, falls back safely', () => {

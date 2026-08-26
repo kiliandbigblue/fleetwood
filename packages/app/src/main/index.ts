@@ -124,9 +124,6 @@ async function refreshLimits(settings: Awaited<ReturnType<typeof configModule.lo
 async function buildSnapshot(): Promise<Snapshot> {
   const settings = await configModule.loadConfig();
   await refreshLimits(settings);
-  // No `usage`: the panel shows the plan's quota, not per-agent spend, so there
-  // is nothing left to render it into — and asking for it would parse every
-  // transcript on the 1s poll for a figure nobody reads. The CLI still asks.
   const fleet = await buildFleet({
     states: collector?.states,
     capture: settings.capture,

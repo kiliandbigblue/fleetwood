@@ -69,9 +69,9 @@ function jsonOut(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
 
-/** The rendering commands — status, watch, agents — all want spend shown. */
+/** One place for the options the rendering commands — status, watch, agents — share. */
 async function fleet(capture: boolean): Promise<FleetState> {
-  return buildFleet({ capture, usage: true });
+  return buildFleet({ capture });
 }
 
 /**
