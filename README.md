@@ -192,10 +192,10 @@ For development, run it from the checkout instead:
 pnpm --filter @fleetwood/app dev
 ```
 
-⌥⇧F toggles the window, ⌘K opens the palette (jump to a session, open a project),
-⌘R refreshes. The tray title shows the fleet summary (`✋1`, `▶3`) so you can leave
-the window closed. To have it start with your machine: System Settings → General →
-Login Items → add Fleetwood.
+⌥⇧F toggles the window, ⌘K opens the palette (jump to a session, open a project,
+start a task), ⌘R refreshes. The tray title shows the fleet summary (`✋1`, `▶3`) so
+you can leave the window closed. To have it start with your machine: System
+Settings → General → Login Items → add Fleetwood.
 
 The bundle is **signed ad-hoc**, which is all that's needed for an app built on the
 machine that runs it: nothing downloads it, so Gatekeeper never quarantines it. It is
@@ -303,7 +303,12 @@ fw task archive flow-execution-labels
 
 The session's first window is rooted at the task folder, so **an agent there can grep
 and edit across every involved repo** — that's what removes the upfront guessing.
-⌘T opens the form in the app.
+⌘T opens the form in the app, and so does ⌘K: the palette's last row is always
+**new task**, carrying whatever you typed as the summary. That row is the answer to
+the search that found nothing — you went looking for the work by name, and the
+reason it wasn't there is that it doesn't exist yet. It hands off to the same form
+rather than creating anything, because a microservice and a repo set are not
+things a one-line query can supply.
 
 **Creating a task starts no agent.** Those are two decisions and only the first one
 is being made at that moment — the repo set is still a guess, and a task often sits

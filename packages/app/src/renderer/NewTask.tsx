@@ -11,6 +11,12 @@ interface Project {
 interface Props {
   open: boolean;
   onClose: () => void;
+  /**
+   * Summary the form opens with — what was typed into ⌘K before choosing to make
+   * a task of it. The microservice keeps the focus even so: it is the one field
+   * a palette query can never stand in for.
+   */
+  initialSummary?: string;
   onResult: (message: string, ok: boolean) => void;
 }
 
@@ -39,7 +45,7 @@ function buildBranch(type: string, microservice: string, summary: string): strin
  * created — the convention puts a microservice in the name, and only you know
  * which one, so nothing is guessed silently.
  */
-export function NewTask({ open, onClose, onResult }: Props): React.JSX.Element | null {
+export function NewTask({ open, onClose, initialSummary, onResult }: Props): React.JSX.Element | null {
   const [type, setType] = useState<string>('feature');
   const [microservice, setMicroservice] = useState('');
   const [summary, setSummary] = useState('');
@@ -53,14 +59,14 @@ export function NewTask({ open, onClose, onResult }: Props): React.JSX.Element |
     if (!open) return;
     setType('feature');
     setMicroservice('');
-    setSummary('');
+    setSummary(initialSummary ?? '');
     setGoal('');
     setQuery('');
     setSelected([]);
     void send({ kind: 'listProjects' }).then((result) => {
       if ('projects' in result) setProjects(result.projects.filter((p) => p.isRepo));
     });
-  }, [open]);
+  }, [open, initialSummary]);
 
   const branch = buildBranch(type, microservice, summary);
   const ready = microservice.trim().length > 0 && summary.trim().length > 0 && selected.length > 0;

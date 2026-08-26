@@ -29,6 +29,8 @@ export function App(): React.JSX.Element {
   const [pinned, setPinned] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [newTaskOpen, setNewTaskOpen] = useState(false);
+  // Carried from ⌘K into the form; empty for every other way in.
+  const [newTaskSummary, setNewTaskSummary] = useState('');
   const [themeOpen, setThemeOpen] = useState(false);
 
   useEffect(() => api.onSnapshot(setSnapshot), []);
@@ -68,6 +70,7 @@ export function App(): React.JSX.Element {
       } else if ((event.metaKey || event.ctrlKey) && event.key === 't') {
         event.preventDefault();
         setTab('fleet');
+        setNewTaskSummary('');
         setNewTaskOpen((open) => !open);
       } else if ((event.metaKey || event.ctrlKey) && event.key === 'r') {
         event.preventDefault();
@@ -227,7 +230,14 @@ export function App(): React.JSX.Element {
             })}
             {/* Last, not first: the top of this list is for whatever needs you, and
                 a dashed strip that never changes does not. ⌘T is the fast path. */}
-            <button className="new-task" onClick={() => setNewTaskOpen(true)} title="new task (⌘T)">
+            <button
+              className="new-task"
+              onClick={() => {
+                setNewTaskSummary('');
+                setNewTaskOpen(true);
+              }}
+              title="new task (⌘T)"
+            >
               + new task
             </button>
           </>
@@ -248,12 +258,24 @@ export function App(): React.JSX.Element {
           context rather than something you act on — see `StatusBar`. */}
       {counts && <StatusBar counts={counts} limits={snapshot?.limits} />}
 
-      <NewTask open={newTaskOpen} onClose={() => setNewTaskOpen(false)} onResult={onResult} />
+      <NewTask
+        open={newTaskOpen}
+        initialSummary={newTaskSummary}
+        onClose={() => setNewTaskOpen(false)}
+        onResult={onResult}
+      />
 
       <Palette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
         sessions={snapshot?.fleet.sessions.map((s) => s.name) ?? []}
+        /* The palette can only carry the summary; the form asks for the rest.
+           Forcing the fleet tab first so the card it creates is in view. */
+        onNewTask={(summary) => {
+          setTab('fleet');
+          setNewTaskSummary(summary);
+          setNewTaskOpen(true);
+        }}
         onResult={onResult}
       />
 

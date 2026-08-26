@@ -11,17 +11,24 @@ interface Props {
   open: boolean;
   onClose: () => void;
   sessions: string[];
+  onNewTask: (summary: string) => void;
   onResult: (message: string, ok: boolean) => void;
 }
 
+interface Item {
+  kind: 'session' | 'project' | 'new-task';
+  name: string;
+  path: string;
+}
+
 /**
- * ⌘K entry point: jump to a session, or open a project.
+ * ⌘K entry point: jump to a session, open a project, or start a task.
  *
  * Projects come from the same roots the existing tmux-sessionizer scans, and
  * opening one is find-or-create by the same session name — so this and
  * `prefix+g` always land in the same session rather than making two.
  */
-export function Palette({ open, onClose, sessions, onResult }: Props): React.JSX.Element | null {
+export function Palette({ open, onClose, sessions, onNewTask, onResult }: Props): React.JSX.Element | null {
   const [query, setQuery] = useState('');
   const [projects, setProjects] = useState<Project[]>([]);
   const [cursor, setCursor] = useState(0);
@@ -37,7 +44,7 @@ export function Palette({ open, onClose, sessions, onResult }: Props): React.JSX
     });
   }, [open]);
 
-  const items = useMemo(() => {
+  const items = useMemo((): Item[] => {
     const needle = query.toLowerCase().trim();
     const sessionItems = sessions.map((name) => ({ kind: 'session' as const, name, path: '' }));
     const projectItems = projects
@@ -45,10 +52,22 @@ export function Palette({ open, onClose, sessions, onResult }: Props): React.JSX
       .filter((p) => !sessions.includes(p.name.replaceAll('.', '_')))
       .map((p) => ({ kind: 'project' as const, name: p.name, path: p.path }));
     const all = [...sessionItems, ...projectItems];
-    if (needle.length === 0) return all.slice(0, 40);
-    return all
-      .filter((i) => i.name.toLowerCase().includes(needle) || i.path.toLowerCase().includes(needle))
-      .slice(0, 40);
+    const found =
+      needle.length === 0
+        ? all.slice(0, 40)
+        : all
+            .filter((i) => i.name.toLowerCase().includes(needle) || i.path.toLowerCase().includes(needle))
+            .slice(0, 40);
+    /*
+     * Every list here is of things that already exist, which dead-ends at exactly
+     * the moment worth catching: you typed the name of the work, nothing matched,
+     * and what you actually wanted was to start it. So the action is always
+     * present and the text you typed becomes the task's summary.
+     *
+     * Last rather than first, because Enter on a match has to stay a jump — that
+     * is what the palette is opened for the other ninety-nine times.
+     */
+    return [...found, { kind: 'new-task', name: query.trim(), path: '' }];
   }, [query, projects, sessions]);
 
   if (!open) return null;
@@ -57,6 +76,12 @@ export function Palette({ open, onClose, sessions, onResult }: Props): React.JSX
     const item = items[index];
     if (!item) return;
     onClose();
+    if (item.kind === 'new-task') {
+      // Handed to the form rather than created here: a task needs a microservice
+      // and a repo set, and neither is guessable from a palette query.
+      onNewTask(item.name);
+      return;
+    }
     const result =
       item.kind === 'session'
         ? await send({ kind: 'focusSession', session: item.name })
@@ -90,7 +115,7 @@ export function Palette({ open, onClose, sessions, onResult }: Props): React.JSX
         <input
           ref={inputRef}
           value={query}
-          placeholder="jump to a session, or open a project…"
+          placeholder="jump to a session, open a project, start a task…"
           onChange={(event) => {
             setQuery(event.target.value);
             setCursor(0);
@@ -112,7 +137,6 @@ export function Palette({ open, onClose, sessions, onResult }: Props): React.JSX
           }}
         />
         <div style={{ overflowY: 'auto' }}>
-          {items.length === 0 && <div className="empty">no match</div>}
           {items.map((item, index) => (
             <div
               key={`${item.kind}:${item.name}:${item.path}`}
@@ -127,10 +151,31 @@ export function Palette({ open, onClose, sessions, onResult }: Props): React.JSX
                 cursor: 'pointer',
               }}
             >
-              <span style={{ color: item.kind === 'session' ? 'var(--ok)' : 'var(--dim)', fontSize: 10 }}>
-                {item.kind === 'session' ? 'session' : 'project'}
+              <span
+                style={{
+                  color:
+                    item.kind === 'session'
+                      ? 'var(--ok)'
+                      : item.kind === 'new-task'
+                        ? 'var(--accent)'
+                        : 'var(--dim)',
+                  fontSize: 10,
+                }}
+              >
+                {item.kind === 'new-task' ? 'task' : item.kind}
               </span>
-              <span>{item.name}</span>
+              <span>
+                {item.kind === 'new-task'
+                  ? item.name.length > 0
+                    ? `new task: ${item.name}`
+                    : 'new task…'
+                  : item.name}
+              </span>
+              {item.kind === 'new-task' && (
+                <span className="path" style={{ marginLeft: 'auto' }}>
+                  ⌘T
+                </span>
+              )}
               {item.path && (
                 <span className="path" style={{ marginLeft: 'auto', maxWidth: '55%' }}>
                   {tildify(item.path)}
