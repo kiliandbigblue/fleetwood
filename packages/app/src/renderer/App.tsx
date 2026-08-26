@@ -40,11 +40,18 @@ export function App(): React.JSX.Element {
    * `force` on the merged list drops the cache, so a manual refresh re-asks even
    * rows whose state we assumed nothing could change.
    */
+  const [refreshing, setRefreshing] = useState(false);
   const refresh = useCallback((): void => {
-    void send({ kind: 'refresh' });
-    void send({ kind: 'refreshPrs' });
-    void send({ kind: 'refreshMerged', force: true });
-  }, []);
+    // Clicking again while the three are still out would resolve the spinner on
+    // the second round trip and leave the first still running.
+    if (refreshing) return;
+    setRefreshing(true);
+    void Promise.all([
+      send({ kind: 'refresh' }),
+      send({ kind: 'refreshPrs' }),
+      send({ kind: 'refreshMerged', force: true }),
+    ]).finally(() => setRefreshing(false));
+  }, [refreshing]);
 
   /*
    * Repaint whenever the configured theme or its opacity changes — including the
@@ -144,6 +151,7 @@ export function App(): React.JSX.Element {
           void send({ kind: 'setAlwaysOnTop', value: next });
         }}
         onRefresh={refresh}
+        refreshing={refreshing}
         themePicker={
           snapshot && (
             <ThemePicker

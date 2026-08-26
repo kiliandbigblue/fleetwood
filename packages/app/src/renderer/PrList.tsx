@@ -258,15 +258,6 @@ export function PrList({ prs, merged, tasks, prSessions, onResult }: Props): Rea
                 undo {undo.label}
               </button>
             )}
-            <button
-              className="chip"
-              title="re-read every row, ignoring what was cached"
-              onClick={() => {
-                void send({ kind: 'refreshMerged', force: true }).then((r) => onResult(r.detail, r.ok));
-              }}
-            >
-              ↻
-            </button>
           </span>
         </div>
         {!merged ? (

@@ -351,6 +351,21 @@ button {
   color: var(--warn);
 }
 
+/*
+ * Out on a refresh.
+ *
+ * A refresh that answers from a warm cache looks exactly like one that never
+ * fired, and the merged list's hard re-read can take seconds — so the control
+ * reports on itself rather than leaving you to click again.
+ */
+.icon-button.spinning {
+  color: var(--text);
+}
+
+.icon-button.spinning .icon {
+  animation: spin 0.9s linear infinite;
+}
+
 /* Merely showing its popover — pressed, not a mode. */
 .icon-button.showing,
 .quota-gauge.showing {
@@ -616,13 +631,24 @@ button {
   }
 }
 
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /*
- * Named rather than blanket-disabled on `*`: this is the only animation in the
- * panel, and a green dot that does not breathe is still a green dot.
+ * Named rather than blanket-disabled on `*`, because the two animations here are
+ * not the same kind of thing. A green dot that does not breathe is still a green
+ * dot, so `pulse` is pure decoration and goes. The refresh spinner is the only
+ * signal that a refresh is running, so stopping it would remove the feedback
+ * rather than quiet it — `.spinning` keeps its brightened colour as the still
+ * version of the same message.
  */
 @media (prefers-reduced-motion: reduce) {
   .status-working,
-  .dot.pulsing {
+  .dot.pulsing,
+  .icon-button.spinning .icon {
     animation: none;
   }
 }

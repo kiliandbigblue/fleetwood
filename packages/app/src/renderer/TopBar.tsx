@@ -29,6 +29,8 @@ interface Props {
   pinned: boolean;
   onPin: () => void;
   onRefresh: () => void;
+  /** Its three requests are still out — the button spins rather than looking idle. */
+  refreshing: boolean;
   /** The theme picker, passed in because it owns its own popover state. */
   themePicker?: React.ReactNode;
 }
@@ -62,6 +64,7 @@ export function TopBar({
   pinned,
   onPin,
   onRefresh,
+  refreshing,
   themePicker,
 }: Props): React.JSX.Element {
   const permission = counts?.blocked_permission ?? 0;
@@ -140,7 +143,12 @@ export function TopBar({
         >
           <Icon name="above" />
         </button>
-        <button className="icon-button" title="refresh (⌘R)" onClick={onRefresh}>
+        <button
+          className={`icon-button${refreshing ? ' spinning' : ''}`}
+          title={refreshing ? 're-reading…' : 'refresh the fleet and every pull request list (⌘R)'}
+          aria-busy={refreshing}
+          onClick={onRefresh}
+        >
           <Icon name="refresh" />
         </button>
       </div>
