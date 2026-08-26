@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { loadConfig } from './config.ts';
 import { getIndex, resolveRepo } from './repoIndex.ts';
@@ -67,6 +67,18 @@ const RECORD_FILE = 'task.json';
 const BRIEF_FILE = 'TASK.md';
 /** Hand-written, never generated — see `readTaskNotes`. */
 const NOTES_FILE = 'NOTES.md';
+
+/**
+ * Where skills live, for both agents at once.
+ *
+ * The same two paths do double duty: they are where a repo keeps its skills, and
+ * where an agent launched in the task folder looks for them — Claude Code reads
+ * `.claude/skills`, Cursor reads `.agents/skills`. `.agents` leads because in a
+ * repo that follows the convention it holds the real skill and `.claude/skills`
+ * only symlinks to it, so reading it first means the canonical copy is the one
+ * that gets linked.
+ */
+const SKILL_TREES = ['.agents/skills', '.claude/skills'] as const;
 
 /** Git ref names forbid a lot; keep to lowercase kebab and nothing surprising. */
 export function slugify(text: string): string {
@@ -145,7 +157,8 @@ export async function expandRepoGroups(names: string[]): Promise<string[]> {
   return [...new Set(out)];
 }
 
-function renderBrief(record: TaskRecord, repos: TaskRepo[]): string {
+/** The agent-facing brief. Exported for its tests; `writeMeta` is the only caller. */
+export function renderBrief(record: TaskRecord, repos: TaskRepo[], skills: string[] = []): string {
   const lines = [
     `# ${record.summary || record.slug}`,
     '',
@@ -167,13 +180,25 @@ function renderBrief(record: TaskRecord, repos: TaskRepo[]): string {
     '',
     'Working from this folder does **not** load each repo\'s own `CLAUDE.md` /',
     '`AGENTS.md` or its `.claude/settings.local.json`. Read those when you start',
-    'working inside a repo — they carry that repo\'s conventions.',
+    'working inside a repo — they carry that repo\'s conventions. Skills are the',
+    'one exception: they are linked in here for you.',
     '',
     'Beside this file, `NOTES.md` — when it exists — holds the human\'s own running',
     'notes on this task. Read it. `TASK.md`, the file you are reading, is generated',
     'and rewritten whenever a repo joins the task, so write nothing into it.',
     '',
   );
+  if (skills.length > 0) {
+    lines.push(
+      '## Skills from these repos',
+      '',
+      'Linked into `.claude/skills` and `.agents/skills` beside this file, so they',
+      'are invokable from here by name:',
+      '',
+      ...skills.map((name) => `- \`/${name}\``),
+      '',
+    );
+  }
   return lines.join('\n');
 }
 
@@ -214,9 +239,77 @@ export async function readTaskRepos(dir: string): Promise<TaskRepo[]> {
   return repos;
 }
 
+/**
+ * Link every repo's skills into the task folder, for both agents.
+ *
+ * An agent launched here treats the task folder as its project root, so the only
+ * skills it loads are the global ones and whatever sits in this folder's own
+ * `.claude/skills` / `.agents/skills`. Every repo's skills are one level down
+ * inside a worktree, which is nowhere either agent looks — so `relaunch-app`,
+ * defined in `fleetwood/.claude/skills`, is invisible from the task that
+ * contains fleetwood. These links are what make it `/relaunch-app` again.
+ *
+ * Rewritten whenever the brief is, which is what keeps it honest: a repo that
+ * left the task takes its skills with it on the next write. Only symlinks are
+ * cleared — a real directory in there is someone's own skill, and not ours to
+ * remove.
+ *
+ * Returns the names it linked, in order, for the brief to list.
+ */
+export async function linkTaskSkills(dir: string, repos: TaskRepo[]): Promise<string[]> {
+  const roots = SKILL_TREES.map((tree) => join(dir, tree));
+  for (const root of roots) {
+    await mkdir(root, { recursive: true });
+    for (const entry of await readdir(root, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) await rm(join(root, entry.name), { force: true });
+    }
+  }
+
+  const linked: string[] = [];
+  const claimed = new Set<string>();
+  const sources = new Set<string>();
+
+  for (const repo of repos) {
+    for (const tree of SKILL_TREES) {
+      let entries: string[];
+      try {
+        entries = await readdir(join(repo.path, tree));
+      } catch {
+        continue;
+      }
+
+      for (const name of entries.sort()) {
+        const source = join(repo.path, tree, name);
+        if (!(await exists(join(source, 'SKILL.md')))) continue;
+
+        // The same skill reached through both trees, which is what a repo
+        // following the convention looks like: one skill, linked once.
+        const real = await realpath(source);
+        if (sources.has(real)) continue;
+
+        // `name:` in the frontmatter has to match the folder it lives in, so a
+        // second repo's same-named skill cannot be renamed out of the way here.
+        // First repo in the task wins; the other stays reachable at its path.
+        if (claimed.has(name)) continue;
+
+        claimed.add(name);
+        sources.add(real);
+        linked.push(name);
+
+        // Relative, so moving the task folder does not break them.
+        const rel = join('..', '..', repo.name, tree, name);
+        // A real directory already holding that name is left as it is.
+        for (const root of roots) await symlink(rel, join(root, name)).catch(() => undefined);
+      }
+    }
+  }
+  return linked;
+}
+
 async function writeMeta(dir: string, record: TaskRecord, repos: TaskRepo[]): Promise<void> {
   await writeFile(join(dir, RECORD_FILE), `${JSON.stringify(record, null, 2)}\n`, 'utf8');
-  await writeFile(join(dir, BRIEF_FILE), renderBrief(record, repos), 'utf8');
+  const skills = await linkTaskSkills(dir, repos);
+  await writeFile(join(dir, BRIEF_FILE), renderBrief(record, repos, skills), 'utf8');
 }
 
 /**
