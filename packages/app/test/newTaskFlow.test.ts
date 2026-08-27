@@ -12,7 +12,6 @@ import {
   toggleChoice,
   visibleChoices,
 } from '../src/renderer/newTaskFlow.ts';
-import { buildBranch as coreBuildBranch, slugify as coreSlugify } from '@fleetwood/core/task';
 
 /*
  * The Enter/Tab rules, which are the whole feel of the flow. Driven here rather
@@ -85,11 +84,12 @@ test('the preview stays visibly unfinished until it is finished', () => {
 });
 
 /*
- * The renderer cannot import `task.ts` — it pulls in `node:fs` and takes the
- * bundle down — so the branch naming is copied. This is what stops the copy
- * drifting into writing a different branch than the one `fw` would.
+ * The renderer used to keep its own copy of the branch naming, because reaching
+ * core's meant reaching `task.ts` and its `node:fs` import. It imports the real
+ * one from `core/naming.ts` now, so what is left to check is the convention: a
+ * branch name `fw` and git will both accept, out of whatever was typed.
  */
-test('the renderer builds the same branch name core does', () => {
+test('every answer the flow accepts builds a usable branch name', () => {
   const cases: Array<[string, string, string]> = [
     ['feature', 'flow', 'execution labels'],
     ['fix', 'UI', 'New task from ⌘K'],
@@ -100,11 +100,13 @@ test('the renderer builds the same branch name core does', () => {
     ['Feature/slash', 'a_b.c', 'v1.2.3'],
   ];
   for (const [type, microservice, summary] of cases) {
-    assert.equal(
+    // The flow and core are the same function now — this is left as a check on
+    // the convention itself rather than on two copies agreeing.
+    assert.match(
       buildBranch(type, microservice, summary),
-      coreBuildBranch(type, microservice, summary),
+      /^[a-z0-9-]+\/[a-z0-9-]*$/,
       `branch for ${JSON.stringify([type, microservice, summary])}`,
     );
-    assert.equal(slugify(summary), coreSlugify(summary));
+    assert.equal(slugify(summary), slugify(slugify(summary)));
   }
 });

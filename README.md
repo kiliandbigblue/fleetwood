@@ -139,6 +139,9 @@ guessed onto the wrong terminal. `fw doctor` reports both numbers.
   you have shipped one, **mark it deployed** — the row keeps its place in the list
   and its CI history, changes to `✔ deployed by hand`, and sinks below the ones
   still owed. Nothing is ever hidden: what is outstanding is simply on top.
+- **What each task has open on GitHub**, on the task's own card — found from its
+  worktrees' branches, stacks included, so a four-PR stack lists bottom-first
+  instead of living in a note you typed yourself. See **Tasks that span repos**.
 - **PR → session in one click.** Find-or-create: an existing session for that PR is
   focused, otherwise a dedicated git worktree and tmux session are built and stamped.
   Clicking twice never gives you two sessions.
@@ -282,18 +285,51 @@ A **task** is one branch, one tmux session, and a folder of real git worktrees:
 
 ```
 ~/projects/.agents/tasks/flow-execution-labels/
-  TASK.md          the brief: goal, branch, repos (generated)
-  NOTES.md         your own notes, typed in the panel (yours; never rewritten)
-  proto/           worktree of ~/projects/proto   on fix/flow-execution-labels
-  graphy/          worktree of ~/projects/graphy  on fix/flow-execution-labels
-  api-scripts/     added later, one click
+  TASK.md                          the brief: goal, branch, repos (generated)
+  NOTES.md                         your own notes, typed in the panel (never rewritten)
+  proto-flow-execution-labels/     worktree of ~/projects/proto
+  graphy-flow-execution-labels/    worktree of ~/projects/graphy
+  api-scripts-flow-execution-labels/   added later, one click
 ```
+
+A directory is named `<repo>-<branch slug>`, both halves always, because what a
+task folder holds is *worktrees* and a worktree is a repo and a branch together.
+Naming it after the repo alone assumed a repo appears at most once — which is
+exactly what **stacked work** breaks: one change becomes four branches in `reflow`,
+each needing its own checkout, and all four wanted the same directory. The second
+one silently got the first one's branch handed back, reported as a success, so a
+stack could not be built with `fw task add` at all:
+
+```
+order-type-filling/
+  reflow-orders-use-order-type/          feature/orders-use-order-type
+  reflow-orders-dual-write-order-type/   ⇡ stacked on it
+  reflow-orders-backfill-order-type/     ⇡
+  reflow-orders-drop-b2b-flag/           ⇡
+```
+
+The cost is a little redundancy on a single-branch task
+(`ui-pr-links/fleetwood-ui-pr-links/`), and the gain is a name that never depends
+on what was added first, never has to change when a second branch joins, and
+always says which layer you are standing in. **Nothing is renamed**: a worktree
+already in the task folder on the branch being asked for *is* the one, whatever it
+is called, so folders built under the old rule keep working and top up in place.
+
+`+ repo` takes that second word — `reflow feature/orders-dual-write-order-type` —
+and so does `fw task add <slug> <repo> --branch <name>`. Left off, you get the
+task's own branch, as before.
+
+Since a repo can now appear more than once, the card counts both:
+`1 repo · 4 worktrees`. And `off-branch` means what it says again — a stack layer's
+directory is named for its branch, so it is where it claims to be; drift is a
+worktree sitting on a branch nothing in its name accounts for.
 
 ```sh
 fw task new fix flow "execution labels" --repo proto --repo graphy
 fw task add flow-execution-labels api-scripts    # grow it as the work reveals itself
+fw task add order-type-filling reflow --branch feature/orders-dual-write-order-type
 fw task start flow-execution-labels              # a session for one that has none
-fw task ls
+fw task ls [--prs]                               # --prs also asks GitHub
 fw task archive flow-execution-labels
 ```
 
@@ -381,6 +417,46 @@ Why it's built this way:
   Anything with work in it stays. The comparison is against `origin/<default>`,
   because a local default branch can be far behind (proto's was 45 commits stale,
   which made brand-new branches look used).
+
+**Each card carries the pull requests that task has open**, so the links stop being
+something you keep by hand in `NOTES.md`. Nothing records what a task has pushed, so
+the connection is rebuilt from git, and the obvious read — the branch each worktree
+is on — is exactly the one that misses the case worth having: **stacked work**, where
+one change becomes four branches and four PRs and only the tip is checked out
+anywhere. So four sources are used per worktree, listed on the row in the order of
+how strongly each claims the branch:
+
+- the branch a worktree is **on**;
+- branches that **contain** the task's branch — `⇡`. This is not a heuristic: a stack
+  *is* a chain of branches each built on the one below, so containment is the
+  definition. Only asked when the task's branch has commits of its own, because a
+  branch still level with `dev` is contained by every branch in the repo;
+- branches **checked out in that worktree** at some point, from its own reflog — `~`.
+  Git keeps that log per worktree, which is the only reason it can answer "what was
+  worked on *here*" rather than "in this repo". Catches a side branch cut straight
+  from `dev` in the same directory, which containment cannot see;
+- the task's **own branch** — `⇄` — whether or not anything is on it. The only one
+  allowed to match a repo the folder doesn't hold, which is what surfaces a
+  teammate's PR in a repo nobody has added yet.
+
+Everything but the last is narrowed to branches holding commits the default branch
+has not, which is what drops `dev`, `main` and every spent branch the reflog
+remembers. That filter comes free: the same `for-each-ref` read gives each branch's
+distance from the default, and **that distance is also its rung in a stack** — every
+layer holds the one below it and then some — so the rows come out bottom-first
+without anything having to be told what the stack is.
+
+The whole fleet costs **one search**: GitHub ORs repeated `head:` qualifiers, so every
+branch of every task goes into one query. What that search cannot return is a head
+ref, so which branch a PR came from — and its checks and review state — is a
+`gh pr view` each, cached against the PR's `updatedAt`, the one field that moves
+when any of the rest does. A quiet fleet settles at a single `gh` call per poll. A
+failed search keeps the last answer and marks it `stale` rather than emptying the
+list, because a PR list that blanks on one flaky call reads as "you closed them".
+
+`fw task ls --prs` prints the same thing; it is opt-in there because `task ls` is
+otherwise all local git, and a network round trip is not what you want from the
+command you run to remember a slug.
 
 A task-root agent does **not** load each repo's `CLAUDE.md`/`AGENTS.md` or
 `.claude/settings.local.json` at startup; `TASK.md` says so, and it picks them up

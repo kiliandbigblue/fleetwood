@@ -1,5 +1,7 @@
+import { hasDriftedOffBranch } from './naming.ts';
 import type { FleetAgent } from './fleet.ts';
 import type { Task, TaskRepo } from './task.ts';
+import type { BranchVia, TaskPr } from './taskPrs.ts';
 
 /*
  * How a task reads, for both front ends.
@@ -54,11 +56,46 @@ export function partitionAgents(
  */
 export function repoSummary(repos: TaskRepo[], taskBranch: string): string {
   const dirty = repos.filter((r) => r.dirty > 0).length;
-  // A repo whose branch we could not read is not evidence of drift — only a branch
-  // we read and which differs is.
-  const off = repos.filter((r) => r.branch && r.branch !== taskBranch).length;
-  const parts = [`${repos.length} repo${repos.length === 1 ? '' : 's'}`];
+  const off = repos.filter((r) => hasDriftedOffBranch(r.name, r.branch, taskBranch)).length;
+  // Worktrees and repos are the same number until a stack makes them differ, and
+  // then saying `4 repos` of one repo on four branches is simply wrong — the
+  // count is what you open the rows to understand.
+  const distinct = new Set(repos.map((r) => r.repo ?? r.name)).size;
+  const parts = [`${distinct} repo${distinct === 1 ? '' : 's'}`];
+  if (repos.length !== distinct) parts.push(`${repos.length} worktrees`);
   if (dirty > 0) parts.push(`${dirty} dirty`);
   if (off > 0) parts.push(`${off} off-branch`);
   return parts.join(' · ');
 }
+
+/**
+ * A task's open pull requests in one line: how many, and what they are waiting on.
+ *
+ * The same shape as `repoSummary` and for the same reason — one sentence, both
+ * front ends. Only the two states that ask something of you get counted: a red
+ * check is work, an approval is a merge you have not done yet. Everything else
+ * is a pull request quietly waiting for a reviewer, which the count already says.
+ */
+export function prSummary(prs: TaskPr[]): string {
+  const failing = prs.filter((pr) => pr.checks === 'failing').length;
+  const approved = prs.filter((pr) => pr.reviewDecision === 'APPROVED').length;
+  const parts = [`${prs.length} open`];
+  if (failing > 0) parts.push(`${failing} failing`);
+  if (approved > 0) parts.push(`${approved} approved`);
+  return parts.join(' · ');
+}
+
+/**
+ * Why a branch is believed to be the task's, in words.
+ *
+ * Every one of these is an inference of a different strength, and the card says
+ * which — the same rule the fleet follows for a status nobody reported. A row
+ * that turns out not to belong to the task is then a thing you can explain
+ * rather than a thing you distrust.
+ */
+export const VIA_LABEL: Record<BranchVia, string> = {
+  head: 'the branch this worktree is on',
+  stack: "stacked on the task's branch",
+  history: 'worked on in this worktree at some point',
+  task: "the task's own branch",
+};

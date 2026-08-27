@@ -13,6 +13,7 @@ import {
   slugify,
   writeNotesFile,
 } from '../src/task.ts';
+import { run } from '../src/exec.ts';
 
 test('branch names follow the <type>/<microservice>-<summary> convention', () => {
   // The microservice is a domain, not a repo — which is why the same branch name
@@ -207,4 +208,31 @@ test('the brief lists the skills the task folder linked in', () => {
 
 test('no skills, no section — an empty heading would read as a gap', () => {
   assert.doesNotMatch(renderBrief(RECORD, []), /## Skills from these repos/);
+});
+
+test("a worktree not named after its repo still resolves the repo it belongs to", async () => {
+  // The stacked-work layout: one directory per branch, so the directory name is
+  // the branch's, never the repo's. Nothing in the repo index matches it, and
+  // without the remote fallback `archiveTask` cannot find the owning checkout —
+  // it keeps every worktree with "owning repo not found".
+  const dir = await mkdtemp(join(tmpdir(), 'fw-repo-name-'));
+  const worktree = join(dir, 'reflow-orders-drop-b2b-flag');
+  await mkdir(worktree, { recursive: true });
+  await run('git', ['-C', worktree, 'init', '-q']);
+  await run('git', ['-C', worktree, 'remote', 'add', 'origin', 'git@github.com:bigbluedisco/reflow.git']);
+
+  const [repo] = await readTaskRepos(dir);
+  assert.equal(repo?.name, 'reflow-orders-drop-b2b-flag');
+  assert.equal(repo?.repo, 'bigbluedisco/reflow');
+});
+
+test('a worktree with no remote reports no repo rather than an invented one', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'fw-repo-name-'));
+  const worktree = join(dir, 'nowhere-in-particular');
+  await mkdir(worktree, { recursive: true });
+  await run('git', ['-C', worktree, 'init', '-q']);
+
+  const [repo] = await readTaskRepos(dir);
+  assert.equal(repo?.name, 'nowhere-in-particular');
+  assert.equal(repo?.repo, undefined);
 });

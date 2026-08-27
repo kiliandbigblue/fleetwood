@@ -193,6 +193,8 @@ export function App(): React.JSX.Element {
                 <TaskCard
                   key={session.sessionId}
                   task={task}
+                  prs={snapshot.taskPrs?.byTask[task.slug]}
+                  prsStale={snapshot.taskPrs?.degraded}
                   session={session}
                   editor={snapshot.editor}
                   onResult={onResult}
@@ -207,7 +209,14 @@ export function App(): React.JSX.Element {
                   no session ({dormantTasks.length}) — worktrees ready, nothing running
                 </div>
                 {dormantTasks.map((task) => (
-                  <TaskCard key={task.slug} task={task} editor={snapshot.editor} onResult={onResult} />
+                  <TaskCard
+                    key={task.slug}
+                    task={task}
+                    prs={snapshot.taskPrs?.byTask[task.slug]}
+                    prsStale={snapshot.taskPrs?.degraded}
+                    editor={snapshot.editor}
+                    onResult={onResult}
+                  />
                 ))}
               </>
             )}

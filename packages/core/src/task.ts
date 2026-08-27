@@ -10,7 +10,10 @@ import {
   ensureWorktree,
   listWorktrees,
   removeWorktree,
+  remoteNameWithOwner,
 } from './worktree.ts';
+import type { EnsureWorktreeResult } from './worktree.ts';
+import { branchToSlug, buildBranch, slugify, worktreeDirName } from './naming.ts';
 import { run } from './exec.ts';
 import * as tmux from './tmux.ts';
 import { focusSession, spawnAgent } from './actions.ts';
@@ -41,7 +44,13 @@ export interface Task {
 }
 
 export interface TaskRepo {
-  /** Directory name inside the task folder, which is also the local repo name. */
+  /**
+   * Directory name inside the task folder — `<repo>-<branch slug>`.
+   *
+   * Not the repo's name: a task can hold several worktrees of one repo, which is
+   * what a stack is. Older tasks have directories named after the repo alone and
+   * keep them; nothing is renamed. See `worktreeDirName`.
+   */
   name: string;
   /** Absolute path of the worktree. */
   path: string;
@@ -80,34 +89,9 @@ const NOTES_FILE = 'NOTES.md';
  */
 const SKILL_TREES = ['.agents/skills', '.claude/skills'] as const;
 
-/** Git ref names forbid a lot; keep to lowercase kebab and nothing surprising. */
-export function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
-}
-
-/**
- * Build the branch name from the convention `<type>/<microservice>-<summary>`.
- *
- * The microservice is a domain rather than a repo, which is exactly why the same
- * name is reused across every repo a change touches.
- */
-export function buildBranch(type: string, microservice: string, summary: string): string {
-  const kind = slugify(type) || 'feature';
-  const rest = [slugify(microservice), slugify(summary)].filter((p) => p.length > 0).join('-');
-  return `${kind}/${rest}`;
-}
-
-/** Task folder name: the branch without its type prefix. */
-export function branchToSlug(branch: string): string {
-  const withoutType = branch.includes('/') ? branch.slice(branch.indexOf('/') + 1) : branch;
-  return slugify(withoutType);
-}
+// The naming rules live in a leaf module so the renderer can use the real ones
+// rather than a copy. Re-exported here because this is where callers look.
+export { branchToSlug, buildBranch, slugify, worktreeDirName } from './naming.ts';
 
 export async function taskRoot(): Promise<string> {
   return (await loadConfig()).taskRoot;
@@ -175,8 +159,10 @@ export function renderBrief(record: TaskRecord, repos: TaskRepo[], skills: strin
     '',
     '## Notes for agents',
     '',
-    'Each directory here is a git worktree of a different repository, checked out on',
-    'this task\'s branch. Edit across them freely; commit in each repo separately.',
+    'Each directory here is a git worktree, named `<repo>-<branch>`. Usually that is',
+    'one repository each on this task\'s branch — but when the work is stacked it is',
+    'the same repository on several branches, one per layer. The list above says',
+    'which is which. Edit across them freely; commit in each worktree separately.',
     '',
     'Working from this folder does **not** load each repo\'s own `CLAUDE.md` /',
     '`AGENTS.md` or its `.claude/settings.local.json`. Read those when you start',
@@ -200,6 +186,37 @@ export function renderBrief(record: TaskRecord, repos: TaskRepo[], skills: strin
     );
   }
   return lines.join('\n');
+}
+
+/**
+ * Put a worktree for `branch` inside a task folder.
+ *
+ * Adoption first: any worktree of this repo already sitting inside the task
+ * folder on that branch *is* the one, whatever its directory is called. That is
+ * what keeps the naming change from touching tasks that already exist — a folder
+ * with `graphy/` in it stays a folder with `graphy/` in it, and re-running
+ * `createTask` on it tops up rather than building a second checkout beside the
+ * first. New worktrees get `<repo>-<branch slug>`.
+ */
+async function ensureTaskWorktree(
+  localPath: string,
+  repoName: string,
+  branch: string,
+  taskDir: string,
+): Promise<EnsureWorktreeResult> {
+  const adopted = (await listWorktrees(localPath)).find(
+    (w) => w.branch === branch && (w.path === taskDir || w.path.startsWith(`${taskDir}/`)),
+  );
+  if (adopted) {
+    return {
+      ok: true,
+      path: adopted.path,
+      branch,
+      created: false,
+      detail: `reusing worktree at ${basename(adopted.path)}`,
+    };
+  }
+  return ensureWorktree(localPath, branch, join(taskDir, worktreeDirName(repoName, branch)));
 }
 
 async function readRecord(dir: string): Promise<TaskRecord | undefined> {
@@ -231,7 +248,18 @@ export async function readTaskRepos(dir: string): Promise<TaskRepo[]> {
     repos.push({
       name: entry,
       path,
-      repo: match?.nameWithOwner,
+      /*
+       * The index first, then the worktree's own remote.
+       *
+       * Matching the directory name against the index is right for the ordinary
+       * layout, where a task's worktree is named after its repo. It is wrong for
+       * stacked work, where the convention is one directory per branch —
+       * `reflow-orders-drop-b2b-flag` — and none of them is called `reflow`. That
+       * left `repo` unknown, and `archiveTask` resolves the owning checkout
+       * through it: every worktree in a stacked task was kept with "owning repo
+       * not found", which is a task that cannot be archived at all.
+       */
+      repo: match?.nameWithOwner ?? (await remoteNameWithOwner(path)),
       branch: await currentBranch(path),
       dirty: await dirtyCount(path),
     });
@@ -428,8 +456,12 @@ export async function createTask(input: CreateTaskInput): Promise<TaskResult> {
       repoResults.push({ repo: name, ok: false, detail: 'not a git repository' });
       continue;
     }
-    const target = join(dir, basename(local.path));
-    const result = await ensureWorktree(local.path, input.branchOverrides?.[name] ?? record.branch, target);
+    const result = await ensureTaskWorktree(
+      local.path,
+      basename(local.path),
+      input.branchOverrides?.[name] ?? record.branch,
+      dir,
+    );
     repoResults.push({ repo: basename(local.path), ok: result.ok, detail: result.detail });
   }
 
@@ -565,17 +597,25 @@ export async function addRepoToTask(
     return { ok: false, detail: `${repoName} is not a git repo under your project roots`, repoResults: [] };
   }
 
-  const target = join(dir, basename(local.path));
-  const result = await ensureWorktree(local.path, branchOverride ?? record.branch, target);
+  const result = await ensureTaskWorktree(
+    local.path,
+    basename(local.path),
+    branchOverride ?? record.branch,
+    dir,
+  );
   const repos = await readTaskRepos(dir);
   await writeMeta(dir, record, repos);
 
   const sessions = await tmux.listSessions();
   const session = sessions.find((s) => s.meta.task === slug)?.name;
-  if (session) {
-    // Keep the stamped repo list honest, and give the repo a shell of its own.
+  // Only for a worktree that exists: a failed add used to open a window on a
+  // directory git had just refused to create.
+  if (session && result.ok && result.path) {
+    // Keep the stamped repo list honest, and give the worktree a shell of its own.
     await tmux.setSessionMeta(session, { repo: repos.map((r) => r.repo ?? r.name).join(',') });
-    await tmux.newWindow(session, { cwd: target, name: basename(local.path) });
+    // Named for the directory, not the repo: a stacked task holds several
+    // worktrees of one repo, and two windows called `reflow` say nothing.
+    await tmux.newWindow(session, { cwd: result.path, name: basename(result.path) });
   }
 
   return {

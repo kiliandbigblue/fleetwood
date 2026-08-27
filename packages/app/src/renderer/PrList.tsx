@@ -15,7 +15,8 @@ interface Props {
   onResult: (message: string, ok: boolean) => void;
 }
 
-const CHECK_GLYPH: Record<string, string> = {
+/** Shared with the task cards, so a pull request reads the same in both places. */
+export const CHECK_GLYPH: Record<string, string> = {
   passing: '✓',
   failing: '✗',
   pending: '◍',
@@ -52,7 +53,7 @@ const DEPLOY_BADGE: Record<DeployState, { glyph: string; label: string; hint: st
   },
 };
 
-const REVIEW_LABEL: Record<string, string> = {
+export const REVIEW_LABEL: Record<string, string> = {
   APPROVED: 'approved',
   CHANGES_REQUESTED: 'changes requested',
   REVIEW_REQUIRED: 'needs review',

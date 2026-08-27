@@ -5,6 +5,7 @@ import type {
   PlanLimits,
   PrLists,
   Task,
+  TaskPrs,
   ThemeName,
 } from '@fleetwood/core';
 
@@ -22,6 +23,14 @@ export interface Snapshot {
    * the list cannot disagree about how much is still owed.
    */
   merged?: MergedPrs;
+  /**
+   * The pull requests each task has open, keyed by slug.
+   *
+   * Not part of `Task` because a task is a folder read from disk and this is a
+   * network fact on a much slower clock — folding it in would either stall the
+   * task read or leave half of every `Task` stale.
+   */
+  taskPrs?: TaskPrs;
   /** Session names that fleetwood stamped, keyed by PR key, for link badges. */
   prSessions: Record<string, string>;
   hooksInstalled: boolean;

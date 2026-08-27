@@ -14,9 +14,18 @@ import {
   repoIndex,
   spool,
   task as taskApi,
+  taskPrs as taskPrsApi,
   THEMES,
 } from '@fleetwood/core';
-import type { MergedPr, MergedPrs, PlanLimits, PrLists, Task } from '@fleetwood/core';
+import type {
+  MergedPr,
+  MergedPrs,
+  PlanLimits,
+  PrLists,
+  PullRequest,
+  Task,
+  TaskPrs,
+} from '@fleetwood/core';
 import { repairPath } from './path.ts';
 import { CHANNELS } from '../shared/ipc.ts';
 import type { Request, Response, Snapshot } from '../shared/ipc.ts';
@@ -48,6 +57,16 @@ let merged: MergedPrs | undefined;
 let mergedCache = new Map<string, MergedPr>();
 /** `prKey → epoch seconds` for merges the user says they deployed by hand. */
 let deployedByHand = new Map<string, number>();
+let taskPrs: TaskPrs | undefined;
+/**
+ * Enriched pull requests from the last task-PR poll, by `prCacheKey`.
+ *
+ * The search that finds them cannot return a head branch, so each one costs a
+ * `gh pr view` to learn which branch — and so which task — it belongs to. The key
+ * carries `updatedAt`, so a pull request that has not moved is never asked about
+ * again and a quiet fleet settles at one `gh` call per poll.
+ */
+let taskPrCache = new Map<string, PullRequest>();
 /** Cached: listing tasks runs a `git status` per repo, too costly for the 1s poll. */
 let taskCache: { at: number; tasks: Task[] } = { at: 0, tasks: [] };
 /**
@@ -141,6 +160,7 @@ async function buildSnapshot(): Promise<Snapshot> {
     tasks: await getTasks(),
     prs,
     merged,
+    taskPrs,
     prSessions,
     hooksInstalled: hookState.claude.installed > 0,
     editor: settings.editor,
@@ -169,6 +189,32 @@ async function refreshPrs(): Promise<void> {
   const settings = await configModule.loadConfig();
   if (!settings.github.enabled) return;
   prs = await github.fetchPrs();
+  await pushSnapshot();
+}
+
+/**
+ * What each task has open on GitHub, found from its worktrees' branches.
+ *
+ * On the open-PR clock rather than a slower one of its own: these are the same
+ * pull requests the other list holds, and a card that disagreed with the tab
+ * about whether a review had landed would be worse than either being a minute
+ * old. The whole fleet costs one search — see `taskPrs.fetchTaskPrs`.
+ */
+async function refreshTaskPrs(): Promise<void> {
+  const settings = await configModule.loadConfig();
+  if (!settings.github.enabled) return;
+
+  const result = await taskPrsApi.fetchTaskPrs({ tasks: await getTasks(), cached: taskPrCache });
+  // A failed search says nothing about what is open, and an empty card would
+  // read as "nothing pushed yet" — so keep the last answer and flag it.
+  if (result.degraded && taskPrs) taskPrs = { ...taskPrs, degraded: true };
+  else taskPrs = { byTask: result.byTask, fetchedAt: result.fetchedAt, degraded: result.degraded };
+
+  if (!result.degraded) {
+    const next = new Map<string, PullRequest>();
+    for (const pr of result.enriched) next.set(taskPrsApi.prCacheKey(pr), pr);
+    taskPrCache = next;
+  }
   await pushSnapshot();
 }
 
@@ -262,7 +308,9 @@ async function handle(request: Request): Promise<Response> {
       return { ok: true, detail: 'refreshed' };
 
     case 'refreshPrs':
-      await refreshPrs();
+      // Both lists: "refresh pull requests" is one thing to ask for, and the tab
+      // and the task cards must not answer it differently.
+      await Promise.all([refreshPrs(), refreshTaskPrs()]);
       return { ok: true, detail: 'pull requests refreshed' };
 
     case 'refreshMerged':
@@ -549,7 +597,10 @@ app.whenReady().then(async () => {
   });
 
   fleetTimer = setInterval(() => void pushSnapshot(), settings.poll.tmuxMs);
-  prTimer = setInterval(() => void refreshPrs(), settings.github.pollSeconds * 1_000);
+  prTimer = setInterval(() => {
+    void refreshPrs();
+    void refreshTaskPrs();
+  }, settings.github.pollSeconds * 1_000);
   // Its own, slower clock: a merge's CI trail takes minutes, and each new row
   // costs a `gh pr view` plus a `gh run list`.
   mergedTimer = setInterval(
@@ -558,6 +609,7 @@ app.whenReady().then(async () => {
   );
   await pushSnapshot();
   void refreshPrs();
+  void refreshTaskPrs();
   void refreshMerged();
 
   globalShortcut.register('Alt+Shift+F', toggleWindow);

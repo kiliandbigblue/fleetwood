@@ -1,13 +1,28 @@
 import { useState } from 'react';
-import type { FleetAgent, FleetSession, Task, TaskRepo } from '@fleetwood/core';
+import type { FleetAgent, FleetSession, Task, TaskPr, TaskRepo } from '@fleetwood/core';
 // The leaf module: the barrel re-exports tmux and process scanning, which fail the
 // renderer bundle on `node:child_process`.
-import { partitionAgents, repoSummary } from '@fleetwood/core/taskView';
+import { partitionAgents, prSummary, repoSummary, VIA_LABEL } from '@fleetwood/core/taskView';
+import { hasDriftedOffBranch } from '@fleetwood/core/naming';
 import { AgentRow } from './AgentRow.tsx';
+import { CHECK_GLYPH, REVIEW_LABEL } from './PrList.tsx';
 import { send } from './api.ts';
 
 interface Props {
   task: Task;
+  /**
+   * What this task has open on GitHub. Absent while the first search is out —
+   * which is a different thing from an empty list, and reads differently.
+   */
+  prs?: TaskPr[];
+  /**
+   * The last search failed, so this list is the previous one.
+   *
+   * Kept and marked rather than blanked, for the reason the quota gauge keeps its
+   * bars: a pull request list that empties on one flaky `gh` call reads as "you
+   * closed them", which is the one thing it must never say.
+   */
+  prsStale?: boolean;
   /**
    * The task's live tmux session, when it has one.
    *
@@ -61,9 +76,11 @@ function RepoRow({
         ) : (
           <span className="clean">clean</span>
         )}
-        {/* Only worth saying when it diverges from the task's branch. */}
-        {repo.branch && repo.branch !== taskBranch && (
-          <span className="off-branch" title="not on the task's branch">
+        {/* Only worth saying when nothing accounts for the branch it is on. A
+            stack layer's directory is named for its branch, so it is where it
+            says it is; drift is a branch the directory does not claim. */}
+        {hasDriftedOffBranch(repo.name, repo.branch, taskBranch) && (
+          <span className="off-branch" title="not the branch this worktree was made for">
             {repo.branch}
           </span>
         )}
@@ -97,6 +114,77 @@ function RepoRow({
 }
 
 /**
+ * `reflow` — or `reflow feature/orders-dual-write-order-type`.
+ *
+ * The second word is what lets a task hold a second branch of a repo it already
+ * has, which is the shape stacked work takes. Left off, the task's own branch is
+ * used, exactly as before.
+ */
+export function parseRepoInput(text: string): [repo: string | undefined, branch: string | undefined] {
+  const [repo, branch] = text.trim().split(/\s+/);
+  return [repo && repo.length > 0 ? repo : undefined, branch];
+}
+
+/**
+ * How a branch that isn't simply the one a worktree is on got here.
+ *
+ * Marked rather than explained, the way an inferred agent status is: the label
+ * is in the tooltip, and the absence of a mark is the ordinary case. `head` has
+ * none because "the branch this worktree is on" is what a reader assumes.
+ */
+const VIA_MARK: Record<TaskPr['via'], string> = { head: '', stack: '⇡', history: '~', task: '⇄' };
+
+/**
+ * One pull request a task has open.
+ *
+ * Flatter than the PR tab's row on purpose — it sits inside a card, and a second
+ * bordered surface nested in the first reads as a different kind of object. The
+ * facts are the same ones, in the same colours.
+ */
+function PrRow({ pr, onResult }: { pr: TaskPr; onResult: Props['onResult'] }): React.JSX.Element {
+  const where = pr.repoName ?? pr.repo;
+  const open = (): void => {
+    void send({ kind: 'openExternal', url: pr.url }).then((r) => onResult(r.detail, r.ok));
+  };
+
+  return (
+    <div
+      className="task-pr"
+      onClick={open}
+      title={`${pr.repo}#${pr.number} · ${pr.branch}\n${VIA_LABEL[pr.via]}${where ? ` · ${where}` : ''}`}
+    >
+      <span
+        className={`checks-${pr.checks ?? 'none'}`}
+        title={
+          pr.checksDetail
+            ? `${pr.checksDetail.passing} passing, ${pr.checksDetail.failing} failing, ${pr.checksDetail.pending} pending`
+            : 'no checks'
+        }
+      >
+        {CHECK_GLYPH[pr.checks ?? 'none']}
+      </span>
+      <span className="pr-number">#{pr.number}</span>
+      {/* The title, which under this repo's convention *is* the branch name — so
+          the branch is not repeated beside it, only in the tooltip. */}
+      <span className="task-pr-title">{pr.title}</span>
+      {pr.isDraft && <span className="task-pr-flag">draft</span>}
+      {pr.reviewDecision && (
+        <span className={`review-${pr.reviewDecision}`}>
+          {REVIEW_LABEL[pr.reviewDecision] ?? pr.reviewDecision}
+        </span>
+      )}
+      {VIA_MARK[pr.via] && (
+        <span className="task-pr-via" title={VIA_LABEL[pr.via]}>
+          {VIA_MARK[pr.via]}
+        </span>
+      )}
+      {/* Not a button: the whole row is the target, and this only says so. */}
+      <span className="task-pr-open">↗</span>
+    </div>
+  );
+}
+
+/**
  * One task, as a card in the fleet list.
  *
  * This is a session card that knows what its session *is* — same shape, same
@@ -104,7 +192,7 @@ function RepoRow({
  * under the repo they are actually in, and the notes. It replaces the pair of
  * cards a live task used to get, one per tab, each missing half the controls.
  */
-export function TaskCard({ task, session, editor, onResult }: Props): React.JSX.Element {
+export function TaskCard({ task, prs, prsStale, session, editor, onResult }: Props): React.JSX.Element {
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [addingRepo, setAddingRepo] = useState(false);
   const [repoName, setRepoName] = useState('');
@@ -212,6 +300,22 @@ export function TaskCard({ task, session, editor, onResult }: Props): React.JSX.
         </div>
       )}
 
+      {/* Above the notes, which is where these links were being kept by hand. */}
+      {prs && prs.length > 0 && (
+        <div className="task-prs">
+          <div
+            className="task-prs-head"
+            title={prsStale ? 'gh returned nothing on the last search — this is the previous answer' : undefined}
+          >
+            {prSummary(prs)}
+            {prsStale && <span className="task-pr-via"> · stale</span>}
+          </div>
+          {prs.map((pr) => (
+            <PrRow key={`${pr.repo}#${pr.number}`} pr={pr} onResult={onResult} />
+          ))}
+        </div>
+      )}
+
       {editingNotes ? (
         <div className="task-notes-edit">
           <textarea
@@ -255,17 +359,17 @@ export function TaskCard({ task, session, editor, onResult }: Props): React.JSX.
           className="add-repo"
           onSubmit={(event) => {
             event.preventDefault();
-            const name = repoName.trim();
-            if (name.length === 0) return;
+            const [name, branch] = parseRepoInput(repoName);
+            if (name === undefined) return;
             setAddingRepo(false);
             setRepoName('');
-            void act({ kind: 'addRepoToTask', slug: task.slug, repo: name });
+            void act({ kind: 'addRepoToTask', slug: task.slug, repo: name, branch });
           }}
         >
           <input
             autoFocus
             value={repoName}
-            placeholder="repo name, e.g. proto"
+            placeholder="proto — or `reflow feature/orders-dual-write` for another branch"
             onChange={(event) => setRepoName(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Escape') {
@@ -280,7 +384,11 @@ export function TaskCard({ task, session, editor, onResult }: Props): React.JSX.
         </form>
       ) : (
         <div className="card-actions">
-          <button className="chip" onClick={() => setAddingRepo(true)} title="add another repo to this task">
+          <button
+            className="chip"
+            onClick={() => setAddingRepo(true)}
+            title="add a repo — or another branch of one already here, for stacked work"
+          >
             + repo
           </button>
           <button className="chip" onClick={() => startAgent('claude')} title="claude at the task root">

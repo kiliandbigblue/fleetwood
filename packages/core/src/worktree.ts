@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { run } from './exec.ts';
 import { loadConfig } from './config.ts';
+import { parseRemote } from './repoIndex.ts';
 
 export interface Worktree {
   path: string;
@@ -137,6 +138,17 @@ export async function ensureWorktree(
 
   const here = existing.find((w) => w.path === targetDir);
   if (here) {
+    // Reuse only what was actually asked for. This used to hand back whatever
+    // branch happened to be there, reported as a success — so asking a task for a
+    // second branch of a repo it already held returned the first branch's
+    // worktree and created nothing, which is silence where an error belonged.
+    if (here.branch !== undefined && here.branch !== branch) {
+      return {
+        ok: false,
+        created: false,
+        detail: `${targetDir} already holds ${here.branch}, not ${branch}`,
+      };
+    }
     return {
       ok: true,
       path: targetDir,
@@ -292,6 +304,19 @@ export async function dirtyCount(path: string): Promise<number> {
   const { code, stdout } = await run('git', ['-C', path, 'status', '--porcelain']);
   if (code !== 0) return 0;
   return stdout.trim().length === 0 ? 0 : stdout.trim().split('\n').length;
+}
+
+/**
+ * `owner/name` for whatever repo a working tree belongs to, from its origin remote.
+ *
+ * Asking git rather than the repo index, because the index is keyed by directory
+ * name and a task's worktree is not always named after its repo — a stack keeps
+ * one directory per branch (`reflow-orders-drop-b2b-flag`), and every one of them
+ * is still reflow. Works in a linked worktree, which shares the parent's config.
+ */
+export async function remoteNameWithOwner(path: string): Promise<string | undefined> {
+  const { code, stdout } = await run('git', ['-C', path, 'remote', 'get-url', 'origin']);
+  return code === 0 ? parseRemote(stdout) : undefined;
 }
 
 export async function currentBranch(path: string): Promise<string | undefined> {

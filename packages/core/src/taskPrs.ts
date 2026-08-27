@@ -1,0 +1,333 @@
+import { run } from './exec.ts';
+import { enrichPr, fetchPrsForBranches, mapLimit, prKey } from './github.ts';
+import { remoteNameWithOwner } from './worktree.ts';
+import type { PullRequest } from './github.ts';
+import type { Task } from './task.ts';
+
+/*
+ * The pull requests a task has open, found from the worktrees themselves.
+ *
+ * A task is a folder of worktrees and nothing records what it has pushed, so the
+ * link back to GitHub has to be rebuilt from git. The naive read — "the branch
+ * each worktree is on" — misses the case this exists for: stacked work, where
+ * one change becomes four branches and four pull requests, and only the tip is
+ * checked out anywhere. So four sources are used per worktree, and the widest of
+ * them is not a guess: a stack *is* a chain of branches each containing the one
+ * below, which `git branch --contains` answers exactly.
+ */
+
+/** How a branch was found to belong to a task. Ordered by how strongly it claims it. */
+export type BranchVia = 'head' | 'stack' | 'history' | 'task';
+
+export interface TaskBranch {
+  branch: string;
+  /** The task folder's subdirectory it was found in; absent for the task's own branch. */
+  repoName?: string;
+  /** `owner/name`, read from the worktree's origin remote. Absent when git wouldn't say. */
+  repo?: string;
+  via: BranchVia;
+  /** Commits it holds that the repo's default branch has not — also its rung in a stack. */
+  ahead?: number;
+}
+
+/** One task's branches, as `matchPrsToTasks` wants them. */
+export interface TaskBranches {
+  slug: string;
+  branches: TaskBranch[];
+}
+
+/** An open pull request, plus which of the task's branches it was opened from. */
+export interface TaskPr extends PullRequest {
+  branch: string;
+  via: BranchVia;
+  repoName?: string;
+  ahead?: number;
+}
+
+export interface TaskPrs {
+  /** slug → its open pull requests, bottom of the stack first. */
+  byTask: Record<string, TaskPr[]>;
+  fetchedAt: number;
+  /** True when `gh` produced nothing at all — usually an auth or network problem. */
+  degraded: boolean;
+}
+
+/**
+ * Branch names out of a worktree's own HEAD reflog.
+ *
+ * Git keeps this log per worktree, which is the only reason it can answer "what
+ * was worked on *here*" rather than "in this repo". Both sides of a checkout are
+ * taken — the branch left behind was worked on here just as much as the one
+ * arrived at. A detached checkout names a commit rather than a branch; those are
+ * dropped instead of being searched for as head refs.
+ */
+export function parseCheckoutBranches(stdout: string): string[] {
+  const out: string[] = [];
+  for (const line of stdout.split('\n')) {
+    const match = /^checkout: moving from (.+) to (.+)$/.exec(line.trim());
+    if (!match) continue;
+    for (const name of [match[1], match[2]]) {
+      if (name === undefined || /^[0-9a-f]{7,40}$/.test(name)) continue;
+      if (!out.includes(name)) out.push(name);
+    }
+  }
+  return out;
+}
+
+/** Parse `%(refname:short) %(ahead-behind:<base>)` — one line per local branch. */
+export function parseAheadBehind(stdout: string): Map<string, { ahead: number; behind: number }> {
+  const out = new Map<string, { ahead: number; behind: number }>();
+  for (const line of stdout.split('\n')) {
+    const parts = line.trim().split(/\s+/);
+    if (parts.length < 3) continue;
+    const [branch, ahead, behind] = parts;
+    const a = Number.parseInt(ahead as string, 10);
+    const b = Number.parseInt(behind as string, 10);
+    if (branch === undefined || !Number.isFinite(a) || !Number.isFinite(b)) continue;
+    out.set(branch, { ahead: a, behind: b });
+  }
+  return out;
+}
+
+/**
+ * The repo's default branch, read locally and only locally.
+ *
+ * `worktree.defaultBranch` falls back to `git ls-remote` when origin/HEAD is
+ * missing; this runs on a poll, so a network round trip per worktree is not on
+ * the table. No answer means the "has work of its own" filter is skipped rather
+ * than guessed at — see `discoverTaskBranches`.
+ */
+async function localDefaultBranch(path: string): Promise<string | undefined> {
+  const { code, stdout } = await run('git', [
+    '-C',
+    path,
+    'symbolic-ref',
+    '--short',
+    'refs/remotes/origin/HEAD',
+  ]);
+  if (code !== 0) return undefined;
+  const name = stdout.trim();
+  return name.length > 0 ? name : undefined;
+}
+
+/**
+ * Every branch a task might have a pull request on, across all its worktrees.
+ *
+ * Four sources, listed in the order of how strongly each claims the branch is
+ * the task's:
+ *
+ * - **head** — the branch a worktree is checked out on. The obvious one.
+ * - **stack** — branches containing the task's branch. This is what makes stacked
+ *   work visible: each layer of a stack builds on the one below, so containment
+ *   is the definition rather than a heuristic. Only asked when the task's branch
+ *   has commits of its own, because a branch still level with `dev` is contained
+ *   by every branch in the repo.
+ * - **history** — branches checked out in that worktree at some point, from its
+ *   own reflog. Catches the side branch cut straight from `dev` in the same
+ *   directory, which containment cannot see.
+ * - **task** — the task's own branch, whether or not any worktree is on it. The
+ *   only entry allowed to match a repo the task folder does not hold: the naming
+ *   convention reuses one branch across every repo a change touches, so a
+ *   teammate's pull request in a repo nobody has added yet is still this task's.
+ *
+ * Everything except the last is narrowed to branches holding commits the repo's
+ * default branch has not. That is what drops `dev`, `main` and every spent branch
+ * the reflog remembers, and it comes free: the same read gives each branch's
+ * distance from the default, which is also its rung in a stack.
+ */
+export async function discoverTaskBranches(task: Task): Promise<TaskBranches> {
+  const branches: TaskBranch[] = [];
+  const seen = new Set<string>();
+  const add = (entry: TaskBranch): void => {
+    const key = `${entry.repoName ?? ''} ${entry.branch}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    branches.push(entry);
+  };
+
+  for (const repo of task.repos) {
+    const [defaultBranch, owner] = await Promise.all([
+      localDefaultBranch(repo.path),
+      // `repo.repo` usually holds this already, but not always — and a wrong
+      // owner here would file another repo's namesake branch under this task.
+      repo.repo ? Promise.resolve(repo.repo) : remoteNameWithOwner(repo.path),
+    ]);
+
+    // One read doing both jobs: which branches hold work of their own, and how much.
+    const distance = defaultBranch
+      ? parseAheadBehind(
+          (
+            await run('git', [
+              '-C',
+              repo.path,
+              'for-each-ref',
+              '--format',
+              `%(refname:short) %(ahead-behind:${defaultBranch})`,
+              'refs/heads',
+            ])
+          ).stdout,
+        )
+      : new Map<string, { ahead: number; behind: number }>();
+
+    // No default branch to compare against: keep the branch and say nothing about
+    // its rung. Silence is the honest answer there, not exclusion.
+    const hasOwnWork = (branch: string): boolean =>
+      !defaultBranch || (distance.get(branch)?.ahead ?? 0) > 0;
+
+    const candidates: Array<{ branch: string; via: BranchVia }> = [];
+    if (repo.branch) candidates.push({ branch: repo.branch, via: 'head' });
+
+    if (distance.has(task.branch) && hasOwnWork(task.branch)) {
+      const stack = await run('git', [
+        '-C',
+        repo.path,
+        'branch',
+        '--contains',
+        task.branch,
+        '--format=%(refname:short)',
+      ]);
+      if (stack.code === 0) {
+        for (const name of stack.stdout
+          .split('\n')
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0)) {
+          candidates.push({ branch: name, via: 'stack' });
+        }
+      }
+    }
+
+    const reflog = await run('git', [
+      '-C',
+      repo.path,
+      'reflog',
+      'show',
+      '-n',
+      '200',
+      '--format=%gs',
+      'HEAD',
+    ]);
+    if (reflog.code === 0) {
+      for (const name of parseCheckoutBranches(reflog.stdout)) {
+        candidates.push({ branch: name, via: 'history' });
+      }
+    }
+
+    for (const candidate of candidates) {
+      if (candidate.branch === defaultBranch) continue;
+      if (!hasOwnWork(candidate.branch)) continue;
+      add({
+        ...candidate,
+        repoName: repo.name,
+        repo: owner,
+        ahead: distance.get(candidate.branch)?.ahead,
+      });
+    }
+  }
+
+  add({ branch: task.branch, via: 'task' });
+  return { slug: task.slug, branches };
+}
+
+/** Which entry describes a pull request when several of a task's branches match it. */
+const VIA_RANK: Record<BranchVia, number> = { head: 0, stack: 1, history: 2, task: 3 };
+
+function betterEntry(a: TaskBranch, b: TaskBranch): TaskBranch {
+  // A branch found in a worktree says where the work is; the task-level entry
+  // only says the name matched.
+  const named = Number(b.repoName !== undefined) - Number(a.repoName !== undefined);
+  if (named !== 0) return named < 0 ? a : b;
+  return VIA_RANK[a.via] <= VIA_RANK[b.via] ? a : b;
+}
+
+/**
+ * File each pull request under the tasks whose branches it was opened from.
+ *
+ * Pure, and kept apart from the fetching because this is where the judgement is:
+ * a `head:` search is org-wide, so a branch name that exists in two repos comes
+ * back twice. A pull request counts for a task when it is in a repo the task
+ * actually holds — or when it is on the task's own branch, which is the one name
+ * the convention deliberately reuses across repos.
+ */
+export function matchPrsToTasks(sets: TaskBranches[], prs: PullRequest[]): Record<string, TaskPr[]> {
+  const byTask: Record<string, TaskPr[]> = {};
+
+  for (const set of sets) {
+    const picked = new Map<string, TaskPr>();
+    for (const pr of prs) {
+      const branch = pr.branch;
+      if (branch === undefined) continue;
+      const matches = set.branches.filter(
+        (entry) =>
+          entry.branch === branch &&
+          (entry.via === 'task' || entry.repo === undefined || entry.repo === pr.repo),
+      );
+      if (matches.length === 0) continue;
+
+      const entry = matches.reduce(betterEntry);
+      const key = prKey(pr.repo, pr.number);
+      const existing = picked.get(key);
+      if (existing && VIA_RANK[existing.via] <= VIA_RANK[entry.via]) continue;
+      picked.set(key, { ...pr, branch, via: entry.via, repoName: entry.repoName, ahead: entry.ahead });
+    }
+
+    if (picked.size === 0) continue;
+    // Bottom of the stack first: distance from the default branch is what orders
+    // a stack, since each layer holds every commit below it and then some. A
+    // branch whose distance could not be read sinks, in pull request order.
+    byTask[set.slug] = [...picked.values()].sort(
+      (a, b) =>
+        (a.ahead ?? Number.MAX_SAFE_INTEGER) - (b.ahead ?? Number.MAX_SAFE_INTEGER) ||
+        a.number - b.number,
+    );
+  }
+  return byTask;
+}
+
+/** Cache key for an enriched pull request: enrichment is stale only once it moves. */
+export function prCacheKey(pr: PullRequest): string {
+  return `${prKey(pr.repo, pr.number)}@${pr.updatedAt}`;
+}
+
+export interface FetchTaskPrsOptions {
+  tasks: Task[];
+  /** Last poll's enriched pull requests, by `prCacheKey`. Rebuilt by the caller. */
+  cached?: Map<string, PullRequest>;
+  now?: number;
+}
+
+export interface TaskPrsResult extends TaskPrs {
+  /** Every enriched pull request seen this round, for the caller's cache. */
+  enriched: PullRequest[];
+}
+
+/**
+ * The open pull requests of every task, in as few `gh` calls as it can be done in.
+ *
+ * One search covers the whole fleet: GitHub ORs repeated `head:` qualifiers, so
+ * every branch of every task goes into one query (chunked only to keep each a
+ * sane length). The search cannot return a head ref, though, so which branch a
+ * pull request came from — along with its checks and review state — costs a
+ * `gh pr view` each. Those are cached against the pull request's `updatedAt`,
+ * which is the one field that moves when any of the rest does, so a quiet fleet
+ * settles at a single call.
+ */
+export async function fetchTaskPrs(options: FetchTaskPrsOptions): Promise<TaskPrsResult> {
+  const now = options.now ?? Date.now();
+  const cached = options.cached ?? new Map<string, PullRequest>();
+  const empty = { byTask: {}, fetchedAt: Math.floor(now / 1000), enriched: [] };
+
+  const sets = await mapLimit(options.tasks, 4, discoverTaskBranches);
+  const distinct = [...new Set(sets.flatMap((set) => set.branches.map((entry) => entry.branch)))];
+  if (distinct.length === 0) return { ...empty, degraded: false };
+
+  const found = await fetchPrsForBranches(distinct);
+  if (!found.ok) return { ...empty, degraded: true };
+
+  const enriched = await mapLimit(found.prs, 6, async (pr) => cached.get(prCacheKey(pr)) ?? enrichPr(pr));
+  return {
+    byTask: matchPrsToTasks(sets, enriched),
+    fetchedAt: Math.floor(now / 1000),
+    degraded: false,
+    enriched,
+  };
+}

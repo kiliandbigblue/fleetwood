@@ -119,7 +119,14 @@ export function summariseChecks(rollup: CheckRun[] | undefined): {
   return { state, detail };
 }
 
-async function enrich(pr: PullRequest): Promise<PullRequest> {
+/**
+ * The second call per pull request: its head branch, review state and checks.
+ *
+ * Exported because a search cannot return a head ref — `headRefName` is not one
+ * of the fields the search API offers — so anything that needs to know which
+ * branch a pull request came from has to come through here.
+ */
+export async function enrichPr(pr: PullRequest): Promise<PullRequest> {
   const { code, stdout } = await run(
     'gh',
     [
@@ -152,7 +159,7 @@ async function enrich(pr: PullRequest): Promise<PullRequest> {
 }
 
 /** Bounded concurrency: `gh` spawns a process per call and we may have dozens. */
-async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
   let next = 0;
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
@@ -198,7 +205,7 @@ export async function fetchPrs(options: { limit?: number; enrich?: boolean } = {
   for (const row of mineRows) add(row, 'mine');
 
   let all = [...dedupe.values()];
-  if (options.enrich !== false) all = await mapLimit(all, 6, enrich);
+  if (options.enrich !== false) all = await mapLimit(all, 6, enrichPr);
 
   const byRecency = (a: PullRequest, b: PullRequest): number => b.updatedAt.localeCompare(a.updatedAt);
 
@@ -211,30 +218,88 @@ export async function fetchPrs(options: { limit?: number; enrich?: boolean } = {
 }
 
 /**
- * Every open PR whose head branch is `branch`, across the whole org.
+ * Split branch names into queries short enough for GitHub search to take.
+ *
+ * There is no documented ceiling on a search query, and 700-odd characters go
+ * through fine, so this is a conservative bound rather than a discovered one —
+ * a fleet of stacked tasks could otherwise build a query of any length at all.
+ * Pure, and exported for its test.
+ */
+export function batchHeadQualifiers(branches: string[], maxChars = 600): string[][] {
+  const batches: string[][] = [];
+  let current: string[] = [];
+  let length = 0;
+  for (const branch of branches) {
+    const cost = branch.length + 6; // `head:` plus the separating space.
+    // A single branch longer than the budget still gets its own query: dropping
+    // it would silently lose a pull request.
+    if (current.length > 0 && length + cost > maxChars) {
+      batches.push(current);
+      current = [];
+      length = 0;
+    }
+    current.push(branch);
+    length += cost;
+  }
+  if (current.length > 0) batches.push(current);
+  return batches;
+}
+
+/**
+ * Every open PR whose head branch is one of `branches`, across the whole org.
  *
  * This is what makes a task's pull requests findable as a set: the convention
  * reuses one branch name in every repo a change touches, so a single search
  * returns the lot — including PRs opened by a teammate or from another machine,
- * which no local bookkeeping could know about.
+ * which no local bookkeeping could know about. Stacked work needs the plural:
+ * GitHub ORs repeated `head:` qualifiers, so a whole stack — a whole fleet of
+ * them, in fact — is still one call rather than one per branch.
+ *
+ * `ok` is kept for the reason `searchRaw` keeps it: no pull requests open and a
+ * broken `gh` look identical from the rows alone, and a task with nothing pushed
+ * yet is the ordinary case here.
  */
-export async function fetchPrsForBranch(branch: string, limit = 30): Promise<PullRequest[]> {
+export async function fetchPrsForBranches(
+  branches: string[],
+  limit = 60,
+): Promise<{ ok: boolean; prs: PullRequest[] }> {
+  if (branches.length === 0) return { ok: true, prs: [] };
   const config = await loadConfig();
-  const args = ['search', 'prs', `head:${branch}`, '--state=open', `--limit=${limit}`, '--json', SEARCH_FIELDS];
-  if (config.github.extraQualifiers.trim().length > 0) {
-    args.push(...config.github.extraQualifiers.trim().split(/\s+/));
+  const extra = config.github.extraQualifiers.trim();
+
+  const results = await Promise.all(
+    batchHeadQualifiers(branches).map(async (batch) => {
+      const args = [
+        'search',
+        'prs',
+        ...batch.map((branch) => `head:${branch}`),
+        '--state=open',
+        `--limit=${limit}`,
+        '--json',
+        SEARCH_FIELDS,
+      ];
+      if (extra.length > 0) args.push(...extra.split(/\s+/));
+      const { code, stdout } = await run('gh', args, { timeoutMs: 20_000 });
+      if (code !== 0) return undefined;
+      try {
+        return JSON.parse(stdout) as SearchRow[];
+      } catch {
+        return undefined;
+      }
+    }),
+  );
+
+  // One failed batch means an incomplete answer, and an incomplete answer here
+  // reads as "that PR was closed". Say degraded instead.
+  if (results.some((rows) => rows === undefined)) return { ok: false, prs: [] };
+
+  const byKey = new Map<string, PullRequest>();
+  for (const row of results.flat() as SearchRow[]) {
+    const pr = toPr(row, 'mine');
+    if (!pr) continue;
+    byKey.set(prKey(pr.repo, pr.number), { ...pr, roles: [] });
   }
-  const { code, stdout } = await run('gh', args, { timeoutMs: 20_000 });
-  if (code !== 0) return [];
-  try {
-    const rows = JSON.parse(stdout) as SearchRow[];
-    return rows
-      .map((row) => toPr(row, 'mine'))
-      .filter((pr): pr is PullRequest => pr !== undefined)
-      .map((pr) => ({ ...pr, roles: [] as PullRequest['roles'] }));
-  } catch {
-    return [];
-  }
+  return { ok: true, prs: [...byKey.values()] };
 }
 
 /** Identifier stamped onto a tmux session so a PR maps to exactly one session. */

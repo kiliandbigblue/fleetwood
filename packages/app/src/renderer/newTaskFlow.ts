@@ -2,14 +2,17 @@
  * The new-task flow as data: the five questions, the draft they fill, and the
  * key semantics the choose steps run on.
  *
- * No React and no `node:` imports. The first is what lets `packages/app/test`
- * drive the Enter/Tab rules without a DOM — they are the whole feel of the
- * thing, and exactly the sort of rule that reads right and behaves wrong. The
- * second is why the renderer cannot just call core's `buildBranch`: `task.ts`
- * reaches for `node:fs` and takes the bundle down with it. So the branch naming
- * is copied here and held to core's original by a test, rather than by a comment
- * asking the next person to keep them in step.
+ * No React, which is what lets `packages/app/test` drive the Enter/Tab rules
+ * without a DOM — they are the whole feel of the thing, and exactly the sort of
+ * rule that reads right and behaves wrong.
+ *
+ * The branch naming used to be copied in here, held to core's original by a test,
+ * because reaching it meant reaching `task.ts` and its `node:fs` import would
+ * take the bundle down. It lives in `core/naming.ts` now, which has no `node:`
+ * imports and can simply be used.
  */
+export { buildBranch, slugify } from '@fleetwood/core/naming';
+import { buildBranch, slugify } from '@fleetwood/core/naming';
 
 export type StepKey = 'repos' | 'type' | 'microservice' | 'summary' | 'goal';
 
@@ -146,24 +149,6 @@ export function visibleChoices(
   const matches = needle.length === 0 ? [...names] : names.filter((n) => n.toLowerCase().includes(needle));
   const pinned = toggled.filter((t) => names.includes(t) && !matches.includes(t));
   return [...pinned, ...matches];
-}
-
-/** Mirrors core's `slugify`. Git ref names forbid a lot; keep to lowercase kebab. */
-export function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
-}
-
-/** Mirrors core's `buildBranch`: `<type>/<microservice>-<summary>`. */
-export function buildBranch(type: string, microservice: string, summary: string): string {
-  const kind = slugify(type) || 'feature';
-  const rest = [slugify(microservice), slugify(summary)].filter((p) => p.length > 0).join('-');
-  return `${kind}/${rest}`;
 }
 
 /**

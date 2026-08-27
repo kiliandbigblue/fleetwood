@@ -19,7 +19,8 @@ export * as repoIndex from './repoIndex.ts';
 export * as worktree from './worktree.ts';
 export * as prSession from './prSession.ts';
 export * as task from './task.ts';
-export { partitionAgents, repoSummary } from './taskView.ts';
+export * as taskPrs from './taskPrs.ts';
+export { partitionAgents, prSummary, repoSummary } from './taskView.ts';
 // Flat, because both renderers paint from the same palettes and neither may
 // import the barrel for them (which pulls in tmux and process scanning).
 export {
@@ -54,6 +55,7 @@ export type { Worktree } from './worktree.ts';
 export type { Config, MergedConfig, DeployPatterns } from './config.ts';
 export type { Palette, Theme, ThemeName } from './theme.ts';
 export type { Task, TaskRepo, CreateTaskInput, TaskResult } from './task.ts';
+export type { BranchVia, TaskBranch, TaskBranches, TaskPr, TaskPrs } from './taskPrs.ts';
 export type { ActionResult } from './actions.ts';
 export type { PromptOption, ScreenRead } from './screen.ts';
 export type { PlanLimits, LimitWindow } from './limits.ts';

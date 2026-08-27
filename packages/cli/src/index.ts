@@ -9,13 +9,15 @@ import {
   deployMarks,
   prSession,
   proc,
+  prSummary,
   repoIndex,
   repoSummary,
   spool,
   task as taskApi,
+  taskPrs as taskPrsApi,
   tmux,
 } from '@fleetwood/core';
-import type { AgentTool, FleetState, MergedPr, PlanLimits, PullRequest } from '@fleetwood/core';
+import type { AgentTool, FleetState, MergedPr, PlanLimits, PullRequest, TaskPr } from '@fleetwood/core';
 import { c, pad, relativeAge, tildify, useTheme, width } from './ui.ts';
 import { renderAgentLine, renderFleet, renderLimits } from './render.ts';
 
@@ -35,8 +37,10 @@ ${c.bold('commands')}
                     create a task: one branch, a worktree per repo, one session
                     ${c.dim('the session is left at a shell; --agent starts one in it')}
   task add <slug> <repo> [--branch b]   add a repo to a live task
+                    ${c.dim('--branch adds a second branch of a repo already there (stacked work)')}
   task start <slug> [--agent claude]    give a dormant task its session
-  task ls           tasks, their repos, branches and dirty state
+  task ls [--prs]   tasks, their repos, branches and dirty state
+                    ${c.dim('--prs also asks GitHub what each task has open')}
   task archive <slug> [--force]         remove every worktree and the session
 
   prs               pull requests awaiting your review, and your own
@@ -61,6 +65,7 @@ ${c.bold('options')}
 ${c.bold('examples')}
   fw task new fix flow "execution labels" --repo proto --repo graphy
   fw task add flow-execution-labels api-scripts
+  fw task add order-type-filling reflow --branch feature/orders-dual-write-order-type
   fw open-pr bigbluedisco/atlas#3671
   fw open-pr https://github.com/bigbluedisco/atlas/pull/3671
 `;
@@ -729,12 +734,34 @@ async function cmdTaskStart(argv: string[], json: boolean): Promise<void> {
   if (!result.ok) process.exitCode = 1;
 }
 
-async function cmdTaskList(json: boolean): Promise<void> {
+/** The mark for how a branch was found, matching the panel's. `head` needs none. */
+function viaMark(pr: TaskPr): string {
+  switch (pr.via) {
+    case 'stack':
+      return c.dim('⇡');
+    case 'history':
+      return c.dim('~');
+    case 'task':
+      return c.dim('⇄');
+    default:
+      return ' ';
+  }
+}
+
+async function cmdTaskList(argv: string[], json: boolean): Promise<void> {
   const tasks = await taskApi.listTasks();
-  if (json) return jsonOut(tasks);
+  // Opt-in: `task ls` is otherwise all local git, and a `gh` round trip is not
+  // what you want from the command you run to remember a slug.
+  const withPrs = argv.includes('--prs');
+  const prs = withPrs ? await taskPrsApi.fetchTaskPrs({ tasks }) : undefined;
+
+  if (json) return jsonOut(withPrs ? { tasks, prs } : tasks);
   if (tasks.length === 0) {
     process.stdout.write(`${c.muted('no tasks')} ${c.dim('— create one with `fw task new`')}\n`);
     return;
+  }
+  if (prs?.degraded) {
+    process.stdout.write(`${c.warn('!')} ${c.muted('gh returned nothing — pull requests not listed')}\n`);
   }
   for (const t of tasks) {
     const live = t.session ? c.ok('●') : c.muted('○');
@@ -746,6 +773,15 @@ async function cmdTaskList(json: boolean): Promise<void> {
       const dirty = repo.dirty > 0 ? c.warn(`${repo.dirty} dirty`) : c.muted('clean');
       const offBranch = repo.branch && repo.branch !== t.branch ? c.danger(` on ${repo.branch}`) : '';
       process.stdout.write(`    ${pad(repo.name, 22)} ${dirty}${offBranch}\n`);
+    }
+    const open = prs?.byTask[t.slug] ?? [];
+    if (open.length === 0) continue;
+    process.stdout.write(`    ${c.muted(prSummary(open))}\n`);
+    for (const pr of open) {
+      process.stdout.write(
+        `    ${viaMark(pr)} ${checksMark(pr)} ${c.dim(`#${pr.number}`)} ${pad(pr.branch, 46)} ${reviewMark(pr)}` +
+          `${pr.isDraft ? c.dim(' draft') : ''}\n`,
+      );
     }
   }
 }
@@ -775,7 +811,7 @@ async function cmdTask(argv: string[], json: boolean): Promise<void> {
       return cmdTaskStart(argv, json);
     case 'ls':
     case 'list':
-      return cmdTaskList(json);
+      return cmdTaskList(argv, json);
     case 'archive':
       return cmdTaskArchive(argv, json);
     default:
