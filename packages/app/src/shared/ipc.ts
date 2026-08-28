@@ -127,8 +127,14 @@ export type Request =
   | { kind: 'setTaskNotes'; slug: string; notes: string }
   /** Editor in a fresh pane of an existing session, on one repo's worktree. */
   | { kind: 'openEditor'; session: string; cwd: string; name?: string }
-  /** difit review server in a fresh pane, on one repo's worktree. */
-  | { kind: 'openDifit'; session: string; cwd: string; name?: string }
+  /**
+   * difit review server in a fresh pane, on one repo's worktree.
+   *
+   * `base` is the head pull request's own base branch, when the snapshot holds
+   * one — the only record of what a stacked layer sits on. Left off, main falls
+   * back to the repo's trunk.
+   */
+  | { kind: 'openDifit'; session: string; cwd: string; base?: string; name?: string }
   | { kind: 'archiveTask'; slug: string; force?: boolean }
   | { kind: 'listProjects' }
   | { kind: 'openExternal'; url: string }

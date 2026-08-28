@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { partitionAgents, repoSummary } from '../src/taskView.ts';
+import { baseFor, partitionAgents, repoSummary } from '../src/taskView.ts';
 import type { FleetAgent } from '../src/fleet.ts';
-import type { Task } from '../src/task.ts';
+import type { Task, TaskRepo } from '../src/task.ts';
+import type { TaskPr } from '../src/taskPrs.ts';
 
 const task = {
   slug: 'flow-execution-labels',
@@ -90,4 +91,90 @@ test('an unread branch is not reported as drift', () => {
 
 test('a task with no repos yet still reads as a sentence', () => {
   assert.equal(repoSummary([], task.branch), '0 repos');
+});
+
+/**
+ * The stack out of `orders-b2b-flag-migration`: one repo, two worktrees, and the
+ * second layer based on the first rather than on `dev`.
+ */
+const helperLayer: TaskRepo = {
+  name: 'reflow-orders-helper-order-type-b2b',
+  path: '/t/reflow-orders-helper-order-type-b2b',
+  repo: 'bigbluedisco/reflow',
+  branch: 'fix/orders-helper-order-type-b2b',
+  dirty: 0,
+};
+const upsertLayer: TaskRepo = {
+  name: 'reflow-orders-upsert-b2b-order-type',
+  path: '/t/reflow-orders-upsert-b2b-order-type',
+  repo: 'bigbluedisco/reflow',
+  branch: 'fix/orders-upsert-b2b-order-type',
+  dirty: 2,
+};
+
+function pr(overrides: Partial<TaskPr>): TaskPr {
+  return {
+    repo: 'bigbluedisco/reflow',
+    number: 1,
+    title: 'x',
+    url: 'https://example.invalid/1',
+    updatedAt: '2026-01-01T00:00:00Z',
+    isDraft: false,
+    roles: ['mine'],
+    branch: 'fix/orders-upsert-b2b-order-type',
+    via: 'head',
+    ...overrides,
+  } as TaskPr;
+}
+
+test('a stacked layer takes its base from its own pull request, not the trunk', () => {
+  const prs = [
+    pr({ number: 10427, branch: helperLayer.branch, base: 'dev', repoName: helperLayer.name }),
+    pr({
+      number: 10428,
+      branch: upsertLayer.branch,
+      base: 'fix/orders-helper-order-type-b2b',
+      repoName: upsertLayer.name,
+    }),
+  ];
+  // The bottom layer is cut from the trunk and says so.
+  assert.equal(baseFor(prs, helperLayer), 'dev');
+  // The layer above names the one below — the fact no read of the graph supplies.
+  assert.equal(baseFor(prs, upsertLayer), 'fix/orders-helper-order-type-b2b');
+});
+
+test('the worktree is matched too, so a namesake branch in another repo cannot answer', () => {
+  // `fix/orders-use-order-type-over-b2b` exists in both reflow and graphy in this
+  // migration, and each has its own pull request with its own base.
+  const graphyLayer: TaskRepo = {
+    ...upsertLayer,
+    name: 'graphy-orders-use-order-type-over-b2b',
+    branch: 'fix/shared-name',
+  };
+  const prs = [
+    pr({ branch: 'fix/shared-name', base: 'dev', repoName: 'reflow-orders-use-order-type-over-b2b' }),
+  ];
+  assert.equal(baseFor(prs, graphyLayer), undefined);
+});
+
+test('only the branch a worktree is actually on can supply its base', () => {
+  // `stack`, `history` and `task` name branches this worktree is not checked out
+  // on, so their bases describe a different review than the one being opened.
+  const prs = [
+    pr({
+      branch: upsertLayer.branch,
+      base: 'fix/somewhere-else',
+      via: 'stack',
+      repoName: upsertLayer.name,
+    }),
+  ];
+  assert.equal(baseFor(prs, upsertLayer), undefined);
+});
+
+test('no pull request, no base — the trunk decides instead', () => {
+  assert.equal(baseFor(undefined, upsertLayer), undefined);
+  assert.equal(baseFor([], upsertLayer), undefined);
+  // A worktree with no branch at all (detached) cannot be matched on one.
+  const detached: TaskRepo = { ...upsertLayer, branch: undefined };
+  assert.equal(baseFor([pr({ base: 'dev', repoName: upsertLayer.name })], detached), undefined);
 });

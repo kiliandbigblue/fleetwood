@@ -86,6 +86,31 @@ export function prSummary(prs: TaskPr[]): string {
 }
 
 /**
+ * What a worktree's own pull request merges into — the base a review must use.
+ *
+ * Only stacked work needs this. A layer's base is the layer below it, and that is
+ * recorded nowhere else: the commit graph cannot supply it, because a layer cut
+ * from its parent's *first* commit is not a descendant of the parent's tip and
+ * neither branch contains the other. Reviewed against the trunk instead, a layer
+ * is credited with every commit the layers beneath it added.
+ *
+ * Matched on the worktree as well as the branch, since a stack is several
+ * worktrees of one repo and a task can hold several repos — the branch alone could
+ * pick a namesake in the wrong one. Only a `head` pull request counts: the other
+ * three discovery sources name branches this worktree is *not* on, whose bases say
+ * nothing about what is checked out here.
+ *
+ * `undefined` covers every honest gap — no pull request yet, the search still out,
+ * a base GitHub did not report — and the trunk is the right answer in all of them.
+ */
+export function baseFor(prs: TaskPr[] | undefined, repo: TaskRepo): string | undefined {
+  if (!prs || !repo.branch) return undefined;
+  return prs.find(
+    (pr) => pr.via === 'head' && pr.branch === repo.branch && pr.repoName === repo.name,
+  )?.base;
+}
+
+/**
  * Why a branch is believed to be the task's, in words.
  *
  * Every one of these is an inference of a different strength, and the card says

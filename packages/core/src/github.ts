@@ -16,6 +16,16 @@ export interface PullRequest {
   roles: Array<'review-requested' | 'mine'>;
   // Enriched (a second call per PR):
   branch?: string;
+  /**
+   * The branch this pull request merges into.
+   *
+   * For most it is the trunk and says nothing new. For a stacked pull request it
+   * is the layer below, which is the one place that fact is recorded anywhere:
+   * the commit graph cannot supply it, since a layer cut from its parent's first
+   * commit is not a descendant of the parent's tip, and neither branch contains
+   * the other.
+   */
+  base?: string;
   reviewDecision?: string;
   checks?: ChecksState;
   checksDetail?: { passing: number; failing: number; pending: number };
@@ -103,6 +113,7 @@ function ignoreMatcher(pattern: string): RegExp | undefined {
 
 interface ViewResult {
   headRefName?: string;
+  baseRefName?: string;
   reviewDecision?: string;
   additions?: number;
   deletions?: number;
@@ -165,7 +176,7 @@ export async function enrichPr(pr: PullRequest): Promise<PullRequest> {
       '-R',
       pr.repo,
       '--json',
-      'headRefName,reviewDecision,additions,deletions,statusCheckRollup',
+      'headRefName,baseRefName,reviewDecision,additions,deletions,statusCheckRollup',
     ],
     { timeoutMs: 20_000 },
   );
@@ -176,6 +187,7 @@ export async function enrichPr(pr: PullRequest): Promise<PullRequest> {
     return {
       ...pr,
       branch: view.headRefName,
+      base: view.baseRefName,
       reviewDecision: view.reviewDecision,
       additions: view.additions,
       deletions: view.deletions,

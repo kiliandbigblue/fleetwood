@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { run } from '../src/exec.ts';
 import { difitCommand } from '../src/actions.ts';
-import { localDefaultBranch, reviewBase } from '../src/worktree.ts';
+import { localDefaultBranch, resolveBaseRef, reviewBase } from '../src/worktree.ts';
 
 /**
  * A throwaway repo on `trunk`, with no remote.
@@ -85,4 +85,70 @@ test('the base branch is compared with merge-base, and new files are included', 
     difitCommand('origin/dev'),
     'difit . origin/dev --merge-base --include-untracked',
   );
+});
+
+test('a base branch is resolved to the remote-tracking ref when there is one', async () => {
+  const repo = await scratchRepo('dev');
+  await fakeOrigin(repo, 'dev');
+  // Preferred over the local `dev` for the same reason `localDefaultBranch` keeps
+  // the prefix: in a task worktree the local copy is whatever it was last time.
+  assert.equal(await resolveBaseRef(repo, 'dev'), 'origin/dev');
+  // Already-prefixed input must not become `origin/origin/dev`.
+  assert.equal(await resolveBaseRef(repo, 'origin/dev'), 'origin/dev');
+});
+
+test('a base branch that exists only locally is still usable', async () => {
+  const repo = await scratchRepo('dev');
+  await run('git', ['-C', repo, 'branch', 'fix/layer-below']);
+  assert.equal(await resolveBaseRef(repo, 'fix/layer-below'), 'fix/layer-below');
+});
+
+test('a base branch this worktree does not have is refused, not passed on', async () => {
+  // difit fails outright on a ref that does not resolve, so the caller has to be
+  // able to tell "no such ref here" from a usable answer and fall back.
+  const repo = await scratchRepo('dev');
+  assert.equal(await resolveBaseRef(repo, 'fix/never-fetched'), undefined);
+  assert.equal(await resolveBaseRef(repo, '  '), undefined);
+});
+
+test('a stacked layer is reviewed from its fork point, not from the trunk', async () => {
+  // The shape stacked work actually takes, and the reason the base cannot be read
+  // off the commit graph: layer two is cut from layer one's *first* commit, then
+  // layer one moves on. Neither branch is an ancestor of the other.
+  const repo = await scratchRepo('dev');
+  const commit = async (text: string): Promise<void> => {
+    await writeFile(join(repo, 'a.txt'), `${text}\n`, 'utf8');
+    await run('git', ['-C', repo, 'commit', '-qam', text]);
+  };
+
+  await run('git', ['-C', repo, 'checkout', '-q', '-b', 'fix/one']);
+  await commit('one: shared helper');
+  const forkPoint = (await run('git', ['-C', repo, 'rev-parse', 'HEAD'])).stdout.trim();
+
+  await run('git', ['-C', repo, 'checkout', '-q', '-b', 'fix/two']);
+  await commit('two: uses the helper');
+
+  await run('git', ['-C', repo, 'checkout', '-q', 'fix/one']);
+  await commit('one: docs and tests, added later');
+
+  const ancestor = async (a: string, b: string): Promise<boolean> =>
+    (await run('git', ['-C', repo, 'merge-base', '--is-ancestor', a, b])).code === 0;
+  assert.equal(await ancestor('fix/one', 'fix/two'), false);
+  assert.equal(await ancestor('fix/two', 'fix/one'), false);
+
+  // Which is why naming the parent is enough: the fork point is still the merge
+  // base, and it does not move when the parent advances past it.
+  const merged = (await run('git', ['-C', repo, 'merge-base', 'fix/two', 'fix/one'])).stdout.trim();
+  assert.equal(merged, forkPoint);
+
+  // And why the trunk is the wrong base for layer two: it would hand the review
+  // layer one's commit as well.
+  const viaTrunk = (
+    await run('git', ['-C', repo, 'rev-list', '--count', 'dev..fix/two'])
+  ).stdout.trim();
+  const viaParent = (
+    await run('git', ['-C', repo, 'rev-list', '--count', `${forkPoint}..fix/two`])
+  ).stdout.trim();
+  assert.equal(viaTrunk, '2');
+  assert.equal(viaParent, '1');
 });

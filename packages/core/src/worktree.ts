@@ -160,11 +160,9 @@ const LOCAL_TRUNKS = ['main', 'master', 'dev', 'develop'];
  * trunk itself, "what have I changed against the trunk" is still the honest
  * question, and the answer is the uncommitted work.
  *
- * Known limit: a stack layer is reviewed against the trunk, not against the layer
- * below it, so the lower layers' commits are in the diff too. Finding the real
- * parent means the containment search `taskPrs` does, which is several `git` calls
- * per worktree — worth doing when reviewing a stack becomes the common case, and
- * not before.
+ * This is the answer for a branch cut straight from the trunk. A stacked layer's
+ * base is the layer below it, which no read of the commit graph can recover — see
+ * `resolveBaseRef`, and the pull request's `base` that feeds it.
  */
 export async function reviewBase(repoPath: string): Promise<string | undefined> {
   const remote = await localDefaultBranch(repoPath);
@@ -172,6 +170,31 @@ export async function reviewBase(repoPath: string): Promise<string | undefined> 
   for (const name of LOCAL_TRUNKS) {
     if (await refExists(repoPath, `refs/heads/${name}`)) return name;
   }
+  return undefined;
+}
+
+/**
+ * Turn a branch *name* into a ref this worktree can actually diff against.
+ *
+ * A pull request reports its base as a bare name — `dev`, or a sibling layer's
+ * `fix/orders-helper-order-type-b2b`. Neither is necessarily usable as written: a
+ * task worktree holds one branch and its local copy of any other may be stale or
+ * absent entirely, and difit fails outright on a ref that does not resolve.
+ *
+ * The remote-tracking ref is preferred for the reason `localDefaultBranch` keeps
+ * the `origin/` prefix — it is current as of the last fetch, where a local copy is
+ * whatever it was when this worktree last saw it. Either answers the same question
+ * anyway once `--merge-base` is applied: the fork point does not move when the base
+ * branch advances past it.
+ *
+ * `undefined` means neither form exists here, and the caller should fall back
+ * rather than hand difit a ref it will refuse.
+ */
+export async function resolveBaseRef(repoPath: string, branch: string): Promise<string | undefined> {
+  const name = branch.trim().replace(/^origin\//, '');
+  if (name.length === 0) return undefined;
+  if (await refExists(repoPath, `refs/remotes/origin/${name}`)) return `origin/${name}`;
+  if (await refExists(repoPath, `refs/heads/${name}`)) return name;
   return undefined;
 }
 

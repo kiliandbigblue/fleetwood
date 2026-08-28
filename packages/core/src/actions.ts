@@ -5,7 +5,7 @@ import { classify, scanProcesses } from './procScan.ts';
 import { nameWithOrder, sameSession, sessionLabel, sessionOrder } from './sessionOrder.ts';
 import type { SessionRename } from './sessionOrder.ts';
 import * as tmux from './tmux.ts';
-import { reviewBase } from './worktree.ts';
+import { resolveBaseRef, reviewBase } from './worktree.ts';
 import type { AgentTool, SessionMeta } from './types.ts';
 
 export interface ActionResult {
@@ -230,6 +230,17 @@ export interface OpenDifitOptions {
   session: string;
   /** The worktree to review. Its own work, not the task folder's. */
   cwd: string;
+  /**
+   * What this branch is really based on, when something knows.
+   *
+   * In practice the head pull request's own base, taken from the snapshot the card
+   * already has. It matters only for stacked work, and there it is the whole
+   * answer: reviewed against the trunk, a layer is credited with every commit the
+   * layers below it added. A name, not a ref — `resolveBaseRef` decides which form
+   * of it this worktree can actually diff against, and the trunk is used if it can
+   * use neither.
+   */
+  base?: string;
   /** tmux window name. Defaults to the directory's own name. */
   name?: string;
   /** Split the current window instead of opening one of its own. */
@@ -242,9 +253,15 @@ export interface OpenDifitOptions {
  * `difit . <base> --merge-base` is the whole argument for this being one button
  * rather than a menu: `.` is the worktree as it stands — committed branch work and
  * uncommitted edits together — and `--merge-base` pins the other side to where the
- * branch left the trunk, so commits landed on the trunk since then don't show up as
- * this branch's doing. It is the diff a pull request would show, plus whatever isn't
+ * branch left its base, so commits landed there since then don't show up as this
+ * branch's doing. It is the diff a pull request would show, plus whatever isn't
  * committed yet, which is what an agent's work looks like when you go to read it.
+ *
+ * `--merge-base` is also what makes a stacked layer work without knowing anything
+ * about the shape of the stack. A layer is typically cut from its parent's *first*
+ * commit and the parent then moves on, so the two are not ancestors of each other
+ * in either direction — but the fork point is still their merge base, and it does
+ * not move when the parent advances. Naming the parent is enough; see `base`.
  *
  * `--include-untracked` is not optional in practice. Without it difit stops to ask
  * `(Y/n)` whenever the worktree holds a new file, which a button cannot answer — and
@@ -262,7 +279,12 @@ export async function openDifit(options: OpenDifitOptions): Promise<ActionResult
     return { ok: false, detail: `no tmux session named ${options.session}` };
   }
 
-  const base = await reviewBase(options.cwd);
+  // The pull request's base first, the trunk only when there is none to use. A
+  // stacked layer is the case that needs it, and a base that does not resolve here
+  // is treated as absent rather than passed on for difit to reject.
+  const base =
+    (options.base ? await resolveBaseRef(options.cwd, options.base) : undefined) ??
+    (await reviewBase(options.cwd));
   if (!base) {
     return {
       ok: false,

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { FleetAgent, FleetSession, Task, TaskPr, TaskRepo } from '@fleetwood/core';
 // The leaf module: the barrel re-exports tmux and process scanning, which fail the
 // renderer bundle on `node:child_process`.
-import { partitionAgents, prSummary, repoSummary, VIA_LABEL } from '@fleetwood/core/taskView';
+import { baseFor, partitionAgents, prSummary, repoSummary, VIA_LABEL } from '@fleetwood/core/taskView';
 import { hasDriftedOffBranch } from '@fleetwood/core/naming';
 import { AgentRow } from './AgentRow.tsx';
 import { CHECK_GLYPH, REVIEW_LABEL } from './PrList.tsx';
@@ -57,6 +57,7 @@ function RepoRow({
   taskBranch,
   session,
   editor,
+  base,
   agents,
   onResult,
 }: {
@@ -65,6 +66,14 @@ function RepoRow({
   /** The task's tmux session, when it has one — the editor needs somewhere to land. */
   session?: string;
   editor: string;
+  /**
+   * What this worktree's own pull request merges into, when it has one.
+   *
+   * Only stacked work needs it — there the base is the layer below, and reviewing
+   * against the trunk instead credits this branch with everything underneath it.
+   * Absent (no pull request yet, or the search hasn't landed) main uses the trunk.
+   */
+  base?: string;
   agents: FleetAgent[];
   onResult: Props['onResult'];
 }): React.JSX.Element {
@@ -125,10 +134,11 @@ function RepoRow({
                   kind: 'openDifit',
                   session,
                   cwd: repo.path,
+                  base,
                   name: `${repo.name}-difit`,
                 })
               }
-              title={`difit on ${repo.path} vs its trunk — committed and uncommitted work together, from where the branch left it. New files are marked intent-to-add.`}
+              title={`difit on ${repo.path} vs ${base ?? 'its trunk'} — committed and uncommitted work together, from where the branch left it. New files are marked intent-to-add.`}
             >
               review
             </button>
@@ -336,6 +346,7 @@ export function TaskCard({
               taskBranch={task.branch}
               session={task.session}
               editor={editor}
+              base={baseFor(prs, repo)}
               agents={byRepo.get(repo.name) ?? []}
               onResult={onResult}
             />

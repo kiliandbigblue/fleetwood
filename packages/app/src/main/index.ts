@@ -489,6 +489,7 @@ async function handle(request: Request): Promise<Response> {
       const result = await actions.openDifit({
         session: request.session,
         cwd: request.cwd,
+        base: request.base,
         name: request.name,
       });
       // difit marks untracked files intent-to-add, which moves the row's dirty

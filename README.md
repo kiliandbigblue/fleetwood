@@ -393,21 +393,39 @@ is typed into a shell, so quitting it leaves you at a prompt in the right direct
 `editor` in the config names the command, and the button is labelled with it.
 
 Beside it, `review` runs [difit](https://github.com/yoshiko-pg/difit) on that
-worktree — `difit . <trunk> --merge-base` — and difit opens the browser itself. The
+worktree — `difit . <base> --merge-base` — and difit opens the browser itself. The
 two arguments are the whole reason this is one button and not a menu: `.` is the
 worktree as it stands, committed branch work and uncommitted edits together, and
-`--merge-base` pins the other side to where the branch left the trunk, so commits
-landed on the trunk since then aren't blamed on this branch. That's the diff the
-pull request will show, plus whatever isn't committed yet — which is what an agent's
-work looks like at the moment you go to read it, and the reason `git diff main` is
-the wrong question to ask a worktree.
+`--merge-base` pins the other side to where the branch left its base, so commits
+landed there since then aren't blamed on this branch. That's the diff the pull
+request will show, plus whatever isn't committed yet — which is what an agent's work
+looks like at the moment you go to read it, and the reason `git diff dev` is the
+wrong question to ask a worktree.
 
-The trunk is `origin/HEAD` where there is a remote, and the remote-tracking ref
-deliberately: a task worktree usually holds only the task branch, so its local `dev`
-is often stale or missing outright. A repo that was never pushed anywhere — this
-one's own worktrees — has no origin/HEAD to read, so the local trunks are tried by
-existence rather than `main` being assumed, which is the same rule `fw` follows when
-it cuts a branch.
+**What it compares against is the head pull request's own base**, and only the
+trunk when there is none. That distinction is the whole of stacked work. A layer's
+base is the layer below it, and the trunk would credit the layer with every commit
+underneath it — in `orders-b2b-flag-migration`, reviewing PR2 (`upsert`) against
+`dev` hands it PR1's helper commit as if it were its own. GitHub is the only place
+that fact is written down: the commit graph cannot supply it, because a layer is
+typically cut from its parent's *first* commit and the parent then moves on, so
+neither branch is an ancestor of the other in either direction. `--merge-base` is
+what makes naming the parent sufficient — the fork point stays the fork point when
+the parent advances past it.
+
+That base costs nothing to know. The per-PR `gh pr view` the task list already
+makes now asks for `baseRefName` too, so the card holds the answer before it is
+clicked and the button stays offline-capable: no pull request yet, or the search
+still out, and it falls back to the trunk.
+
+The trunk itself is `origin/HEAD` where there is a remote, and the remote-tracking
+ref deliberately: a task worktree usually holds only the task branch, so its local
+`dev` is often stale or missing outright. A repo that was never pushed anywhere —
+this one's own worktrees — has no origin/HEAD to read, so the local trunks are tried
+by existence rather than `main` being assumed, which is the same rule `fw` follows
+when it cuts a branch. A base branch is resolved the same way, `origin/` first, and
+a name this worktree holds in neither form is treated as absent rather than handed
+to difit to refuse.
 
 It runs in the pane rather than through `--background`, which is not a stylistic
 choice: `--background` forces difit's `--keep-alive`, and a server with no way to
