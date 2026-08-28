@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildTree, parsePanes, parseSessions, planSessionKill, tmuxEnv } from '../src/tmux.ts';
+import { buildTree, findTaskSession, parsePanes, parseSessions, planSessionKill, tmuxEnv } from '../src/tmux.ts';
 import type { ClientInfo, SessionRow } from '../src/tmux.ts';
 
 const SEP = '\x1f';
@@ -274,4 +274,40 @@ test('sessions created in the same second fall back to name order', () => {
   ];
   const plan = planSessionKill(sessions, [client('/dev/ttys004', 'doomed')], 'doomed');
   assert.equal(plan.switchTo, 'atlas');
+});
+
+/**
+ * findTaskSession backs the self-heal that follows a tmux-resurrect restore:
+ * the session comes back with its name and cwd, but resurrect has no idea
+ * about our `@fw_task` option, so it never comes back stamped.
+ */
+test('a session already stamped for the task is matched by the option, not its name', () => {
+  const stamped = { ...session('some-other-name', 1785781023), meta: { ...session('x', 0).meta, task: 'flow-execution-labels' } };
+  const found = findTaskSession([session('unrelated', 1785781000), stamped], 'flow-execution-labels', '/Users/k/flow-execution-labels');
+  assert.equal(found?.session.name, 'some-other-name');
+  assert.equal(found?.adopted, false);
+});
+
+test('an unstamped session named for the task is adopted', () => {
+  const sessions = [session('unrelated', 1785781000), session('flow-execution-labels', 1785790000)];
+  const found = findTaskSession(sessions, 'flow-execution-labels', '/Users/k/flow-execution-labels');
+  assert.equal(found?.session.name, 'flow-execution-labels');
+  assert.equal(found?.adopted, true);
+});
+
+test('an unstamped session sitting at the task folder is adopted by path, whatever its name', () => {
+  const renamed = { ...session('0-flow-execution-labels', 1785790000), path: '/Users/k/tasks/flow-execution-labels' };
+  const found = findTaskSession([session('unrelated', 1785781000), renamed], 'flow-execution-labels', '/Users/k/tasks/flow-execution-labels');
+  assert.equal(found?.session.name, '0-flow-execution-labels');
+  assert.equal(found?.adopted, true);
+});
+
+test('no session matches by option, name or path', () => {
+  const sessions = [session('unrelated', 1785781000)];
+  assert.equal(findTaskSession(sessions, 'flow-execution-labels', '/Users/k/flow-execution-labels'), undefined);
+});
+
+test('a stamped session for a different task is not adopted for this one', () => {
+  const other = { ...session('atlas-pr-1', 1785781023), meta: { ...session('x', 0).meta, task: 'atlas-pr-1' } };
+  assert.equal(findTaskSession([other], 'flow-execution-labels', '/Users/k/flow-execution-labels'), undefined);
 });

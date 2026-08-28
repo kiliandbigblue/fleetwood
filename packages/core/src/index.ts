@@ -19,6 +19,7 @@ export * as repoIndex from './repoIndex.ts';
 export * as worktree from './worktree.ts';
 export * as prSession from './prSession.ts';
 export * as task from './task.ts';
+export { findTrackedSessionId, findCursorChatId, resumeArgsFor } from './resume.ts';
 export * as taskPrs from './taskPrs.ts';
 export { partitionAgents, prSummary, repoSummary } from './taskView.ts';
 // Flat, for the same reason as the theme below: both front ends order and label

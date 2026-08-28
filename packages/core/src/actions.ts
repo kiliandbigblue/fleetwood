@@ -116,7 +116,7 @@ export async function openProject(options: OpenProjectOptions): Promise<ActionRe
   };
 }
 
-const AGENT_COMMANDS: Record<AgentTool, string | undefined> = {
+export const AGENT_COMMANDS: Record<AgentTool, string | undefined> = {
   claude: 'claude',
   cursor: 'cursor-agent',
   codex: 'codex',

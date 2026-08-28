@@ -221,6 +221,36 @@ async function ensureTaskWorktree(
   return ensureWorktree(localPath, branch, join(taskDir, worktreeDirName(repoName, branch)));
 }
 
+/**
+ * The session working a task, self-healing tmux metadata a restore tool
+ * (tmux-resurrect) recreated without it.
+ *
+ * A session tmux-resurrect rebuilds keeps its name and cwd but not our
+ * `@fw_*` user options — nothing in its hook set runs after a restore to put
+ * them back. So a session that matches this task by name or path but has no
+ * `@fw_task` is claimed and stamped here, exactly as a brand-new one is in
+ * {@link ensureTaskSession}.
+ */
+async function resolveTaskSession(
+  sessions: tmux.SessionRow[],
+  record: Pick<TaskRecord, 'slug' | 'branch'>,
+  dir: string,
+  repos: TaskRepo[],
+): Promise<tmux.SessionRow | undefined> {
+  const found = tmux.findTaskSession(sessions, record.slug, dir);
+  if (!found) return undefined;
+  if (found.adopted) {
+    await tmux.setSessionMeta(found.session.name, {
+      kind: 'task',
+      task: record.slug,
+      branch: record.branch,
+      taskdir: dir,
+      repo: repos.map((r) => r.repo ?? r.name).join(','),
+    });
+  }
+  return found.session;
+}
+
 async function readRecord(dir: string): Promise<TaskRecord | undefined> {
   try {
     const parsed = JSON.parse(await readFile(join(dir, RECORD_FILE), 'utf8')) as TaskRecord;
@@ -502,7 +532,7 @@ async function ensureTaskSession(
   agent: AgentTool | 'none',
 ): Promise<string | undefined> {
   const sessions = await tmux.listSessions();
-  const mine = sessions.find((s) => s.meta.task === record.slug);
+  const mine = await resolveTaskSession(sessions, record, dir, repos);
   if (mine) return mine.name;
 
   // Avoid colliding with an unrelated session that happens to share the name —
@@ -559,7 +589,7 @@ export async function startTaskSession(
    * to a second old, so a task can gain a session between the draw and the click.
    * Either way the agent is spawned, exactly as `+ claude` on a live card would.
    */
-  const existing = (await tmux.listSessions()).find((s) => s.meta.task === slug);
+  const existing = await resolveTaskSession(await tmux.listSessions(), record, dir, repos);
   const session = existing?.name ?? (await ensureTaskSession(record, dir, repos, agent));
   if (!session) {
     return { ok: false, detail: `could not create a tmux session for ${slug}`, repoResults: [] };
@@ -610,7 +640,7 @@ export async function addRepoToTask(
   await writeMeta(dir, record, repos);
 
   const sessions = await tmux.listSessions();
-  const session = sessions.find((s) => s.meta.task === slug)?.name;
+  const session = (await resolveTaskSession(sessions, record, dir, repos))?.name;
   // Only for a worktree that exists: a failed add used to open a window on a
   // directory git had just refused to create.
   if (session && result.ok && result.path) {
@@ -633,12 +663,12 @@ export async function getTask(slug: string): Promise<Task | undefined> {
   const dir = await taskDirFor(slug);
   const record = await readRecord(dir);
   if (!record) return undefined;
-  const sessions = await tmux.listSessions();
+  const [sessions, repos] = await Promise.all([tmux.listSessions(), readTaskRepos(dir)]);
   return {
     ...record,
     dir,
-    repos: await readTaskRepos(dir),
-    session: sessions.find((s) => s.meta.task === slug)?.name,
+    repos,
+    session: (await resolveTaskSession(sessions, record, dir, repos))?.name,
     notes: await readTaskNotes(dir),
   };
 }
@@ -660,11 +690,12 @@ export async function listTasks(): Promise<Task[]> {
     const dir = join(root, entry);
     const record = await readRecord(dir);
     if (!record) continue;
+    const repos = await readTaskRepos(dir);
     tasks.push({
       ...record,
       dir,
-      repos: await readTaskRepos(dir),
-      session: sessions.find((s) => s.meta.task === record.slug)?.name,
+      repos,
+      session: (await resolveTaskSession(sessions, record, dir, repos))?.name,
       notes: await readTaskNotes(dir),
     });
   }
@@ -774,7 +805,7 @@ export async function archiveTask(slug: string, force = false): Promise<ArchiveR
   await rm(dir, { recursive: true, force: true });
 
   const sessions = await tmux.listSessions();
-  const session = sessions.find((s) => s.meta.task === slug);
+  const session = tmux.findTaskSession(sessions, slug, dir)?.session;
   // Move whatever is attached to the task's session onto another one before
   // killing it: a detached client drops its Ghostty window back to a bare shell.
   const kill = session ? await tmux.killSessionKeepingClients(session.name) : undefined;

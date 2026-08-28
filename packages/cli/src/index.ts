@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { spawn } from 'node:child_process';
 import {
   actions,
   buildFleet,
@@ -17,7 +18,7 @@ import {
   taskPrs as taskPrsApi,
   tmux,
 } from '@fleetwood/core';
-import { sameSession, sessionLabel, sessionOrder, sortSessions } from '@fleetwood/core';
+import { resumeArgsFor, sameSession, sessionLabel, sessionOrder, sortSessions } from '@fleetwood/core';
 import type { AgentTool, FleetState, MergedPr, PlanLimits, PullRequest, TaskPr } from '@fleetwood/core';
 import { c, pad, relativeAge, tildify, useTheme, width } from './ui.ts';
 import { renderAgentLine, renderFleet, renderLimits } from './render.ts';
@@ -47,6 +48,9 @@ ${c.bold('commands')}
   prs               pull requests awaiting your review, and your own
   open-pr <ref>     focus the session for a PR, or build one on a fresh worktree
   focus <session>   point the terminal at a session
+  resume-agent <tool>
+                    launch <tool> here, resuming its last conversation in this
+                    directory if state.json has one ${c.dim('(for @resurrect-processes, not you)')}
   order             where each session sits in the fleet
   order <session> <slot>|none
                     put a session in a slot, or take it out of the ordering
@@ -575,6 +579,43 @@ async function cmdFocus(name: string | undefined): Promise<void> {
 }
 
 /**
+ * Launch an agent in the pane a restore tool (tmux-resurrect) just recreated,
+ * picking up the conversation that was running there rather than starting a
+ * blank one.
+ *
+ * Meant to sit behind `@resurrect-processes` in `.tmux.conf`, e.g.
+ * `"~claude->fw resume-agent claude"` — resurrect cd's into the pane's saved
+ * directory and types this in, so `process.cwd()` here is that directory.
+ * `state.json` survives the tmux restart that just happened (hooks write it
+ * independently of tmux), so it's what says which session, if any, to resume.
+ */
+async function cmdResumeAgent(argv: string[]): Promise<void> {
+  const tool = positionalArgs(argv)[1] as AgentTool | undefined;
+  const command = tool ? actions.AGENT_COMMANDS[tool] : undefined;
+  if (!tool || !command) {
+    process.stderr.write(`${c.danger('usage')} fw resume-agent <claude|codex|cursor>\n`);
+    process.exitCode = 2;
+    return;
+  }
+
+  const states = [...(await spool.peek()).values()];
+  const args = await resumeArgsFor(states, tool, process.cwd());
+
+  await new Promise<void>((resolve) => {
+    const child = spawn(command, args, { stdio: 'inherit' });
+    child.on('error', (err) => {
+      process.stderr.write(`${c.danger('✗')} could not start ${command}: ${err.message}\n`);
+      process.exitCode = 1;
+      resolve();
+    });
+    child.on('exit', (code) => {
+      process.exitCode = code ?? 0;
+      resolve();
+    });
+  });
+}
+
+/**
  * The fleet's order, and how to change it.
  *
  * A slot is a number prefixed to the tmux session name — `20-atlas`. Hidden
@@ -983,6 +1024,9 @@ async function main(): Promise<void> {
       break;
     case 'focus':
       await cmdFocus(arg);
+      break;
+    case 'resume-agent':
+      await cmdResumeAgent(argv);
       break;
     case 'order':
       await cmdOrder(positional, json);

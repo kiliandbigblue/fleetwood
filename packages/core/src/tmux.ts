@@ -204,6 +204,33 @@ export function buildTree(sessions: SessionRow[], panes: PaneRow[]): SessionInfo
   });
 }
 
+export interface TaskSessionMatch {
+  session: SessionRow;
+  /** True when the match came from name/path, not the `@fw_task` option. */
+  adopted: boolean;
+}
+
+/**
+ * The session working a task: by `@fw_task` first, then by name or path.
+ *
+ * A restore tool (tmux-resurrect) rebuilds a session's name, cwd and panes but
+ * has no idea about our tmux user options, so a session it recreates comes
+ * back with no `@fw_task` at all — matching on the option alone would make
+ * every task look dormant again after a restore. Falling back to the name
+ * `ensureTaskSession` would have given it (the slug) or its path (the task
+ * folder) reclaims it; the caller re-stamps the options once it does.
+ */
+export function findTaskSession(
+  sessions: SessionRow[],
+  slug: string,
+  dir: string,
+): TaskSessionMatch | undefined {
+  const stamped = sessions.find((s) => s.meta.task === slug);
+  if (stamped) return { session: stamped, adopted: false };
+  const orphan = sessions.find((s) => !s.meta.task && (s.name === slug || s.path === dir));
+  return orphan ? { session: orphan, adopted: true } : undefined;
+}
+
 // --- tmux invocations ------------------------------------------------------
 
 /**
