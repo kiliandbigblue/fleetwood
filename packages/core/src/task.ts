@@ -15,6 +15,7 @@ import {
 } from './worktree.ts';
 import type { EnsureWorktreeResult } from './worktree.ts';
 import { branchToSlug, buildBranch, slugify, worktreeDirName } from './naming.ts';
+import { sameSession } from './sessionOrder.ts';
 import { run } from './exec.ts';
 import * as tmux from './tmux.ts';
 import { focusSession, spawnAgent } from './actions.ts';
@@ -504,10 +505,11 @@ async function ensureTaskSession(
   const mine = sessions.find((s) => s.meta.task === record.slug);
   if (mine) return mine.name;
 
-  // Avoid colliding with an unrelated session that happens to share the name.
+  // Avoid colliding with an unrelated session that happens to share the name —
+  // by label, since one of them may be carrying an order prefix.
   let name = record.slug;
-  if (sessions.some((s) => s.name === name)) name = `${record.slug}-task`;
-  if (sessions.some((s) => s.name === name)) return undefined;
+  if (sessions.some((s) => sameSession(s.name, name))) name = `${record.slug}-task`;
+  if (sessions.some((s) => sameSession(s.name, name))) return undefined;
 
   const created = await tmux.newSession({ name, cwd: dir, windowName: 'task' });
   if (!created) return undefined;

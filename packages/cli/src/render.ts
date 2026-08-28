@@ -1,4 +1,5 @@
 import type { AgentStatus, FleetAgent, FleetState, PlanLimits } from '@fleetwood/core';
+import { sessionLabel, sortSessions } from '@fleetwood/core';
 import { c, pad, relativeAge, tildify, width } from './ui.ts';
 
 /**
@@ -134,9 +135,16 @@ export function renderFleet(fleet: FleetState, limits?: PlanLimits): string {
     return lines.join('\n');
   }
 
-  const nameWidth = Math.max(...fleet.sessions.map((s) => width(s.name)), 10);
+  /*
+   * The same order and the same labels as the panel: a numbered session sits in
+   * its slot, the rest are ranked by what they are doing, and the number itself
+   * is fleetwood's bookkeeping rather than something to read here. `fw sessions`
+   * is the view that still prints raw tmux names.
+   */
+  const sessions = sortSessions(fleet.sessions);
+  const nameWidth = Math.max(...sessions.map((s) => width(sessionLabel(s.name))), 10);
 
-  for (const session of fleet.sessions) {
+  for (const session of sessions) {
     const attached = session.attached > 0 ? c.ok('●') : c.muted('○');
     const attention = session.needsAttention ? c.danger(' ✋') : '';
     const kind = session.meta.kind ? c.accent(session.meta.kind) : '';
@@ -144,7 +152,7 @@ export function renderFleet(fleet: FleetState, limits?: PlanLimits): string {
     const branch = session.meta.branch ? c.branch(` ${session.meta.branch}`) : '';
 
     lines.push(
-      `${attached} ${c.bold(pad(session.name, nameWidth))}${attention} ${kind}${branch}${pr} ${c.muted(tildify(session.path))} ${c.dim(relativeAge(session.createdAt))}`,
+      `${attached} ${c.bold(pad(sessionLabel(session.name), nameWidth))}${attention} ${kind}${branch}${pr} ${c.muted(tildify(session.path))} ${c.dim(relativeAge(session.createdAt))}`,
     );
 
     if (session.agents.length === 0) {

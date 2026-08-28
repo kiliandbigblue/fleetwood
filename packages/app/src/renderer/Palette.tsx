@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sameSession, sessionLabel } from '@fleetwood/core/sessionOrder';
 import { send, tildify } from './api.ts';
 
 interface Project {
@@ -17,7 +18,10 @@ interface Props {
 
 interface Item {
   kind: 'session' | 'project' | 'new-task';
+  /** What to act on: a real tmux session name, order prefix and all. */
   name: string;
+  /** What to show and search on — the name without its order prefix. */
+  label: string;
   path: string;
 }
 
@@ -46,17 +50,23 @@ export function Palette({ open, onClose, sessions, onNewTask, onResult }: Props)
 
   const items = useMemo((): Item[] => {
     const needle = query.toLowerCase().trim();
-    const sessionItems = sessions.map((name) => ({ kind: 'session' as const, name, path: '' }));
+    const sessionItems = sessions.map((name) => ({
+      kind: 'session' as const,
+      name,
+      label: sessionLabel(name),
+      path: '',
+    }));
     const projectItems = projects
-      // A project with a live session is already offered above.
-      .filter((p) => !sessions.includes(p.name.replaceAll('.', '_')))
-      .map((p) => ({ kind: 'project' as const, name: p.name, path: p.path }));
+      // A project with a live session is already offered above — by label, since
+      // an ordered session is still that project's.
+      .filter((p) => !sessions.some((name) => sameSession(name, p.name.replaceAll('.', '_'))))
+      .map((p) => ({ kind: 'project' as const, name: p.name, label: p.name, path: p.path }));
     const all = [...sessionItems, ...projectItems];
     const found =
       needle.length === 0
         ? all.slice(0, 40)
         : all
-            .filter((i) => i.name.toLowerCase().includes(needle) || i.path.toLowerCase().includes(needle))
+            .filter((i) => i.label.toLowerCase().includes(needle) || i.path.toLowerCase().includes(needle))
             .slice(0, 40);
     /*
      * Every list here is of things that already exist, which dead-ends at exactly
@@ -67,7 +77,7 @@ export function Palette({ open, onClose, sessions, onNewTask, onResult }: Props)
      * Last rather than first, because Enter on a match has to stay a jump — that
      * is what the palette is opened for the other ninety-nine times.
      */
-    return [...found, { kind: 'new-task', name: query.trim(), path: '' }];
+    return [...found, { kind: 'new-task', name: query.trim(), label: query.trim(), path: '' }];
   }, [query, projects, sessions]);
 
   if (!open) return null;
@@ -166,10 +176,10 @@ export function Palette({ open, onClose, sessions, onNewTask, onResult }: Props)
               </span>
               <span>
                 {item.kind === 'new-task'
-                  ? item.name.length > 0
-                    ? `new task: ${item.name}`
+                  ? item.label.length > 0
+                    ? `new task: ${item.label}`
                     : 'new task…'
-                  : item.name}
+                  : item.label}
               </span>
               {item.kind === 'new-task' && (
                 <span className="path" style={{ marginLeft: 'auto' }}>

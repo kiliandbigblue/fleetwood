@@ -6,6 +6,7 @@ import { partitionAgents, prSummary, repoSummary, VIA_LABEL } from '@fleetwood/c
 import { hasDriftedOffBranch } from '@fleetwood/core/naming';
 import { AgentRow } from './AgentRow.tsx';
 import { CHECK_GLYPH, REVIEW_LABEL } from './PrList.tsx';
+import { Reorder } from './Reorder.tsx';
 import { send } from './api.ts';
 
 interface Props {
@@ -32,6 +33,13 @@ interface Props {
    * first.
    */
   session?: FleetSession;
+  /**
+   * Session names in fleet order, for the reorder arrows.
+   *
+   * Absent on a dormant task: the slot is kept on the tmux session name, so a
+   * task with no session has nowhere to hold one and shows no arrows.
+   */
+  order?: string[];
   /** The configured editor command, so the per-repo button says what it runs. */
   editor: string;
   onResult: (message: string, ok: boolean) => void;
@@ -192,7 +200,15 @@ function PrRow({ pr, onResult }: { pr: TaskPr; onResult: Props['onResult'] }): R
  * under the repo they are actually in, and the notes. It replaces the pair of
  * cards a live task used to get, one per tab, each missing half the controls.
  */
-export function TaskCard({ task, prs, prsStale, session, editor, onResult }: Props): React.JSX.Element {
+export function TaskCard({
+  task,
+  prs,
+  prsStale,
+  session,
+  order,
+  editor,
+  onResult,
+}: Props): React.JSX.Element {
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [addingRepo, setAddingRepo] = useState(false);
   const [repoName, setRepoName] = useState('');
@@ -274,6 +290,12 @@ export function TaskCard({ task, prs, prsStale, session, editor, onResult }: Pro
           {expanded ? '▾ ' : '▸ '}
           {repoSummary(task.repos, task.branch)}
         </button>
+        {/* Last, on the trailing edge, as on a session card. The slug is already
+            the session's name minus its slot, so nothing here needs relabelling —
+            only moving. */}
+        {task.session && order && (
+          <Reorder session={task.session} order={order} onResult={onResult} />
+        )}
       </div>
 
       <div className="branch-line" title={task.branch}>

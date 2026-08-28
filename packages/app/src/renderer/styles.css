@@ -497,6 +497,124 @@ button {
   flex: 0 1 auto;
 }
 
+/*
+ * Where a card sits in the fleet: one dot column, four moves behind it.
+ *
+ * A row of four arrows was the shape before this one, and four glyphs on every
+ * card is four glyphs however faded they are. One is furniture; four are chrome.
+ *
+ * So it is dim rather than faded — `--dim` at full strength, the weight this
+ * panel already gives resting furniture like `.head-path` and `.repo-toggle`,
+ * brightening to `--text` on the card you point at. `.agent-kill`'s
+ * fade-until-hover was tried here first and could not be found at all: that rule
+ * works for the `×` because the whole agent row is its hover target, while this
+ * sits in a header, and at `bgOpacity` 0.7 a 45%-opacity `--dim` glyph has the
+ * desktop showing through it.
+ *
+ * The popover itself is the theme picker's, value for value — same surface,
+ * same rows, same shadow. There is one kind of menu in this panel.
+ */
+.reorder {
+  position: relative;
+  flex: none;
+  align-self: center;
+  /*
+   * The trailing edge is this control's, and only one element in a flex row may
+   * claim the free space: with two `auto` margins the space is split between
+   * them and the path drifts into the middle. So the metadata keeps its `auto`
+   * when there is any (it is already right-aligned, and this then sits at the end
+   * of that group), and this takes the `auto` when the head has none.
+   */
+  margin-left: auto;
+}
+
+.card-head:has(.head-path) .reorder,
+.card-head:has(.repo-toggle) .reorder {
+  margin-left: 2px;
+}
+
+.reorder-open {
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--dim);
+}
+
+/* Brighter on the card you are pointing at, so it reads as this card's control
+   and not as a mark in the header. */
+.card-head:hover .reorder-open {
+  color: var(--soft);
+}
+
+.reorder-open:hover,
+.reorder-open.showing {
+  background: var(--edge);
+  color: var(--text);
+}
+
+/*
+ * Right-aligned under the button: the card is 8px from the window's right edge,
+ * so a left-aligned menu would hang off it.
+ *
+ * The card clips its own children (`overflow: hidden`, for the rounded corners),
+ * which would cut this off at the header — hence the `:has` below, which lets
+ * the card overflow for exactly as long as a menu is inside it.
+ */
+.reorder-menu {
+  position: absolute;
+  top: 22px;
+  right: 0;
+  z-index: 20;
+  min-width: 148px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  /* Solid at every opacity — see the note in `theme.ts`. */
+  background: var(--panel-solid);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+}
+
+.card:has(.reorder-menu) {
+  overflow: visible;
+}
+
+.reorder-slot {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dim);
+  padding: 5px 6px 3px;
+}
+
+.reorder-item {
+  padding: 4px 6px;
+  border-radius: 5px;
+  font-size: 11.5px;
+  color: var(--soft);
+  text-align: left;
+}
+
+.reorder-item:hover:enabled {
+  background: var(--edge);
+  color: var(--text);
+}
+
+/* Already at that end, or no slot to clear: shown, so the menu keeps its shape
+   and says what the card's position is, but plainly inert. */
+.reorder-item:disabled {
+  color: var(--edge);
+  cursor: default;
+}
+
+.reorder-divider {
+  margin: 3px 4px;
+  border-top: 1px solid var(--edge);
+}
+
 .attached-dot {
   color: var(--ok);
   font-size: 9px;

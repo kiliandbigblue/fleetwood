@@ -2,6 +2,8 @@ import { basename } from 'node:path';
 import { run } from './exec.ts';
 import { looksLikeClaude } from './claudeDaemon.ts';
 import { classify, scanProcesses } from './procScan.ts';
+import { nameWithOrder, sameSession, sessionLabel, sessionOrder } from './sessionOrder.ts';
+import type { SessionRename } from './sessionOrder.ts';
 import * as tmux from './tmux.ts';
 import type { AgentTool, SessionMeta } from './types.ts';
 
@@ -88,23 +90,27 @@ export interface OpenProjectOptions {
  * must land you in the same place, not spawn a second session.
  */
 export async function openProject(options: OpenProjectOptions): Promise<ActionResult> {
-  const name = options.name ?? sessionNameFor(options.path);
-  const existed = await tmux.hasSession(name);
+  const wanted = options.name ?? sessionNameFor(options.path);
+  // An order prefix is a display detail, so `20-fleetwood` is still the session
+  // for `fleetwood`. Matching on the raw name would create a second one.
+  const sessions = await tmux.listSessions();
+  const existing = sessions.find((s) => sameSession(s.name, wanted))?.name;
+  const name = existing ?? wanted;
 
-  if (!existed) {
+  if (!existing) {
     const created = await tmux.newSession({ name, cwd: options.path });
     if (!created) return { ok: false, detail: `could not create session ${name}` };
     if (options.meta) await tmux.setSessionMeta(name, options.meta);
   }
 
   if (options.background) {
-    return { ok: true, detail: existed ? `session ${name} already exists` : `created ${name}` };
+    return { ok: true, detail: existing ? `session ${name} already exists` : `created ${name}` };
   }
 
   const focus = await focusSession(name);
   return {
     ok: focus.ok,
-    detail: `${existed ? 'focused existing' : 'created and focused'} ${name}${focus.ok ? '' : ` — ${focus.detail}`}`,
+    detail: `${existing ? 'focused existing' : 'created and focused'} ${name}${focus.ok ? '' : ` — ${focus.detail}`}`,
   };
 }
 
@@ -431,4 +437,70 @@ export async function renameSession(from: string, to: string): Promise<ActionRes
   return ok
     ? { ok: true, detail: `renamed ${from} → ${to}` }
     : { ok: false, detail: `could not rename ${from}` };
+}
+
+/**
+ * Put a session in a slot, or take it out of the ordering entirely.
+ *
+ * `undefined` strips the prefix, which is how a session goes back to being sorted
+ * by what it is doing rather than by where you put it.
+ */
+export async function setSessionOrder(
+  session: string,
+  order: number | undefined,
+): Promise<ActionResult> {
+  if (!(await tmux.hasSession(session))) {
+    return { ok: false, detail: `no tmux session named ${session}` };
+  }
+  const target = nameWithOrder(session, order);
+  if (target === session) {
+    return order === undefined
+      ? { ok: true, detail: `${session} was already unordered` }
+      : { ok: true, detail: `${sessionLabel(session)} was already in slot ${order}` };
+  }
+  if (!(await tmux.renameSession(session, target))) {
+    // The one way this fails on its own: two sessions sharing a label, where the
+    // slot being asked for is the other one's name. tmux refuses a duplicate.
+    return { ok: false, detail: `tmux refused to rename ${session} → ${target}` };
+  }
+  return order === undefined
+    ? { ok: true, detail: `${sessionLabel(session)} is no longer ordered` }
+    : { ok: true, detail: `${sessionLabel(session)} moved to slot ${order}` };
+}
+
+/**
+ * Apply a reorder plan, stopping at the first rename tmux refuses.
+ *
+ * Stopping rather than pressing on: the plan is a set of slots that only makes
+ * sense whole, and finishing it around a hole would leave two sessions sharing a
+ * number. Half-applied is recoverable — the next move replans from what is
+ * actually there — while wrong-but-complete is not.
+ */
+export async function applyReorder(
+  renames: SessionRename[],
+  /** The session the move was about, so the toast names it and not a bystander. */
+  moved: string,
+): Promise<ActionResult> {
+  if (renames.length === 0) return { ok: true, detail: `${sessionLabel(moved)} is already there` };
+
+  let applied = 0;
+  for (const rename of renames) {
+    if (!(await tmux.renameSession(rename.from, rename.to))) {
+      const detail = `tmux refused to rename ${rename.from} → ${rename.to}`;
+      return {
+        ok: false,
+        detail: applied > 0 ? `${detail} — ${applied} of ${renames.length} applied` : detail,
+      };
+    }
+    applied += 1;
+  }
+
+  const name = renames.find((r) => r.from === moved)?.to ?? moved;
+  const others = renames.length - 1;
+  return {
+    ok: true,
+    detail: `${sessionLabel(name)} → slot ${sessionOrder(name) ?? '—'}${
+      others > 0 ? ` (${others} other session${others === 1 ? '' : 's'} renumbered)` : ''
+    }`,
+  };
 }

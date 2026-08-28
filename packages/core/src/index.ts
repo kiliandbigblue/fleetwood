@@ -21,6 +21,19 @@ export * as prSession from './prSession.ts';
 export * as task from './task.ts';
 export * as taskPrs from './taskPrs.ts';
 export { partitionAgents, prSummary, repoSummary } from './taskView.ts';
+// Flat, for the same reason as the theme below: both front ends order and label
+// sessions with these, and the renderer must not import the barrel to get them.
+export {
+  ORDER_STEP,
+  nameWithOrder,
+  parseSessionName,
+  planReorder,
+  sameSession,
+  sessionLabel,
+  sessionOrder,
+  sortSessions,
+} from './sessionOrder.ts';
+export type { MoveDirection, Orderable, SessionName, SessionRename } from './sessionOrder.ts';
 // Flat, because both renderers paint from the same palettes and neither may
 // import the barrel for them (which pulls in tmux and process scanning).
 export {

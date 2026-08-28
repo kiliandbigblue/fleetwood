@@ -10,6 +10,7 @@ import {
   limits as limitsApi,
   paths,
   deployMarks,
+  planReorder,
   prSession,
   repoIndex,
   spool,
@@ -356,6 +357,19 @@ async function handle(request: Request): Promise<Response> {
       const result = await prSession.archivePrSession(request.session, request.force ?? false);
       await pushSnapshot();
       return { ok: result.ok, detail: result.detail };
+    }
+
+    case 'reorderSession': {
+      const plan = planReorder(request.order, request.session, request.direction);
+      const result = await actions.applyReorder(plan, request.session);
+      await pushSnapshot();
+      return result;
+    }
+
+    case 'clearSessionOrder': {
+      const result = await actions.setSessionOrder(request.session, undefined);
+      await pushSnapshot();
+      return result;
     }
 
     case 'openPr': {

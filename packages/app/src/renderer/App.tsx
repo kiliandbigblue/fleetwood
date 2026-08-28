@@ -13,6 +13,7 @@ import { ThemePicker } from './ThemePicker.tsx';
 // The leaf module: the barrel re-exports tmux and process scanning, which fail
 // the renderer bundle on `node:child_process`.
 import { needsDeploy } from '@fleetwood/core/deployState';
+import { sortSessions } from '@fleetwood/core/sessionOrder';
 import { applyTheme } from './theme.ts';
 import { send } from './api.ts';
 import { api } from './api.ts';
@@ -104,16 +105,15 @@ export function App(): React.JSX.Element {
    */
   const toDeploy = merged.filter((pr) => needsDeploy(pr)).length;
 
-  // Sessions needing attention float to the top; the rest keep tmux's order.
-  const sessions = snapshot
-    ? [...snapshot.fleet.sessions].sort((a, b) => {
-        if (a.needsAttention !== b.needsAttention) return a.needsAttention ? -1 : 1;
-        const aAgents = a.agents.length > 0;
-        const bAgents = b.agents.length > 0;
-        if (aAgents !== bAgents) return aAgents ? -1 : 1;
-        return 0;
-      })
-    : [];
+  /*
+   * Numbered sessions sit where you put them; the rest are ranked by what they
+   * are doing — attention first, then sessions with agents, then tmux's order.
+   * Both halves of that rule live in `sortSessions`, so `fw status` draws the
+   * same list.
+   */
+  const sessions = snapshot ? sortSessions(snapshot.fleet.sessions) : [];
+  /** What a reorder click is relative to: the order actually on screen. */
+  const order = sessions.map((session) => session.name);
 
   /*
    * The join that merges the two lists: `@fw_task` is stamped on the session at
@@ -196,11 +196,17 @@ export function App(): React.JSX.Element {
                   prs={snapshot.taskPrs?.byTask[task.slug]}
                   prsStale={snapshot.taskPrs?.degraded}
                   session={session}
+                  order={order}
                   editor={snapshot.editor}
                   onResult={onResult}
                 />
               ) : (
-                <SessionCard key={session.sessionId} session={session} onResult={onResult} />
+                <SessionCard
+                  key={session.sessionId}
+                  session={session}
+                  order={order}
+                  onResult={onResult}
+                />
               );
             })}
             {dormantTasks.length > 0 && (

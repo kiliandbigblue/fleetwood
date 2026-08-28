@@ -3,6 +3,7 @@ import type { DeployState, MergedPr, MergedPrs, PrLists, PullRequest, Task } fro
 // The leaf module, not the barrel or `github.ts`: both reach
 // `node:child_process` and would fail the bundle.
 import { needsDeploy } from '@fleetwood/core/deployState';
+import { sessionLabel } from '@fleetwood/core/sessionOrder';
 import { relativeIso, send } from './api.ts';
 
 interface Props {
@@ -124,7 +125,7 @@ function PrRow({
         )}
         {session && !task && (
           <span className="linked" title={`session ${session}`}>
-            ⇄ {session}
+            ⇄ {sessionLabel(session)}
           </span>
         )}
       </div>

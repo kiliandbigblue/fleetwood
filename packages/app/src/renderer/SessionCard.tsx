@@ -1,10 +1,14 @@
 import { useState } from 'react';
 import type { FleetSession } from '@fleetwood/core';
+import { sessionLabel } from '@fleetwood/core/sessionOrder';
 import { AgentRow } from './AgentRow.tsx';
+import { Reorder } from './Reorder.tsx';
 import { send, shortenPath, tildify } from './api.ts';
 
 interface Props {
   session: FleetSession;
+  /** Session names in fleet order, for the reorder arrows. */
+  order: string[];
   onResult: (message: string, ok: boolean) => void;
 }
 
@@ -20,7 +24,7 @@ const RANK: Record<string, number> = {
   gone: 7,
 };
 
-export function SessionCard({ session, onResult }: Props): React.JSX.Element {
+export function SessionCard({ session, order, onResult }: Props): React.JSX.Element {
   const [confirmingArchive, setConfirmingArchive] = useState(false);
 
   const act = async (request: Parameters<typeof send>[0]): Promise<void> => {
@@ -45,7 +49,10 @@ export function SessionCard({ session, onResult }: Props): React.JSX.Element {
         title={`focus ${session.name} · ${tildify(session.path)}`}
       >
         <span className={`attached-dot${session.attached > 0 ? '' : ' detached'}`}>●</span>
-        <span className="session-name">{session.name}</span>
+        {/* The label, not the name: an order prefix is fleetwood's own bookkeeping
+            and reading `20-atlas` on the card would be noise. The tooltip above
+            carries the real name, which is what tmux answers to. */}
+        <span className="session-name">{sessionLabel(session.name)}</span>
         {session.meta.pr ? (
           <span className="badge pr">#{session.meta.pr.split('#')[1]}</span>
         ) : (
@@ -54,6 +61,9 @@ export function SessionCard({ session, onResult }: Props): React.JSX.Element {
         {!session.meta.branch && (
           <span className="head-path">{shortenPath(session.path, 22)}</span>
         )}
+        {/* Last, on the trailing edge: it is this card's menu, and a menu lives at
+            the end of the row it belongs to rather than beside the title. */}
+        <Reorder session={session.name} order={order} onResult={onResult} />
       </div>
 
       {/* Branch gets its own line: it is the longest string on the card and was

@@ -76,6 +76,28 @@ export type Request =
   /** Close one agent by its fleet key — pids are resolved in main, never sent from a snapshot. */
   | { kind: 'killAgent'; key: string }
   | { kind: 'archiveSession'; session: string; force?: boolean }
+  /**
+   * Move a session up or down the fleet, by renaming its order prefix.
+   *
+   * `order` is the list of session names as the panel is currently drawing them,
+   * because that is what the click was made against: "up" means "above the card
+   * above this one", and only the renderer knows what that is. Main replans from
+   * it rather than re-deriving an order the user may not be looking at.
+   */
+  | {
+      kind: 'reorderSession';
+      session: string;
+      direction: 'up' | 'down' | 'top' | 'bottom';
+      order: string[];
+    }
+  /**
+   * Take a session out of the ordering: the prefix comes off the tmux name.
+   *
+   * The way back, and not the same thing as moving it last — an unnumbered
+   * session is ranked by what it is doing again, which is what the panel did
+   * before anyone pinned anything.
+   */
+  | { kind: 'clearSessionOrder'; session: string }
   | { kind: 'openPr'; repo: string; number: number; branch?: string }
   | { kind: 'answerPrompt'; pane: string; key: string }
   | { kind: 'interrupt'; pane: string }

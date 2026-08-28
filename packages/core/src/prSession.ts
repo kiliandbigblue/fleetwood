@@ -3,6 +3,7 @@ import { focusSession } from './actions.ts';
 import { prKey } from './github.ts';
 import type { PullRequest } from './github.ts';
 import { resolveRepo } from './repoIndex.ts';
+import { sameSession } from './sessionOrder.ts';
 import * as tmux from './tmux.ts';
 import { ensureWorktreeForPr, listWorktrees, removeWorktree } from './worktree.ts';
 
@@ -56,7 +57,8 @@ export async function findSessionForPr(
   }
 
   const expected = prSessionName(repo, prNumber);
-  const byName = sessions.find((s) => s.name === expected);
+  // By label: an ordered session is still the one working this PR.
+  const byName = sessions.find((s) => sameSession(s.name, expected));
   return byName ? { session: byName.name, by: 'name' } : undefined;
 }
 

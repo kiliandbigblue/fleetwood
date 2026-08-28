@@ -17,6 +17,7 @@ import {
   taskPrs as taskPrsApi,
   tmux,
 } from '@fleetwood/core';
+import { sameSession, sessionLabel, sessionOrder, sortSessions } from '@fleetwood/core';
 import type { AgentTool, FleetState, MergedPr, PlanLimits, PullRequest, TaskPr } from '@fleetwood/core';
 import { c, pad, relativeAge, tildify, useTheme, width } from './ui.ts';
 import { renderAgentLine, renderFleet, renderLimits } from './render.ts';
@@ -46,6 +47,10 @@ ${c.bold('commands')}
   prs               pull requests awaiting your review, and your own
   open-pr <ref>     focus the session for a PR, or build one on a fresh worktree
   focus <session>   point the terminal at a session
+  order             where each session sits in the fleet
+  order <session> <slot>|none
+                    put a session in a slot, or take it out of the ordering
+                    ${c.dim('the slot is a number prefixed to the tmux session name, hidden everywhere fleetwood shows it')}
   approve [pane]    answer yes to a blocked agent's permission prompt
   deny [pane]       answer no
   kill-agent [pane|key]
@@ -66,6 +71,7 @@ ${c.bold('examples')}
   fw task new fix flow "execution labels" --repo proto --repo graphy
   fw task add flow-execution-labels api-scripts
   fw task add order-type-filling reflow --branch feature/orders-dual-write-order-type
+  fw order atlas 15
   fw open-pr bigbluedisco/atlas#3671
   fw open-pr https://github.com/bigbluedisco/atlas/pull/3671
 `;
@@ -137,7 +143,7 @@ async function cmdAgents(json: boolean, capture: boolean): Promise<void> {
     return;
   }
   const bySession = new Map<string, string>();
-  for (const s of state.sessions) for (const a of s.agents) bySession.set(a.key, s.name);
+  for (const s of state.sessions) for (const a of s.agents) bySession.set(a.key, sessionLabel(s.name));
   const nameWidth = Math.max(...[...bySession.values()].map((n) => width(n)), 8);
   for (const agent of agents) {
     const session = pad(bySession.get(agent.key) ?? c.dim('—'), nameWidth);
@@ -518,13 +524,100 @@ async function cmdOpenPr(ref: string | undefined, background: boolean): Promise<
   if (!result.ok) process.exitCode = 1;
 }
 
+/**
+ * The real tmux name for something the user typed.
+ *
+ * `fw` hides order prefixes, so `atlas` has to keep finding `20-atlas` — anything
+ * else would print a name and then refuse it. An exact name always wins, so a
+ * session literally called `atlas` beside `20-atlas` is still reachable.
+ */
+async function resolveSession(typed: string): Promise<{ name?: string; detail?: string }> {
+  const sessions = await tmux.listSessions();
+  if (sessions.some((s) => s.name === typed)) return { name: typed };
+  const matches = sessions.filter((s) => sameSession(s.name, typed));
+  if (matches.length === 1) return { name: (matches[0] as (typeof matches)[number]).name };
+  if (matches.length === 0) return { detail: `no tmux session named ${typed}` };
+  return { detail: `${typed} is ambiguous: ${matches.map((s) => s.name).join(', ')}` };
+}
+
 async function cmdFocus(name: string | undefined): Promise<void> {
   if (!name) {
     process.stderr.write(`${c.danger('usage')} fw focus <session>\n`);
     process.exitCode = 2;
     return;
   }
-  const result = await actions.focusSession(name);
+  const found = await resolveSession(name);
+  if (!found.name) {
+    process.stdout.write(`${c.danger('✗')} ${found.detail}\n`);
+    process.exitCode = 1;
+    return;
+  }
+  const result = await actions.focusSession(found.name);
+  process.stdout.write(`${result.ok ? c.ok('✓') : c.danger('✗')} ${result.detail}\n`);
+  if (!result.ok) process.exitCode = 1;
+}
+
+/**
+ * The fleet's order, and how to change it.
+ *
+ * A slot is a number prefixed to the tmux session name — `20-atlas`. Hidden
+ * everywhere fleetwood shows a session, so this command and `fw sessions` are
+ * where you see the number at all. Sessions with no slot are listed last, in the
+ * order the fleet ranks them: whoever needs you, then whatever is working.
+ */
+async function cmdOrder(positional: string[], json: boolean): Promise<void> {
+  const [typed, slot] = [positional[1], positional[2]];
+
+  if (!typed) {
+    const state = await buildFleet({ capture: false });
+    const sessions = sortSessions(state.sessions);
+    if (json) {
+      return jsonOut(
+        sessions.map((s) => ({ name: s.name, label: sessionLabel(s.name), slot: sessionOrder(s.name) ?? null })),
+      );
+    }
+    if (sessions.length === 0) {
+      process.stdout.write(`${c.muted('no tmux server running')}\n`);
+      return;
+    }
+    const nameWidth = Math.max(...sessions.map((s) => width(sessionLabel(s.name))), 10);
+    for (const session of sessions) {
+      const order = sessionOrder(session.name);
+      const mark = order === undefined ? c.dim(pad('—', 4)) : c.accent(pad(String(order), 4));
+      const attention = session.needsAttention ? c.danger(' ✋') : '';
+      process.stdout.write(
+        `${mark} ${c.bold(pad(sessionLabel(session.name), nameWidth))} ${c.muted(session.name)}${attention}\n`,
+      );
+    }
+    process.stdout.write(
+      `\n${c.muted('fw order <session> <slot>')}  ${c.dim('put one in a slot')}\n` +
+        `${c.muted('fw order <session> none  ')}  ${c.dim('take it out of the ordering')}\n`,
+    );
+    return;
+  }
+
+  if (!slot) {
+    process.stderr.write(`${c.danger('usage')} fw order <session> <slot>|none\n`);
+    process.exitCode = 2;
+    return;
+  }
+
+  const found = await resolveSession(typed);
+  if (!found.name) {
+    process.stdout.write(`${c.danger('✗')} ${found.detail}\n`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const clears = ['none', 'off', 'clear', '-'].includes(slot.toLowerCase());
+  const order = clears ? undefined : Number.parseInt(slot, 10);
+  if (!clears && (order === undefined || !Number.isFinite(order) || order < 0)) {
+    process.stderr.write(`${c.danger('✗')} ${slot} is not a slot — give a number, or "none"\n`);
+    process.exitCode = 2;
+    return;
+  }
+
+  const result = await actions.setSessionOrder(found.name, order);
   process.stdout.write(`${result.ok ? c.ok('✓') : c.danger('✗')} ${result.detail}\n`);
   if (!result.ok) process.exitCode = 1;
 }
@@ -873,6 +966,9 @@ async function main(): Promise<void> {
       break;
     case 'focus':
       await cmdFocus(arg);
+      break;
+    case 'order':
+      await cmdOrder(positional, json);
       break;
     case 'approve':
       await cmdAnswer(arg, 'approve');
