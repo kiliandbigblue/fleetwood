@@ -64,6 +64,23 @@ test('checks summary reads legacy commit statuses as well as check runs', () => 
   assert.deepEqual(detail, { passing: 1, failing: 1, pending: 1 });
 });
 
+test('checks summary skips the checks the config says are advisory', () => {
+  // Codecov's red is about coverage, not about whether the PR works; letting it
+  // dominate meant a green PR read as broken.
+  const rollup = [{ conclusion: 'SUCCESS', name: 'Test and lint' }, { state: 'FAILURE', context: 'codecov/patch' }];
+  assert.equal(summariseChecks(rollup, 'codecov').state, 'passing');
+  assert.deepEqual(summariseChecks(rollup, 'codecov').detail, { passing: 1, failing: 0, pending: 0 });
+  // Skipped, not counted green: an ignored check pads neither tally.
+  assert.equal(summariseChecks([{ state: 'FAILURE', context: 'codecov/project' }], 'codecov').state, 'none');
+  // Anything else red still dominates.
+  assert.equal(summariseChecks([...rollup, { conclusion: 'FAILURE', name: 'Build' }], 'codecov').state, 'failing');
+  // No pattern, or one that doesn't compile, hides nothing — a config typo must
+  // not report a broken PR as green.
+  assert.equal(summariseChecks(rollup).state, 'failing');
+  assert.equal(summariseChecks(rollup, '').state, 'failing');
+  assert.equal(summariseChecks(rollup, '[unclosed').state, 'failing');
+});
+
 test('worktree porcelain output parses into paths and branches', () => {
   // Verbatim `git worktree list --porcelain` shape, including a detached entry.
   const stdout = `worktree /Users/k/projects/atlas

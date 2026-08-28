@@ -70,6 +70,21 @@ export interface Config {
     /** Extra qualifiers appended to every search, e.g. 'org:bigbluedisco'. */
     extraQualifiers: string;
     /**
+     * Checks to leave out of a PR's summary, as a case-insensitive regex source.
+     *
+     * Codecov by default. `codecov/patch` goes red on any diff that lowers
+     * coverage, which is advice rather than a reason not to merge — but the
+     * badge lets one failure dominate on purpose, so a check that fails
+     * routinely paints every PR red and the colour stops meaning anything.
+     *
+     * Dropped from the counts rather than counted green: a check nobody acts on
+     * should not pad the passing tally either.
+     *
+     * Empty ignores nothing. Matched against a check run's `name` and a legacy
+     * commit status's `context` alike, since codecov posts the latter.
+     */
+    ignoreChecksPattern: string;
+    /**
      * The recently-merged list, and how to read a merge's CI trail.
      *
      * "Deployed" is not a fact GitHub holds for most of these repos — no
@@ -144,6 +159,7 @@ export const DEFAULT_CONFIG: Config = {
     enabled: true,
     pollSeconds: 60,
     extraQualifiers: '',
+    ignoreChecksPattern: 'codecov',
     merged: {
       enabled: true,
       lookbackHours: 72,

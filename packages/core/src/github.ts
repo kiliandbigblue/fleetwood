@@ -77,9 +77,28 @@ function toPr(row: SearchRow, role: 'review-requested' | 'mine'): PullRequest | 
 }
 
 interface CheckRun {
+  /** Check runs are named; legacy commit statuses carry a `context` instead. */
+  name?: string;
+  context?: string;
+  workflowName?: string;
   status?: string;
   conclusion?: string;
   state?: string;
+}
+
+/**
+ * Compile the ignore pattern once per rollup, or not at all.
+ *
+ * `undefined` for an empty *or* an unparseable pattern: a typo in the config
+ * must not silently hide every check and report a broken PR as green.
+ */
+function ignoreMatcher(pattern: string): RegExp | undefined {
+  if (pattern.trim().length === 0) return undefined;
+  try {
+    return new RegExp(pattern, 'i');
+  } catch {
+    return undefined;
+  }
 }
 
 interface ViewResult {
@@ -90,14 +109,23 @@ interface ViewResult {
   statusCheckRollup?: CheckRun[];
 }
 
-export function summariseChecks(rollup: CheckRun[] | undefined): {
+export function summariseChecks(
+  rollup: CheckRun[] | undefined,
+  ignorePattern = '',
+): {
   state: ChecksState;
   detail: { passing: number; failing: number; pending: number };
 } {
   const detail = { passing: 0, failing: 0, pending: 0 };
   if (!rollup || rollup.length === 0) return { state: 'none', detail };
+  const ignore = ignoreMatcher(ignorePattern);
 
   for (const check of rollup) {
+    // Advisory checks are dropped whole — see `ignoreChecksPattern`. A run's
+    // name and a status's context are both tested because only one of them
+    // exists per entry, and codecov arrives as the latter.
+    const labels = [check.name, check.context, check.workflowName];
+    if (ignore && labels.some((label) => label !== undefined && ignore.test(label))) continue;
     // GitHub reports check runs and legacy statuses differently: check runs use
     // status/conclusion, commit statuses use state.
     const conclusion = (check.conclusion ?? check.state ?? '').toUpperCase();
@@ -127,6 +155,7 @@ export function summariseChecks(rollup: CheckRun[] | undefined): {
  * branch a pull request came from has to come through here.
  */
 export async function enrichPr(pr: PullRequest): Promise<PullRequest> {
+  const config = await loadConfig();
   const { code, stdout } = await run(
     'gh',
     [
@@ -143,7 +172,7 @@ export async function enrichPr(pr: PullRequest): Promise<PullRequest> {
   if (code !== 0) return pr;
   try {
     const view = JSON.parse(stdout) as ViewResult;
-    const checks = summariseChecks(view.statusCheckRollup);
+    const checks = summariseChecks(view.statusCheckRollup, config.github.ignoreChecksPattern);
     return {
       ...pr,
       branch: view.headRefName,
