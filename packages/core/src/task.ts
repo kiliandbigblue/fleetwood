@@ -9,6 +9,7 @@ import {
   dirtyCount,
   ensureWorktree,
   listWorktrees,
+  mainCheckoutFor,
   removeWorktree,
   remoteNameWithOwner,
 } from './worktree.ts';
@@ -729,30 +730,39 @@ export async function archiveTask(slug: string, force = false): Promise<ArchiveR
   const repos = await readTaskRepos(dir);
   const removed: string[] = [];
   const kept: string[] = [];
+  let anyDirty = false;
 
   for (const repo of repos) {
-    const local = await resolveRepoInput(repo.repo ?? repo.name);
-    if (!local) {
-      kept.push(`${repo.name} (owning repo not found)`);
+    // Git first: the worktree knows which checkout owns it, and the two name-based
+    // routes each have a case they cannot answer — the index needs the directory
+    // to be named after the repo, the remote needs there to be a remote.
+    const owner = (await mainCheckoutFor(repo.path)) ?? (await resolveRepoInput(repo.repo ?? repo.name))?.path;
+    if (!owner) {
+      kept.push(`${repo.name} — owning checkout not found`);
       continue;
     }
     const branch = repo.branch;
-    const result = await removeWorktree(local.path, repo.path, force);
+    const result = await removeWorktree(owner, repo.path, force);
     if (!result.ok) {
       kept.push(`${repo.name} — ${result.detail}`);
+      anyDirty ||= result.dirty === true;
       continue;
     }
     removed.push(repo.name);
     // Delete the branch only when it holds nothing: no commits of its own and
     // never pushed. Otherwise leave it — an abandoned branch is untidy, a deleted
     // one with work in it is unrecoverable.
-    if (branch) await pruneEmptyBranch(local.path, branch);
+    if (branch) await pruneEmptyBranch(owner, branch);
   }
 
   if (kept.length > 0) {
+    // Say which worktree and why. This used to report every keep as uncommitted
+    // work whatever the reason, which sent you looking for changes that were not
+    // there — and hid the one cause `force` cannot clear. The hint goes with the
+    // refusal it actually answers, rather than on every failure.
     return {
       ok: false,
-      detail: `kept ${kept.length} worktree(s) with uncommitted work; pass force to discard`,
+      detail: `kept ${kept.length} worktree(s): ${kept.join('; ')}${anyDirty ? '; pass force to discard' : ''}`,
       removed,
       kept,
     };

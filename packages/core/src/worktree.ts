@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { run } from './exec.ts';
 import { loadConfig } from './config.ts';
 import { parseRemote } from './repoIndex.ts';
@@ -276,6 +276,8 @@ export async function ensureWorktreeForPr(
 export interface RemoveResult {
   ok: boolean;
   detail: string;
+  /** Whether the refusal was about uncommitted work — the one `force` clears. */
+  dirty?: boolean;
 }
 
 /**
@@ -289,7 +291,7 @@ export async function removeWorktree(repoPath: string, worktreePath: string, for
   const dirty = status.trim().length > 0;
   if (dirty && !force) {
     const files = status.trim().split('\n').length;
-    return { ok: false, detail: `refusing: ${files} uncommitted change(s) in ${worktreePath}` };
+    return { ok: false, detail: `refusing: ${files} uncommitted change(s) in ${worktreePath}`, dirty: true };
   }
 
   const args = ['-C', repoPath, 'worktree', 'remove', worktreePath];
@@ -304,6 +306,31 @@ export async function dirtyCount(path: string): Promise<number> {
   const { code, stdout } = await run('git', ['-C', path, 'status', '--porcelain']);
   if (code !== 0) return 0;
   return stdout.trim().length === 0 ? 0 : stdout.trim().split('\n').length;
+}
+
+/**
+ * The checkout a linked worktree belongs to — where its real `.git` lives.
+ *
+ * Asked of git rather than worked out from a name, because a name cannot always
+ * answer it. `archiveTask` used to go through the repo *index*, keyed by
+ * directory name, and then through the origin remote — and a task worktree has
+ * neither to offer when it is named `<repo>-<branch>` for stacked work *and* its
+ * repo has no remote. fleetwood itself is exactly that repo, so no fleetwood task
+ * could be archived at all, not even with `--force`: the owning checkout is
+ * resolved before force is ever consulted.
+ *
+ * `--git-common-dir` is the linked worktree's pointer back to the real one, which
+ * is the fact being asked for, and it holds for an ordinary checkout too — there
+ * it is that checkout's own `.git`.
+ */
+export async function mainCheckoutFor(path: string): Promise<string | undefined> {
+  const { code, stdout } = await run('git', ['-C', path, 'rev-parse', '--path-format=absolute', '--git-common-dir']);
+  if (code !== 0) return undefined;
+  const gitDir = stdout.trim();
+  if (gitDir.length === 0) return undefined;
+  // A bare repo has no working tree above its git dir, and is itself the place
+  // `git worktree remove` has to run from.
+  return basename(gitDir) === '.git' ? dirname(gitDir) : gitDir;
 }
 
 /**

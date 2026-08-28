@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lstat, mkdir, mkdtemp, readdir, readFile, readlink, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readdir, readFile, readlink, realpath, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -13,6 +13,7 @@ import {
   slugify,
   writeNotesFile,
 } from '../src/task.ts';
+import { mainCheckoutFor, removeWorktree, remoteNameWithOwner } from '../src/worktree.ts';
 import { run } from '../src/exec.ts';
 
 test('branch names follow the <type>/<microservice>-<summary> convention', () => {
@@ -235,4 +236,54 @@ test('a worktree with no remote reports no repo rather than an invented one', as
   const [repo] = await readTaskRepos(dir);
   assert.equal(repo?.name, 'nowhere-in-particular');
   assert.equal(repo?.repo, undefined);
+});
+
+test('a linked worktree names its owning checkout without a remote or a matching name', async () => {
+  // The case that made every fleetwood task unarchivable: the directory is named
+  // `<repo>-<branch>` so the index cannot match it, and the repo has no remote to
+  // fall back to. Neither name-based route can answer; git can.
+  const root = await mkdtemp(join(tmpdir(), 'fw-owner-'));
+  const checkout = join(root, 'fleetwood');
+  await mkdir(checkout, { recursive: true });
+  await run('git', ['-C', checkout, 'init', '-q', '-b', 'main']);
+  await run('git', ['-C', checkout, 'commit', '-q', '--allow-empty', '-m', 'root']);
+  assert.equal(await remoteNameWithOwner(checkout), undefined, 'fixture must have no remote');
+
+  const linked = join(root, 'fleetwood-fix-prs-status');
+  await run('git', ['-C', checkout, 'worktree', 'add', '-q', '-b', 'fix/prs-status', linked]);
+
+  // realpath because macOS hands out /var paths that are really /private/var.
+  assert.equal(await mainCheckoutFor(linked), await realpath(checkout));
+  // And it holds for an ordinary checkout, which is its own owner.
+  assert.equal(await mainCheckoutFor(checkout), await realpath(checkout));
+});
+
+test('a path git knows nothing about has no owning checkout', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'fw-owner-none-'));
+  assert.equal(await mainCheckoutFor(join(dir, 'does-not-exist')), undefined);
+});
+
+test('a kept worktree says which one and why, and only offers force when force would help', async () => {
+  // The report used to read `kept 1 worktree(s) with uncommitted work` for every
+  // reason there is, including the ones force cannot clear.
+  const root = await mkdtemp(join(tmpdir(), 'fw-remove-'));
+  const checkout = join(root, 'repo');
+  await mkdir(checkout, { recursive: true });
+  await run('git', ['-C', checkout, 'init', '-q', '-b', 'main']);
+  await run('git', ['-C', checkout, 'commit', '-q', '--allow-empty', '-m', 'root']);
+  const linked = join(root, 'repo-work');
+  await run('git', ['-C', checkout, 'worktree', 'add', '-q', '-b', 'work', linked]);
+
+  // Clean: it goes, and nothing is kept.
+  const clean = await removeWorktree(checkout, linked, false);
+  assert.equal(clean.ok, true);
+  assert.equal(clean.dirty, undefined);
+
+  // Dirty: refused, and flagged as the kind of refusal force answers.
+  await run('git', ['-C', checkout, 'worktree', 'add', '-q', '-b', 'work2', linked]);
+  await writeFile(join(linked, 'scratch.txt'), 'unsaved\n', 'utf8');
+  const dirty = await removeWorktree(checkout, linked, false);
+  assert.equal(dirty.ok, false);
+  assert.equal(dirty.dirty, true);
+  assert.match(dirty.detail, /uncommitted change/);
 });
