@@ -113,6 +113,68 @@ async function refExists(repoPath: string, ref: string): Promise<boolean> {
   return code === 0;
 }
 
+/**
+ * The repo's default branch as a remote-tracking ref, read locally and only locally.
+ *
+ * `defaultBranch` above falls back to `git ls-remote` when origin/HEAD is missing.
+ * Callers on a poll — or behind a click, which has to answer now — cannot afford a
+ * network round trip per worktree. No answer is returned as `undefined` rather than
+ * as a guessed `main`, so each caller decides what to do without one.
+ *
+ * The `origin/` prefix is kept, unlike `defaultBranch`: a task worktree usually
+ * holds only the task branch, so a local `dev` is often stale or missing outright
+ * while `origin/dev` is current as of the last fetch.
+ */
+export async function localDefaultBranch(repoPath: string): Promise<string | undefined> {
+  const { code, stdout } = await run('git', [
+    '-C',
+    repoPath,
+    'symbolic-ref',
+    '--short',
+    'refs/remotes/origin/HEAD',
+  ]);
+  if (code !== 0) return undefined;
+  const name = stdout.trim();
+  return name.length > 0 ? name : undefined;
+}
+
+/**
+ * Branches worth trying as a review base in a repo with no remote at all.
+ *
+ * Ordered by how strongly each names a trunk. Only reached when there is no
+ * origin/HEAD to read — fleetwood's own worktrees are the case in hand — and every
+ * candidate is checked for existence before it is used, so this stays a lookup
+ * rather than the `main` assumption `defaultBranch` exists to avoid.
+ */
+const LOCAL_TRUNKS = ['main', 'master', 'dev', 'develop'];
+
+/**
+ * What a worktree's work should be reviewed against.
+ *
+ * origin/HEAD is the real answer wherever there is a remote, which is every cloned
+ * repo. A repo that was never pushed anywhere has none, and refusing there would
+ * make a review button useless in exactly the repos worked on locally — so the
+ * local trunks are tried in turn, by existence.
+ *
+ * The branch the worktree is on is deliberately *not* excluded: sitting on the
+ * trunk itself, "what have I changed against the trunk" is still the honest
+ * question, and the answer is the uncommitted work.
+ *
+ * Known limit: a stack layer is reviewed against the trunk, not against the layer
+ * below it, so the lower layers' commits are in the diff too. Finding the real
+ * parent means the containment search `taskPrs` does, which is several `git` calls
+ * per worktree — worth doing when reviewing a stack becomes the common case, and
+ * not before.
+ */
+export async function reviewBase(repoPath: string): Promise<string | undefined> {
+  const remote = await localDefaultBranch(repoPath);
+  if (remote) return remote;
+  for (const name of LOCAL_TRUNKS) {
+    if (await refExists(repoPath, `refs/heads/${name}`)) return name;
+  }
+  return undefined;
+}
+
 export interface EnsureWorktreeOptions {
   /** Branch to start from when the branch has to be created. Defaults to origin's HEAD. */
   base?: string;

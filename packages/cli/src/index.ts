@@ -354,6 +354,23 @@ async function cmdDoctor(json: boolean): Promise<void> {
   });
   checks.push({ name: 'gh cli', ok: ghOk === 'authenticated', detail: ghOk });
 
+  // A warn, not a failure: only the `review` button on a repo row runs difit, and
+  // everything else works without it. Worth asking about here all the same —
+  // missing, it surfaces as `command not found` inside a freshly opened tmux pane,
+  // which is the least obvious place to learn you never installed it.
+  const difitVersion = await new Promise<string | undefined>((res) => {
+    gh.execFile('difit', ['--version'], (err, out) => {
+      res(err ? undefined : out.trim().split('\n')[0]);
+    });
+  });
+  checks.push({
+    name: 'difit',
+    ok: difitVersion ? true : 'warn',
+    detail: difitVersion
+      ? `${difitVersion} — repo rows can open a review`
+      : 'not found — the `review` button needs it (npm i -g difit)',
+  });
+
   if (json) return jsonOut(checks);
 
   for (const check of checks) {

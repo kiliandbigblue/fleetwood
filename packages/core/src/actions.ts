@@ -5,6 +5,7 @@ import { classify, scanProcesses } from './procScan.ts';
 import { nameWithOrder, sameSession, sessionLabel, sessionOrder } from './sessionOrder.ts';
 import type { SessionRename } from './sessionOrder.ts';
 import * as tmux from './tmux.ts';
+import { reviewBase } from './worktree.ts';
 import type { AgentTool, SessionMeta } from './types.ts';
 
 export interface ActionResult {
@@ -217,6 +218,78 @@ export async function openEditor(options: OpenEditorOptions): Promise<ActionResu
   return {
     ok: true,
     detail: `${editor} in ${paneId} on ${basename(options.cwd)}${focus.ok ? '' : ` — ${focus.detail}`}`,
+  };
+}
+
+/** The exact command the button runs, so the UI can say so rather than paraphrase. */
+export function difitCommand(base: string): string {
+  return `difit . ${base} --merge-base --include-untracked`;
+}
+
+export interface OpenDifitOptions {
+  session: string;
+  /** The worktree to review. Its own work, not the task folder's. */
+  cwd: string;
+  /** tmux window name. Defaults to the directory's own name. */
+  name?: string;
+  /** Split the current window instead of opening one of its own. */
+  split?: boolean;
+}
+
+/**
+ * Open a difit review server on one worktree, in an existing session.
+ *
+ * `difit . <base> --merge-base` is the whole argument for this being one button
+ * rather than a menu: `.` is the worktree as it stands — committed branch work and
+ * uncommitted edits together — and `--merge-base` pins the other side to where the
+ * branch left the trunk, so commits landed on the trunk since then don't show up as
+ * this branch's doing. It is the diff a pull request would show, plus whatever isn't
+ * committed yet, which is what an agent's work looks like when you go to read it.
+ *
+ * `--include-untracked` is not optional in practice. Without it difit stops to ask
+ * `(Y/n)` whenever the worktree holds a new file, which a button cannot answer — and
+ * a review that silently omitted the files an agent created would be worse than the
+ * prompt. It marks them `--intent-to-add`, so `git status` shows them as added until
+ * `git reset --` puts them back; the tooltip names the command for that reason.
+ *
+ * Deliberately *not* `--background`: that flag forces `--keep-alive`, and a server
+ * with no way to stop it from here would leak one process per click. In the
+ * foreground difit exits on its own when the browser tab closes, and until then the
+ * pane is where it is — visible, and Ctrl-C if the tab never opens.
+ */
+export async function openDifit(options: OpenDifitOptions): Promise<ActionResult> {
+  if (!(await tmux.hasSession(options.session))) {
+    return { ok: false, detail: `no tmux session named ${options.session}` };
+  }
+
+  const base = await reviewBase(options.cwd);
+  if (!base) {
+    return {
+      ok: false,
+      detail: `no trunk found in ${basename(options.cwd)} — nothing to review against`,
+    };
+  }
+
+  const paneId = options.split
+    ? await tmux.splitWindow(`=${options.session}:`, { cwd: options.cwd })
+    : await tmux.newWindow(options.session, {
+        cwd: options.cwd,
+        name: options.name ?? basename(options.cwd),
+        select: true,
+      });
+  if (!paneId) return { ok: false, detail: 'could not create a pane' };
+
+  const command = difitCommand(base);
+  if (!(await tmux.sendText(paneId, command))) {
+    return { ok: false, detail: `created ${paneId} but could not type ${command}` };
+  }
+
+  // difit opens the browser itself, so the pane is not where you are headed — but
+  // it is where the prompt and any failure land, so the session is still raised.
+  const focus = await focusSession(options.session);
+  return {
+    ok: true,
+    detail: `difit on ${basename(options.cwd)} vs ${base} in ${paneId}${focus.ok ? '' : ` — ${focus.detail}`}`,
   };
 }
 

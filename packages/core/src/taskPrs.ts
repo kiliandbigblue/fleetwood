@@ -1,6 +1,6 @@
 import { run } from './exec.ts';
 import { enrichPr, fetchPrsForBranches, mapLimit, prKey } from './github.ts';
-import { remoteNameWithOwner } from './worktree.ts';
+import { localDefaultBranch, remoteNameWithOwner } from './worktree.ts';
 import type { PullRequest } from './github.ts';
 import type { Task } from './task.ts';
 
@@ -87,27 +87,6 @@ export function parseAheadBehind(stdout: string): Map<string, { ahead: number; b
     out.set(branch, { ahead: a, behind: b });
   }
   return out;
-}
-
-/**
- * The repo's default branch, read locally and only locally.
- *
- * `worktree.defaultBranch` falls back to `git ls-remote` when origin/HEAD is
- * missing; this runs on a poll, so a network round trip per worktree is not on
- * the table. No answer means the "has work of its own" filter is skipped rather
- * than guessed at — see `discoverTaskBranches`.
- */
-async function localDefaultBranch(path: string): Promise<string | undefined> {
-  const { code, stdout } = await run('git', [
-    '-C',
-    path,
-    'symbolic-ref',
-    '--short',
-    'refs/remotes/origin/HEAD',
-  ]);
-  if (code !== 0) return undefined;
-  const name = stdout.trim();
-  return name.length > 0 ? name : undefined;
 }
 
 /**

@@ -92,26 +92,47 @@ function RepoRow({
             {repo.branch}
           </span>
         )}
-        {/* On the repo row rather than in the card's actions, because it opens on
+        {/* On the repo row rather than in the card's actions, because they open on
             this worktree and not on the task root — which is the distinction the
             row exists to make. */}
         {session && (
-          <button
-            className="chip repo-open"
-            onClick={() =>
-              void act({
-                kind: 'openEditor',
-                session,
-                cwd: repo.path,
-                // Named apart from the repo's own shell window, so the tmux status
-                // line doesn't carry the same name twice.
-                name: `${repo.name}-${editorLabel(editor)}`,
-              })
-            }
-            title={`${editor} in a new pane on ${repo.path}`}
-          >
-            +{editorLabel(editor)}
-          </button>
+          <>
+            <button
+              className="chip repo-open"
+              onClick={() =>
+                void act({
+                  kind: 'openEditor',
+                  session,
+                  cwd: repo.path,
+                  // Named apart from the repo's own shell window, so the tmux status
+                  // line doesn't carry the same name twice.
+                  name: `${repo.name}-${editorLabel(editor)}`,
+                })
+              }
+              title={`${editor} in a new pane on ${repo.path}`}
+            >
+              +{editorLabel(editor)}
+            </button>
+            {/* Beside the editor because it is the same move on the same worktree —
+                read this repo's work — and usually the one wanted first. Which
+                trunk it compares against is resolved in main, not carried in the
+                snapshot, so the chip stays a verb and the tooltip stays general
+                rather than naming a branch the row cannot actually check. */}
+            <button
+              className="chip repo-review"
+              onClick={() =>
+                void act({
+                  kind: 'openDifit',
+                  session,
+                  cwd: repo.path,
+                  name: `${repo.name}-difit`,
+                })
+              }
+              title={`difit on ${repo.path} vs its trunk — committed and uncommitted work together, from where the branch left it. New files are marked intent-to-add.`}
+            >
+              review
+            </button>
+          </>
         )}
       </div>
       {agents.map((agent) => (

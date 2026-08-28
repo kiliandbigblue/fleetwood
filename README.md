@@ -155,7 +155,9 @@ guessed onto the wrong terminal. `fw doctor` reports both numbers.
 ## Setup
 
 Requires tmux ≥ 3.0, Node ≥ 23.6 (it runs the TypeScript directly — no build step
-for core or the CLI), and `gh` authenticated for the PR features.
+for core or the CLI), and `gh` authenticated for the PR features. `difit` on the
+PATH is optional — only the repo rows' `review` button runs it, and `fw doctor`
+warns rather than fails when it's absent.
 
 ```sh
 pnpm install
@@ -389,6 +391,33 @@ task's session, rooted at **that worktree** rather than at the task folder. It's
 window rather than a split because an editor wants the full height, and the command
 is typed into a shell, so quitting it leaves you at a prompt in the right directory.
 `editor` in the config names the command, and the button is labelled with it.
+
+Beside it, `review` runs [difit](https://github.com/yoshiko-pg/difit) on that
+worktree — `difit . <trunk> --merge-base` — and difit opens the browser itself. The
+two arguments are the whole reason this is one button and not a menu: `.` is the
+worktree as it stands, committed branch work and uncommitted edits together, and
+`--merge-base` pins the other side to where the branch left the trunk, so commits
+landed on the trunk since then aren't blamed on this branch. That's the diff the
+pull request will show, plus whatever isn't committed yet — which is what an agent's
+work looks like at the moment you go to read it, and the reason `git diff main` is
+the wrong question to ask a worktree.
+
+The trunk is `origin/HEAD` where there is a remote, and the remote-tracking ref
+deliberately: a task worktree usually holds only the task branch, so its local `dev`
+is often stale or missing outright. A repo that was never pushed anywhere — this
+one's own worktrees — has no origin/HEAD to read, so the local trunks are tried by
+existence rather than `main` being assumed, which is the same rule `fw` follows when
+it cuts a branch.
+
+It runs in the pane rather than through `--background`, which is not a stylistic
+choice: `--background` forces difit's `--keep-alive`, and a server with no way to
+stop it from the panel would leak one process per click. In the foreground difit
+exits on its own when you close the tab, and until then the pane is somewhere you
+can see it. `--include-untracked` is passed for a related reason — without it difit
+stops to ask `(Y/n)` about new files, which a button cannot answer, and a review
+that quietly omitted the files an agent created would be worse than the prompt. It
+marks them `--intent-to-add`, so they show as added until `git reset --` puts them
+back.
 
 `notes` on the card writes `NOTES.md` beside the worktrees. It is a file of its own
 because `task.json` is immutable and `TASK.md` is regenerated every time a repo is

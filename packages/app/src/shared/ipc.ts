@@ -127,6 +127,8 @@ export type Request =
   | { kind: 'setTaskNotes'; slug: string; notes: string }
   /** Editor in a fresh pane of an existing session, on one repo's worktree. */
   | { kind: 'openEditor'; session: string; cwd: string; name?: string }
+  /** difit review server in a fresh pane, on one repo's worktree. */
+  | { kind: 'openDifit'; session: string; cwd: string; name?: string }
   | { kind: 'archiveTask'; slug: string; force?: boolean }
   | { kind: 'listProjects' }
   | { kind: 'openExternal'; url: string }
