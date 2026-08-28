@@ -15,6 +15,7 @@ import { ThemePicker } from './ThemePicker.tsx';
 import { needsDeploy } from '@fleetwood/core/deployState';
 import { sortSessions } from '@fleetwood/core/sessionOrder';
 import { applyTheme } from './theme.ts';
+import { watchZoom } from './zoom.ts';
 import { send } from './api.ts';
 import { api } from './api.ts';
 
@@ -35,6 +36,9 @@ export function App(): React.JSX.Element {
   const [themeOpen, setThemeOpen] = useState(false);
 
   useEffect(() => api.onSnapshot(setSnapshot), []);
+  // Before the first paint of anything in the rails: the top one's inset into the
+  // traffic lights is computed from this.
+  useEffect(() => watchZoom(), []);
 
   /*
    * The fleet polls itself every second; these three are the ones that do not.

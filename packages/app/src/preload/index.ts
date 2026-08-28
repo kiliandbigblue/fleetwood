@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webFrame } from 'electron';
 import { CHANNELS } from '../shared/ipc.ts';
 import type { Request, Response, Snapshot } from '../shared/ipc.ts';
 
@@ -14,6 +14,14 @@ const api = {
   },
   invoke(request: Request): Promise<Response> {
     return ipcRenderer.invoke(CHANNELS.invoke, request) as Promise<Response>;
+  },
+  /**
+   * The window's zoom factor, for the one measurement that must not scale with
+   * it — see `renderer/zoom.ts`. Read on demand rather than pushed: there is no
+   * zoom event, so the renderer asks whenever the viewport changes.
+   */
+  zoomFactor(): number {
+    return webFrame.getZoomFactor();
   },
 };
 

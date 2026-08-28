@@ -176,9 +176,16 @@ button {
    * that used to be reserved above the content — the whole reason this took two
    * rows to fit one bar's worth of controls. Verified against the real window:
    * the lights end around 72px and the first label starts at 87.
+   *
+   * Divided by the zoom factor, because this is the one measurement in the panel
+   * that is not relative to the panel: the lights are native chrome fixed in
+   * points, and no zoom touches them — so at 80% a plain 78px inset clears only
+   * 62pt of them and the first label ends up under the green button. `--zoom` is
+   * kept in step by `renderer/zoom.ts`, and the fallback is the plain value, so
+   * a renderer that never reported one looks exactly as it did before.
    */
   height: 40px;
-  padding: 0 8px 0 78px;
+  padding: 0 8px 0 calc(78px / var(--zoom, 1));
   gap: 8px;
   border-bottom: 1px solid var(--rail-line);
 }
