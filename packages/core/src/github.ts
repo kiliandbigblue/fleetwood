@@ -94,6 +94,9 @@ interface CheckRun {
   status?: string;
   conclusion?: string;
   state?: string;
+  /** Both shapes carry it, and it is what tells one attempt from its retry. */
+  startedAt?: string;
+  completedAt?: string;
 }
 
 /**
@@ -120,6 +123,43 @@ interface ViewResult {
   statusCheckRollup?: CheckRun[];
 }
 
+/**
+ * One entry per check, keeping only the latest attempt of each.
+ *
+ * A rollup is every check run attached to the head commit, not the current state
+ * of each check. Force-push onto a branch with a run still in flight — what
+ * `gh stack` does to every layer above the one you edited — and GitHub cancels
+ * that run and starts another on the same commit. Both stay attached, so the
+ * rollup hands back a CANCELLED `test (0)` beside the SUCCESS that replaced it,
+ * and counting both reports a green pull request as red. GitHub's own UI shows
+ * the latest attempt and nothing else; so does this.
+ *
+ * Identity is the workflow plus the check's name, since a name like `test (0)`
+ * is only unique within its workflow, and a legacy commit status has a context
+ * instead. An entry naming neither is left alone rather than folded into one
+ * bucket with every other anonymous entry.
+ */
+function latestAttempts(rollup: CheckRun[]): CheckRun[] {
+  const startedAt = (check: CheckRun): string => check.startedAt ?? check.completedAt ?? '';
+  const byCheck = new Map<string, CheckRun>();
+  const unnamed: CheckRun[] = [];
+
+  for (const check of rollup) {
+    const label = check.name ?? check.context;
+    if (label === undefined || label.length === 0) {
+      unnamed.push(check);
+      continue;
+    }
+    const key = `${check.workflowName ?? ''}\u0000${label}`;
+    const seen = byCheck.get(key);
+    // Ties go to the later entry: GitHub returns attempts oldest-first, and a
+    // retry that starts in the same second as the cancellation is still the retry.
+    if (seen !== undefined && startedAt(seen) > startedAt(check)) continue;
+    byCheck.set(key, check);
+  }
+  return [...byCheck.values(), ...unnamed];
+}
+
 export function summariseChecks(
   rollup: CheckRun[] | undefined,
   ignorePattern = '',
@@ -131,7 +171,7 @@ export function summariseChecks(
   if (!rollup || rollup.length === 0) return { state: 'none', detail };
   const ignore = ignoreMatcher(ignorePattern);
 
-  for (const check of rollup) {
+  for (const check of latestAttempts(rollup)) {
     // Advisory checks are dropped whole — see `ignoreChecksPattern`. A run's
     // name and a status's context are both tested because only one of them
     // exists per entry, and codecov arrives as the latter.

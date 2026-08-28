@@ -81,6 +81,51 @@ test('checks summary skips the checks the config says are advisory', () => {
   assert.equal(summariseChecks(rollup, '[unclosed').state, 'failing');
 });
 
+test('checks summary counts only the latest attempt of each check', () => {
+  // A `gh stack` push force-pushes every layer above the one you edited, which
+  // cancels the run in flight and starts another on the same head commit. Both
+  // stay attached to it, so the rollup carries the cancelled attempt beside the
+  // green retry — and counting both reported a passing PR as failing.
+  const attempt = (name: string, conclusion: string, startedAt: string) => ({
+    workflowName: 'Test and lint',
+    name,
+    status: 'COMPLETED',
+    conclusion,
+    startedAt,
+  });
+  const rollup = [
+    attempt('test (0)', 'CANCELLED', '2026-08-28T15:50:20Z'),
+    attempt('test (0)', 'SUCCESS', '2026-08-28T15:50:31Z'),
+    attempt('golangci-lint', 'CANCELLED', '2026-08-28T15:50:20Z'),
+    attempt('golangci-lint', 'SUCCESS', '2026-08-28T15:50:30Z'),
+  ];
+  assert.equal(summariseChecks(rollup).state, 'passing');
+  assert.deepEqual(summariseChecks(rollup).detail, { passing: 2, failing: 0, pending: 0 });
+
+  // Order is not relied on — the newest wins wherever it sits in the list.
+  assert.equal(summariseChecks([...rollup].reverse()).state, 'passing');
+
+  // The other direction: a green run superseded by a red retry is still red.
+  assert.equal(
+    summariseChecks([
+      { name: 'test (0)', conclusion: 'SUCCESS', startedAt: '2026-08-28T15:50:20Z' },
+      { name: 'test (0)', conclusion: 'FAILURE', startedAt: '2026-08-28T15:52:00Z' },
+    ]).state,
+    'failing',
+  );
+
+  // A name is only unique within its workflow, and a legacy status has a context
+  // instead of a name — neither may be folded into the other.
+  assert.deepEqual(
+    summariseChecks([
+      { workflowName: 'Test and lint', name: 'test', conclusion: 'SUCCESS' },
+      { workflowName: 'Build', name: 'test', conclusion: 'FAILURE' },
+      { context: 'ci/semaphoreci/push', state: 'FAILURE' },
+    ]).detail,
+    { passing: 1, failing: 2, pending: 0 },
+  );
+});
+
 test('worktree porcelain output parses into paths and branches', () => {
   // Verbatim `git worktree list --porcelain` shape, including a detached entry.
   const stdout = `worktree /Users/k/projects/atlas
