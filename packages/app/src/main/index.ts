@@ -486,12 +486,7 @@ async function handle(request: Request): Promise<Response> {
     }
 
     case 'openDifit': {
-      const result = await actions.openDifit({
-        session: request.session,
-        cwd: request.cwd,
-        base: request.base,
-        name: request.name,
-      });
+      const result = await actions.openDifit({ cwd: request.cwd, base: request.base });
       // difit marks untracked files intent-to-add, which moves the row's dirty
       // count — so the card has to be told, not left showing the old one.
       await getTasks(true);

@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { basename } from 'node:path';
 import { run } from './exec.ts';
 import { looksLikeClaude } from './claudeDaemon.ts';
@@ -221,13 +222,72 @@ export async function openEditor(options: OpenEditorOptions): Promise<ActionResu
   };
 }
 
-/** The exact command the button runs, so the UI can say so rather than paraphrase. */
-export function difitCommand(base: string): string {
-  return `difit . ${base} --merge-base --include-untracked`;
+const DIFIT = 'difit';
+
+/** How long difit gets to say it is up before the click is reported as failed. */
+const DIFIT_STARTUP_MS = 15_000;
+
+/**
+ * How long to keep listening after difit prints its address.
+ *
+ * "No differences found" follows the address by microseconds, and the two mean
+ * opposite things — see `openDifit`. Settling is what lets one read of the output
+ * tell them apart, and at this length it is imperceptible.
+ */
+const DIFIT_SETTLE_MS = 400;
+
+/** The arguments a review runs with. One place decides, and the tests read it here. */
+export function difitArgs(base: string): string[] {
+  return ['.', base, '--merge-base', '--include-untracked'];
+}
+
+const stripAnsi = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, '');
+
+export interface DifitStartup {
+  /** Where the review is, once difit has bound a port. */
+  url?: string;
+  /**
+   * difit found nothing between the base and the worktree.
+   *
+   * It says so, and pointedly does *not* open a browser — which makes it the one
+   * outcome that never cleans itself up, since nothing will ever connect and so
+   * nothing will ever disconnect. The caller kills it instead.
+   */
+  empty?: boolean;
+}
+
+/**
+ * What difit's opening lines say about whether there is a review to look at.
+ *
+ * Pure, and reading the whole output each time rather than line by line, because
+ * both facts can land in the same chunk and the interesting case is the one where
+ * they both do.
+ */
+export function readDifitStartup(output: string): DifitStartup {
+  const clean = stripAnsi(output);
+  const url = /https?:\/\/\S+/.exec(clean)?.[0]?.replace(/[.,)]+$/, '');
+  const empty = /No differences found/i.test(clean);
+  return { ...(url ? { url } : {}), ...(empty ? { empty: true } : {}) };
+}
+
+/**
+ * The line worth showing when difit exits instead of starting.
+ *
+ * difit reports its own failures as `Error: Error: …`, so the doubled prefix is
+ * dropped rather than shown to someone who did not ask how difit is written.
+ */
+export function readDifitFailure(output: string, code: number | null): string {
+  const lines = stripAnsi(output)
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const said = lines.find((line) => /^Error\b/i.test(line)) ?? lines.at(-1);
+  return said
+    ? `difit: ${said.replace(/^Error:\s*(Error:\s*)?/i, '')}`
+    : `difit exited ${code === null ? 'on a signal' : `with ${code}`} without saying why`;
 }
 
 export interface OpenDifitOptions {
-  session: string;
   /** The worktree to review. Its own work, not the task folder's. */
   cwd: string;
   /**
@@ -241,14 +301,12 @@ export interface OpenDifitOptions {
    * use neither.
    */
   base?: string;
-  /** tmux window name. Defaults to the directory's own name. */
-  name?: string;
-  /** Split the current window instead of opening one of its own. */
-  split?: boolean;
+  /** Override the startup wait. Tests use it; nothing else needs to. */
+  startupMs?: number;
 }
 
 /**
- * Open a difit review server on one worktree, in an existing session.
+ * Start a difit review server on one worktree, and let difit open the browser.
  *
  * `difit . <base> --merge-base` is the whole argument for this being one button
  * rather than a menu: `.` is the worktree as it stands — committed branch work and
@@ -264,21 +322,23 @@ export interface OpenDifitOptions {
  * not move when the parent advances. Naming the parent is enough; see `base`.
  *
  * `--include-untracked` is not optional in practice. Without it difit stops to ask
- * `(Y/n)` whenever the worktree holds a new file, which a button cannot answer — and
- * a review that silently omitted the files an agent created would be worse than the
- * prompt. It marks them `--intent-to-add`, so `git status` shows them as added until
- * `git reset --` puts them back; the tooltip names the command for that reason.
+ * `(Y/n)` whenever the worktree holds a new file — and there is no terminal here to
+ * ask in, so it would hang rather than prompt. It marks them `--intent-to-add`, so
+ * `git status` shows them as added until `git reset --` puts them back.
  *
- * Deliberately *not* `--background`: that flag forces `--keep-alive`, and a server
- * with no way to stop it from here would leak one process per click. In the
- * foreground difit exits on its own when the browser tab closes, and until then the
- * pane is where it is — visible, and Ctrl-C if the tab never opens.
+ * **No terminal is involved.** difit is spawned straight from here: it needs no tty
+ * once untracked files are settled by flag, it opens the browser itself, and the
+ * browser is where the review is read — a tmux window would only have been a place
+ * for the process to sit. What that window did give was a way to stop the server
+ * and somewhere to see it fail, and neither is lost: difit holds an SSE stream for
+ * the tab and exits when it closes, and a failure to start is read off its output
+ * and returned as this call's `detail` rather than buried in a pane nobody opened.
+ *
+ * Detached and unref'd on purpose, so a review outlives the panel that opened it.
+ * The `--background` flag is still deliberately unused: it forces difit's own
+ * `--keep-alive`, which is exactly the self-shutdown this depends on.
  */
 export async function openDifit(options: OpenDifitOptions): Promise<ActionResult> {
-  if (!(await tmux.hasSession(options.session))) {
-    return { ok: false, detail: `no tmux session named ${options.session}` };
-  }
-
   // The pull request's base first, the trunk only when there is none to use. A
   // stacked layer is the case that needs it, and a base that does not resolve here
   // is treated as absent rather than passed on for difit to reject.
@@ -292,27 +352,75 @@ export async function openDifit(options: OpenDifitOptions): Promise<ActionResult
     };
   }
 
-  const paneId = options.split
-    ? await tmux.splitWindow(`=${options.session}:`, { cwd: options.cwd })
-    : await tmux.newWindow(options.session, {
-        cwd: options.cwd,
-        name: options.name ?? basename(options.cwd),
-        select: true,
-      });
-  if (!paneId) return { ok: false, detail: 'could not create a pane' };
+  const where = basename(options.cwd);
+  const args = difitArgs(base);
 
-  const command = difitCommand(base);
-  if (!(await tmux.sendText(paneId, command))) {
-    return { ok: false, detail: `created ${paneId} but could not type ${command}` };
-  }
+  return await new Promise<ActionResult>((resolve) => {
+    const child = spawn(DIFIT, args, {
+      cwd: options.cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
+    });
 
-  // difit opens the browser itself, so the pane is not where you are headed — but
-  // it is where the prompt and any failure land, so the session is still raised.
-  const focus = await focusSession(options.session);
-  return {
-    ok: true,
-    detail: `difit on ${basename(options.cwd)} vs ${base} in ${paneId}${focus.ok ? '' : ` — ${focus.detail}`}`,
-  };
+    let output = '';
+    let settle: NodeJS.Timeout | undefined;
+    let settled = false;
+
+    const finish = (result: ActionResult, kill: boolean): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(settle);
+      clearTimeout(deadline);
+      if (kill) {
+        child.kill();
+      } else {
+        // Drained rather than closed: difit still writes on its way out, and a
+        // destroyed pipe would hand it EPIPE instead of letting it finish.
+        child.stdout?.resume();
+        child.stderr?.resume();
+        child.unref();
+      }
+      resolve(result);
+    };
+
+    const nothingToReview = (): void =>
+      finish({ ok: false, detail: `nothing to review in ${where} against ${base}` }, true);
+
+    const read = (chunk: Buffer): void => {
+      output += chunk.toString();
+      const startup = readDifitStartup(output);
+      if (startup.empty) return nothingToReview();
+      if (!startup.url || settle) return;
+      settle = setTimeout(() => {
+        if (readDifitStartup(output).empty) return nothingToReview();
+        finish({ ok: true, detail: `difit on ${where} vs ${base} — ${startup.url}` }, false);
+      }, DIFIT_SETTLE_MS);
+    };
+
+    child.stdout.on('data', read);
+    child.stderr.on('data', read);
+
+    child.on('error', (error) => {
+      const enoent = (error as NodeJS.ErrnoException).code === 'ENOENT';
+      finish(
+        {
+          ok: false,
+          detail: enoent
+            ? 'difit is not on PATH — install it with `npm i -g difit`'
+            : `could not start difit: ${error.message}`,
+        },
+        false,
+      );
+    });
+
+    // Exited before it was ready, so whatever it printed is the reason.
+    child.on('exit', (code) => finish({ ok: false, detail: readDifitFailure(output, code) }, false));
+
+    const deadline = setTimeout(
+      () => finish({ ok: false, detail: `difit did not start in ${where} — gave up waiting` }, true),
+      options.startupMs ?? DIFIT_STARTUP_MS,
+    );
+  });
 }
 
 /** Type a prompt into an agent's pane and submit it. */

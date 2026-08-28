@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { run } from '../src/exec.ts';
-import { difitCommand } from '../src/actions.ts';
+import { difitArgs, openDifit, readDifitFailure, readDifitStartup } from '../src/actions.ts';
 import { localDefaultBranch, resolveBaseRef, reviewBase } from '../src/worktree.ts';
 
 /**
@@ -79,12 +79,57 @@ test('a repo with no trunk under any known name says so rather than guessing', a
 
 test('the base branch is compared with merge-base, and new files are included', () => {
   // Both flags carry a reason a rename would quietly break: `--merge-base` keeps
-  // commits landed on the trunk since the branch cut out of the review, and
-  // `--include-untracked` is what stops difit stopping to ask about new files.
+  // commits landed on the base since the branch cut out of the review, and
+  // `--include-untracked` is what stops difit stopping to ask about new files —
+  // with no terminal to ask in, that question would hang instead.
+  assert.deepEqual(difitArgs('origin/dev'), [
+    '.',
+    'origin/dev',
+    '--merge-base',
+    '--include-untracked',
+  ]);
+  // `--background` must stay absent: it forces difit's own `--keep-alive`, which
+  // is the self-shutdown the whole no-terminal approach rests on.
+  assert.ok(!difitArgs('origin/dev').includes('--background'));
+  assert.ok(!difitArgs('origin/dev').includes('--keep-alive'));
+});
+
+test("difit's address is read out of its opening lines", () => {
+  const said = '\n🚀 difit server started on http://localhost:4966\n📋 Reviewing: .\n';
+  assert.deepEqual(readDifitStartup(said), { url: 'http://localhost:4966' });
+});
+
+test('an empty review is recognised even though difit prints an address too', () => {
+  // The case that never cleans itself up: difit does not open a browser, so
+  // nothing connects, so nothing ever disconnects and it would run forever.
+  const said =
+    '\n🚀 difit server started on http://localhost:4966\n' +
+    '! \u001b[33mNo differences found. Browser will not open automatically.\u001b[0m\n' +
+    '   Server is running at http://localhost:4966 if you want to check manually.\n';
+  const startup = readDifitStartup(said);
+  assert.equal(startup.empty, true);
+  assert.equal(startup.url, 'http://localhost:4966');
+});
+
+test('nothing said yet reads as neither ready nor empty', () => {
+  assert.deepEqual(readDifitStartup(''), {});
+});
+
+test("a failure is reported in difit's own words, minus its doubled prefix", () => {
   assert.equal(
-    difitCommand('origin/dev'),
-    'difit . origin/dev --merge-base --include-untracked',
+    readDifitFailure('Error: Error: Invalid target commit-ish format\n', 1),
+    'difit: Invalid target commit-ish format',
   );
+  // Nothing printed at all still has to say something useful.
+  assert.equal(readDifitFailure('', 1), 'difit exited with 1 without saying why');
+  assert.equal(readDifitFailure('', null), 'difit exited on a signal without saying why');
+});
+
+test('a worktree with no trunk to compare against never spawns difit', async () => {
+  const repo = await scratchRepo('wip/experiment');
+  const result = await openDifit({ cwd: repo });
+  assert.equal(result.ok, false);
+  assert.match(result.detail, /nothing to review against/);
 });
 
 test('a base branch is resolved to the remote-tracking ref when there is one', async () => {

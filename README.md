@@ -427,15 +427,35 @@ when it cuts a branch. A base branch is resolved the same way, `origin/` first, 
 a name this worktree holds in neither form is treated as absent rather than handed
 to difit to refuse.
 
-It runs in the pane rather than through `--background`, which is not a stylistic
-choice: `--background` forces difit's `--keep-alive`, and a server with no way to
-stop it from the panel would leak one process per click. In the foreground difit
-exits on its own when you close the tab, and until then the pane is somewhere you
-can see it. `--include-untracked` is passed for a related reason — without it difit
-stops to ask `(Y/n)` about new files, which a button cannot answer, and a review
-that quietly omitted the files an agent created would be worse than the prompt. It
-marks them `--intent-to-add`, so they show as added until `git reset --` puts them
-back.
+**No terminal is involved.** difit is spawned straight from the main process: it
+needs no tty once untracked files are settled by flag, it opens the browser itself,
+and the browser is where the review is read — a tmux window would only have been a
+place for the process to sit. What such a window would have given is a way to stop
+the server and somewhere to watch it fail, and neither is lost. difit holds an SSE
+stream for the tab and exits when it closes, about a second later; a failure to
+start is read off its output and returned as the click's own result, so `difit:
+Invalid target commit-ish format` lands in the panel instead of scrolling past in a
+pane nobody opened. It is detached and unref'd, so a review outlives the panel that
+opened it.
+
+`--background` is still deliberately unused, and this is the trap worth recording:
+it forces difit's own `--keep-alive`, so the flag that looks like the way to run a
+server in the background is the one thing that stops it ever shutting down. Plain
+`spawn` keeps the self-shutdown. The one outcome that cannot clean itself up is an
+empty diff — difit prints `No differences found` and opens no browser, so nothing
+ever connects and nothing ever disconnects — so that line is watched for and the
+process killed, the click reporting `nothing to review` instead.
+
+`--include-untracked` is not optional either. Without it difit stops to ask `(Y/n)`
+about new files, and with no terminal to ask in it would hang rather than prompt —
+quite apart from a review that quietly omitted the files an agent created being
+worse than the question. It marks them `--intent-to-add`, so they show as added
+until `git reset --` puts them back, which is also why the click refreshes the task:
+the row's dirty count moves.
+
+Unlike `+nvim`, `review` is not gated on the task having a tmux session, because
+nothing about it needs one. Reading what the last agent did without first starting
+another is a real thing to want.
 
 `notes` on the card writes `NOTES.md` beside the worktrees. It is a file of its own
 because `task.json` is immutable and `TASK.md` is regenerated every time a repo is
