@@ -5,11 +5,13 @@ import { summariseChecks } from '../src/github.ts';
 import {
   byUrgencyThenRecency,
   classifyRun,
+  doneBefore,
   isDone,
   isSettled,
   isTerminal,
   needsDeploy,
   patternsFor,
+  startOfDay,
   summariseDeploy,
 } from '../src/deployState.ts';
 import { DEFAULT_CONFIG } from '../src/config.ts';
@@ -403,4 +405,26 @@ test('what is still owed sorts above what is finished, newest first inside each'
   );
   // The marked one sank below the unmarked build even though it merged later.
   assert.equal(sorted[3]?.deployedByHand, 1);
+});
+
+test('only finished rows are hidden, and only when they were finished before today', () => {
+  const since = startOfDay(Date.parse('2026-08-24T09:00:00Z'));
+  const yesterday = '2026-08-23T12:00:00Z';
+
+  // Still owed, however old: hiding this would bury the work the tab exists for.
+  assert.equal(doneBefore({ deploy: { state: 'built' }, mergedAt: '2026-06-01T12:00:00Z' }, since), false);
+  // A CI deploy has no moment of its own, so the merge stands in for it.
+  assert.equal(doneBefore({ deploy: { state: 'deployed' }, mergedAt: yesterday }, since), true);
+  assert.equal(doneBefore({ deploy: { state: 'deployed' }, mergedAt: '2026-08-24T08:00:00Z' }, since), false);
+  // Merged last week, shipped by hand this morning: today's work, so it stays.
+  assert.equal(
+    doneBefore({ deploy: { state: 'built' }, mergedAt: yesterday, deployedByHand: since + 3_600 }, since),
+    false,
+  );
+  assert.equal(
+    doneBefore({ deploy: { state: 'built' }, mergedAt: yesterday, deployedByHand: since - 3_600 }, since),
+    true,
+  );
+  // A date that will not parse is not evidence of age.
+  assert.equal(doneBefore({ deploy: { state: 'deployed' }, mergedAt: 'nonsense' }, since), false);
 });

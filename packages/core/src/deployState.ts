@@ -201,3 +201,30 @@ export function byUrgencyThenRecency(
   const done = Number(isDone(a)) - Number(isDone(b));
   return done !== 0 ? done : b.mergedAt.localeCompare(a.mergedAt);
 }
+
+/**
+ * Finished, and finished before `since` (epoch seconds).
+ *
+ * The rows the merged list can hide: what you dealt with on a day you have
+ * already stopped thinking about. A hand-mark carries its own moment, so a PR
+ * merged last week but shipped this morning still counts as today's — that is
+ * the whole point of the mark. A CI deploy carries none, so the merge stands in
+ * for it; the run happened minutes later, which never crosses a day boundary
+ * that the merge did not.
+ */
+export function doneBefore(
+  pr: { deploy: { state: DeployState }; deployedByHand?: number; mergedAt: string },
+  since: number,
+): boolean {
+  if (!isDone(pr)) return false;
+  const at = pr.deployedByHand ?? Math.floor(Date.parse(pr.mergedAt) / 1000);
+  // An unparseable date is not evidence of age — leave the row in view.
+  return Number.isFinite(at) && at < since;
+}
+
+/** Local midnight before `now` (ms), in epoch seconds: the cut between today and before. */
+export function startOfDay(now: number): number {
+  const midnight = new Date(now);
+  midnight.setHours(0, 0, 0, 0);
+  return Math.floor(midnight.getTime() / 1000);
+}

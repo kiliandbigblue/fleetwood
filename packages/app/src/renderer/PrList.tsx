@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { DeployState, MergedPr, MergedPrs, PrLists, PullRequest, Task } from '@fleetwood/core';
 // The leaf module, not the barrel or `github.ts`: both reach
 // `node:child_process` and would fail the bundle.
-import { needsDeploy } from '@fleetwood/core/deployState';
+import { doneBefore, needsDeploy, startOfDay } from '@fleetwood/core/deployState';
 import { sessionLabel } from '@fleetwood/core/sessionOrder';
 import { relativeIso, send } from './api.ts';
 
@@ -237,7 +237,20 @@ export function PrList({ prs, merged, tasks, prSessions, onResult }: Props): Rea
    */
   const [undo, setUndo] = useState<{ key: string; label: string } | undefined>();
   const mergedSection = (): React.JSX.Element => {
-    const list = merged?.prs ?? [];
+    /*
+     * Anything deployed on a day that is already over is dropped outright.
+     *
+     * The list answers two questions — what do I still owe, and what did I ship
+     * today — and a fortnight of finished rows underneath them answers neither.
+     * Nothing still owed is ever dropped, however old it is, so the work cannot
+     * go missing this way; and a mark made in error is still one `↺` away for as
+     * long as the day it was made in lasts.
+     *
+     * Read on every render rather than held in state, so a panel left open
+     * overnight drops yesterday's rows the moment the day turns.
+     */
+    const since = startOfDay(Date.now());
+    const list = (merged?.prs ?? []).filter((pr) => !doneBefore(pr, since));
     // Same predicate the header pill uses, so the two numbers always agree.
     const owed = list.filter((pr) => needsDeploy(pr)).length;
     return (
