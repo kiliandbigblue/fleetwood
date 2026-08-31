@@ -19,6 +19,7 @@ import {
   tmux,
 } from '@fleetwood/core';
 import {
+  isHidden,
   isPinned,
   resumeArgsFor,
   sameSession,
@@ -35,8 +36,9 @@ const HELP = `${c.bold('fleetwood')} — tmux-native cockpit for coding agents
 ${c.bold('usage')}  fw [command] [options]
 
 ${c.bold('commands')}
-  status            the fleet: sessions, agents, and what each is doing  ${c.dim('(default)')}
-  watch             status, refreshed live
+  status [--all]    the fleet: sessions, agents, and what each is doing  ${c.dim('(default)')}
+                    ${c.dim('--all also lists the sessions marked hidden')}
+  watch [--all]     status, refreshed live
   agents            flat list of agents, most urgent first
   limits            plan quota: how much of each usage window is spent
   sessions          tmux sessions and their fleetwood metadata
@@ -65,6 +67,9 @@ ${c.bold('commands')}
   pin <session> [on|off]
                     hold a session above every unpinned one — a short-list on top
                     ${c.dim('a `+` in front of the slot; "move to top" on an unpinned session stops below the pins')}
+  hide <session>    take a session out of the fleet list — it keeps running
+  unhide <session>  put it back, in the tier and slot it had
+                    ${c.dim('a `-` in front of the pin; the panel folds these under "hidden" at the bottom')}
   approve [pane]    answer yes to a blocked agent's permission prompt
   deny [pane]       answer no
   kill-agent [pane|key]
@@ -112,10 +117,12 @@ async function planLimits(): Promise<PlanLimits | undefined> {
   return limitsApi.fetchLimits({ tokenCommand: settings.limits.tokenCommand });
 }
 
-async function cmdStatus(json: boolean, capture: boolean): Promise<void> {
+async function cmdStatus(json: boolean, capture: boolean, showHidden: boolean): Promise<void> {
   const [state, limits] = await Promise.all([fleet(capture), planLimits()]);
+  // `--json` is the whole fleet either way: a filter is a reading aid, and a
+  // script asking for the state wants the state.
   if (json) return jsonOut({ ...state, limits });
-  process.stdout.write(`${renderFleet(state, limits)}\n`);
+  process.stdout.write(`${renderFleet(state, limits, showHidden)}\n`);
 }
 
 async function cmdLimits(json: boolean): Promise<void> {
@@ -134,11 +141,15 @@ async function cmdLimits(json: boolean): Promise<void> {
   process.stdout.write(`${renderLimits(limits)}\n`);
 }
 
-async function cmdWatch(capture: boolean, intervalSeconds: number): Promise<void> {
+async function cmdWatch(
+  capture: boolean,
+  intervalSeconds: number,
+  showHidden: boolean,
+): Promise<void> {
   const draw = async (): Promise<void> => {
     const [state, limits] = await Promise.all([fleet(capture), planLimits()]);
     // Clear and home, then paint. Cheaper and less flickery than full reset.
-    process.stdout.write(`\x1b[H\x1b[2J${renderFleet(state, limits)}\n`);
+    process.stdout.write(`\x1b[H\x1b[2J${renderFleet(state, limits, showHidden)}\n`);
   };
   await draw();
   const timer = setInterval(() => void draw(), Math.max(500, intervalSeconds * 1000));
@@ -647,6 +658,7 @@ async function cmdOrder(positional: string[], json: boolean): Promise<void> {
           label: sessionLabel(s.name),
           slot: sessionOrder(s.name) ?? null,
           pinned: isPinned(s.name),
+          hidden: isHidden(s.name),
         })),
       );
     }
@@ -661,14 +673,18 @@ async function cmdOrder(positional: string[], json: boolean): Promise<void> {
       const attention = session.needsAttention ? c.danger(' ✋') : '';
       // Left of the slot, so the pinned block is one column you can run an eye down.
       const pin = isPinned(session.name) ? c.accent('+') : ' ';
+      // This listing prints the raw tmux name beside the label, so the `-` is
+      // already there to see — the word is for whoever has not met it yet.
+      const hidden = isHidden(session.name) ? c.dim(' hidden') : '';
       process.stdout.write(
-        `${pin}${mark} ${c.bold(pad(sessionLabel(session.name), nameWidth))} ${c.muted(session.name)}${attention}\n`,
+        `${pin}${mark} ${c.bold(pad(sessionLabel(session.name), nameWidth))} ${c.muted(session.name)}${hidden}${attention}\n`,
       );
     }
     process.stdout.write(
       `\n${c.muted('fw order <session> <slot>')}  ${c.dim('put one in a slot')}\n` +
         `${c.muted('fw order <session> none  ')}  ${c.dim('take it out of the ordering')}\n` +
-        `${c.muted('fw pin <session> [on|off]')}  ${c.dim('hold it above the unpinned, marked + here')}\n`,
+        `${c.muted('fw pin <session> [on|off]')}  ${c.dim('hold it above the unpinned, marked + here')}\n` +
+        `${c.muted('fw hide|unhide <session> ')}  ${c.dim('take it out of the fleet list, or put it back')}\n`,
     );
     return;
   }
@@ -733,6 +749,34 @@ async function cmdPin(positional: string[]): Promise<void> {
   const pinned = wanted === undefined ? !isPinned(found.name) : ON.includes(wanted);
 
   const result = await actions.setSessionPinned(found.name, pinned);
+  process.stdout.write(`${result.ok ? c.ok('✓') : c.danger('✗')} ${result.detail}\n`);
+  if (!result.ok) process.exitCode = 1;
+}
+
+/**
+ * Take a session out of the fleet list, or put it back.
+ *
+ * Two commands rather than `fw hide <session> [on|off]` like the pin: "unhide"
+ * is the word for the way back, and `fw hide atlas off` is a sentence nobody
+ * means. What it does is rename the session — a `-` in front of the pin — so the
+ * fold shows up in `tmux ls`, outlives fleetwood, and `tmux rename-session` will
+ * undo it by hand. The session keeps running throughout; this is about the list,
+ * not about the work.
+ */
+async function cmdHide(name: string | undefined, hidden: boolean): Promise<void> {
+  const verb = hidden ? 'hide' : 'unhide';
+  if (!name) {
+    process.stderr.write(`${c.danger('usage')} fw ${verb} <session>\n`);
+    process.exitCode = 2;
+    return;
+  }
+  const found = await resolveSession(name);
+  if (!found.name) {
+    process.stdout.write(`${c.danger('✗')} ${found.detail}\n`);
+    process.exitCode = 1;
+    return;
+  }
+  const result = await actions.setSessionHidden(found.name, hidden);
   process.stdout.write(`${result.ok ? c.ok('✓') : c.danger('✗')} ${result.detail}\n`);
   if (!result.ok) process.exitCode = 1;
 }
@@ -1039,6 +1083,7 @@ async function main(): Promise<void> {
   const command = positional[0] ?? 'status';
   const arg = positional[1];
   const background = argv.includes('--background');
+  const showHidden = argv.includes('--all');
 
   /*
    * Before anything prints. `fw` is one-shot, so this is the only chance to
@@ -1050,10 +1095,10 @@ async function main(): Promise<void> {
 
   switch (command) {
     case 'status':
-      await cmdStatus(json, capture);
+      await cmdStatus(json, capture, showHidden);
       break;
     case 'watch':
-      await cmdWatch(capture, interval);
+      await cmdWatch(capture, interval, showHidden);
       break;
     case 'agents':
       await cmdAgents(json, capture);
@@ -1090,6 +1135,13 @@ async function main(): Promise<void> {
       break;
     case 'pin':
       await cmdPin(positional);
+      break;
+    case 'hide':
+      await cmdHide(arg, true);
+      break;
+    case 'unhide':
+    case 'show':
+      await cmdHide(arg, false);
       break;
     case 'approve':
       await cmdAnswer(arg, 'approve');

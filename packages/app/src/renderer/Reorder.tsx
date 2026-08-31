@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { isPinned, sessionLabel, sessionOrder } from '@fleetwood/core/sessionOrder';
+import { isHidden, isPinned, sessionLabel, sessionOrder } from '@fleetwood/core/sessionOrder';
 import type { MoveDirection } from '@fleetwood/core/sessionOrder';
 import { send } from './api.ts';
 import { useDismiss } from './useDismiss.ts';
@@ -51,6 +51,7 @@ export function Reorder({ session, order, onResult }: Props): React.JSX.Element 
   useDismiss(wrapRef, open, () => setOpen(false));
 
   const pinned = isPinned(session);
+  const hidden = isHidden(session);
   const index = order.indexOf(session);
   // The ends of this card's tier, not of the panel: the moves stop at the pins.
   const above = index > 0 ? order[index - 1] : undefined;
@@ -88,7 +89,9 @@ export function Reorder({ session, order, onResult }: Props): React.JSX.Element 
         title={
           `${sessionLabel(session)} ${
             slot === undefined ? 'has no slot' : `is in slot ${slot}`
-          }${pinned ? ' and is pinned to the top' : ''} — where it sits in the fleet`
+          }${pinned ? ' and is pinned to the top' : ''} — where it sits in the fleet${
+            hidden ? ', which it is currently hidden from' : ''
+          }`
         }
         onClick={() => setOpen((was) => !was)}
       >
@@ -99,6 +102,7 @@ export function Reorder({ session, order, onResult }: Props): React.JSX.Element 
           <span className="reorder-slot">
             {slot === undefined ? 'no slot' : `slot ${slot}`}
             {pinned && ' · pinned'}
+            {hidden && ' · hidden'}
           </span>
           {item(
             'Move to top',
@@ -134,6 +138,18 @@ export function Reorder({ session, order, onResult }: Props): React.JSX.Element 
             () => void act({ kind: 'clearSessionOrder', session }),
             slot === undefined,
             'drop the number — sorted by what it is doing again',
+          )}
+          {/* Last, and the only item here that is not about position at all: the
+              four moves and the pin are where the card sits, this is whether it
+              is on the screen. Both the pin and the slot survive it, so unhiding
+              is exactly the way back. */}
+          {item(
+            hidden ? 'Unhide' : 'Hide',
+            () => void act({ kind: 'setSessionHidden', session, hidden: !hidden }),
+            false,
+            hidden
+              ? `back in the fleet, ${pinned ? 'among the pins' : 'at the slot it already has'}`
+              : 'out of the fleet, under "hidden" at the bottom — the session keeps running',
           )}
         </span>
       )}

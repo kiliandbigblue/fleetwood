@@ -378,6 +378,12 @@ async function handle(request: Request): Promise<Response> {
       return result;
     }
 
+    case 'setSessionHidden': {
+      const result = await actions.setSessionHidden(request.session, request.hidden);
+      await pushSnapshot();
+      return result;
+    }
+
     case 'openPr': {
       const result = await prSession.openPr({
         repo: request.repo,

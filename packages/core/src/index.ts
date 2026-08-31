@@ -26,7 +26,9 @@ export { partitionAgents, prSummary, repoSummary } from './taskView.ts';
 // sessions with these, and the renderer must not import the barrel to get them.
 export {
   ORDER_STEP,
+  isHidden,
   isPinned,
+  nameWithHidden,
   nameWithOrder,
   nameWithPin,
   parseSessionName,

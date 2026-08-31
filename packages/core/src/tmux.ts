@@ -315,8 +315,17 @@ export async function killSession(name: string): Promise<boolean> {
   return ok;
 }
 
+/**
+ * `--` before the new name, always.
+ *
+ * A hidden session is named with a leading dash (`-20-atlas`, see
+ * `sessionOrder.ts`), and tmux reads that as flags — `unknown flag -f` — unless
+ * the options are terminated first. Unconditional rather than only for names
+ * that need it: a rename that works for most names and fails for one class of
+ * them is the worse bug.
+ */
 export async function renameSession(from: string, to: string): Promise<boolean> {
-  const { ok } = await tmux(['rename-session', '-t', `=${from}`, to]);
+  const { ok } = await tmux(['rename-session', '-t', `=${from}`, '--', to]);
   return ok;
 }
 

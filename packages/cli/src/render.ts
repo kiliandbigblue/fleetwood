@@ -1,5 +1,5 @@
 import type { AgentStatus, FleetAgent, FleetState, PlanLimits } from '@fleetwood/core';
-import { isPinned, sessionLabel, sortSessions } from '@fleetwood/core';
+import { isHidden, isPinned, sessionLabel, sortSessions } from '@fleetwood/core';
 import { c, pad, relativeAge, tildify, width } from './ui.ts';
 
 /**
@@ -111,7 +111,18 @@ export function renderAgentLine(agent: FleetAgent, indent = '    '): string {
   return `${indent}${status}${provenanceMark(agent)} ${pane} ${toolLabel(agent.tool)}${nested}${subagents} ${forTime}${activity}`;
 }
 
-export function renderFleet(fleet: FleetState, limits?: PlanLimits): string {
+/**
+ * The fleet, as `fw status` and `fw watch` print it.
+ *
+ * `showHidden` is `--all`: sessions marked hidden (a `-` on the front of the tmux
+ * name) are left out by default, exactly as the panel leaves them out, and
+ * counted in a footer so the list never quietly shrinks.
+ */
+export function renderFleet(
+  fleet: FleetState,
+  limits?: PlanLimits,
+  showHidden = false,
+): string {
   const lines: string[] = [];
   const { counts } = fleet;
 
@@ -141,7 +152,10 @@ export function renderFleet(fleet: FleetState, limits?: PlanLimits): string {
    * is fleetwood's bookkeeping rather than something to read here. `fw sessions`
    * is the view that still prints raw tmux names.
    */
-  const sessions = sortSessions(fleet.sessions);
+  const ranked = sortSessions(fleet.sessions);
+  const hidden = ranked.filter((s) => isHidden(s.name));
+  const sessions = showHidden ? ranked : ranked.filter((s) => !isHidden(s.name));
+  // `sessions` can be empty here while the fleet is not — everything is hidden.
   const nameWidth = Math.max(...sessions.map((s) => width(sessionLabel(s.name))), 10);
 
   for (const session of sessions) {
@@ -149,7 +163,14 @@ export function renderFleet(fleet: FleetState, limits?: PlanLimits): string {
     // Why this row is up here rather than where its agents would put it.
     const pin = isPinned(session.name) ? c.accent(' +') : '';
     const attention = session.needsAttention ? c.danger(' ✋') : '';
-    const kind = session.meta.kind ? c.accent(session.meta.kind) : '';
+    // The word only shows under --all, which is where seeing which rows these
+    // are is the whole point of the flag.
+    const kind = [
+      isHidden(session.name) ? c.dim('hidden') : '',
+      session.meta.kind ? c.accent(session.meta.kind) : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
     const pr = session.meta.pr ? c.warn(` ${session.meta.pr}`) : '';
     const branch = session.meta.branch ? c.branch(` ${session.meta.branch}`) : '';
 
@@ -165,6 +186,25 @@ export function renderFleet(fleet: FleetState, limits?: PlanLimits): string {
       const ordered = [...session.agents].sort((a, b) => rank(a) - rank(b));
       for (const agent of ordered) lines.push(renderAgentLine(agent));
     }
+    lines.push('');
+  }
+
+  /*
+   * What the list left out, and how to see it.
+   *
+   * A count and not the rows: hiding a session is a decision, and reprinting it
+   * under a "but here they are" heading would undo it. The number of them that
+   * needs you rides along, because that is the one thing you would want to know
+   * without asking. Painted in three pieces because every role here closes with
+   * a reset, so a coloured span inside a muted one un-mutes the rest.
+   */
+  if (!showHidden && hidden.length > 0) {
+    const needsYou = hidden.filter((s) => s.needsAttention).length;
+    lines.push(
+      c.muted(`${hidden.length} hidden`) +
+        (needsYou > 0 ? c.warn(` · ${needsYou} needs you`) : '') +
+        c.muted(' — fw status --all'),
+    );
     lines.push('');
   }
 

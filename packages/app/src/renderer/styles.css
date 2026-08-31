@@ -1378,6 +1378,60 @@ button {
   min-width: 0;
 }
 
+/* --- hidden sessions ----------------------------------------------------- */
+
+/*
+ * The drawer's heading. A `section-title` that happens to be a button: the other
+ * headings in this list are labels and this one is a control, so it gets the
+ * caret and the hover, and nothing else about the type changes — a section that
+ * looked different would read as a different kind of thing.
+ */
+.hidden-toggle {
+  /* `.section-title` gives it the type, the colour and the top margin; the base
+     `button` reset gives it the rest. Only the caret's row is new. */
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  text-align: left;
+}
+.hidden-toggle:hover {
+  color: var(--text);
+}
+
+.hidden-caret {
+  font-size: 9px;
+  /* Its own width, so the label does not shift when the caret turns. */
+  width: 7px;
+}
+
+/* The one number in the heading worth reading: not `danger`, because the point
+   of this section is that it is not shouting. */
+.hidden-attention {
+  color: var(--warn);
+}
+
+/*
+ * The cards themselves, one step back.
+ *
+ * Dimmed as a group rather than per card so a hidden card is the same component
+ * with the same controls — it is where it sits that changed, not what it is. The
+ * `flex-shrink` is the rule `.body > *` already sets on every other row, which
+ * this wrapper would otherwise take away from the cards inside it: see the note
+ * on `.body > *`.
+ */
+.hidden-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  opacity: 0.66;
+}
+.hidden-group:hover {
+  opacity: 1;
+}
+.hidden-group > * {
+  flex-shrink: 0;
+}
+
 .new-task {
   padding: 7px 10px;
   border-radius: var(--radius);

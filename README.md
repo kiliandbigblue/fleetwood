@@ -544,8 +544,16 @@ fw approve [pane]     answer yes to a blocked agent
 fw deny [pane]        answer no
 fw kill-agent <pane|key>  close one agent, leaving its pane and session alone
 fw focus <session>    point the terminal at a session
+fw order [<session> <slot>|none]  where each session sits in the fleet
+fw pin <session> [on|off]  hold it above every unpinned session
+fw hide <session>     take a session out of the fleet list — it keeps running
+fw unhide <session>   put it back, in the tier and slot it had
 fw sessions | panes | repos | doctor | install-hooks
 ```
+
+`fw status` and `fw watch` leave hidden sessions out and say how many, `--all` lists
+them too. The counts in the header and the quota gauge always speak for the whole
+fleet: a session nobody is looking at still spends tokens and still gets stuck.
 
 `fw open-pr` takes `owner/repo#123` or a full PR URL.
 
@@ -576,6 +584,15 @@ on next start, so no history is lost either way.
   process is the versioned binary, so `pane_current_command` is a version string
   like `2.1.220`; and a single session also spawns `claude daemon run` plus several
   `bg-pty-host` helpers that must not be counted as separate agents.
+- **Three markers live on the tmux session name**, and read outside in they are
+  the three questions in the order they are asked: `-` is hidden — not in the
+  fleet list at all; `+` is pinned — a tier above every unpinned session; and a
+  number prefix is the slot within that tier. All three together is
+  `-+20-atlas`, which is `atlas`. They are stripped from every label fleetwood
+  draws, each is editable with `tmux rename-session` alone, and all of them
+  survive a restart because tmux is holding them rather than a registry on the
+  side. One cost, in one place: a dash-prefixed name is one tmux itself reads as
+  flags, so `renameSession` passes `--` before the new name.
 - **`set-option -t` rejects the `=` exact-match prefix** that `has-session`,
   `kill-session` and `new-window` accept (tmux 3.6a). Stamping metadata uses the
   bare session name for that reason.

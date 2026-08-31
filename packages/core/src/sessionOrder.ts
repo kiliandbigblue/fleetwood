@@ -15,6 +15,14 @@
  * it. It lives in the name for the reason the slot does — one mechanism, no
  * registry, and `tmux rename-session` is still enough to do it by hand.
  *
+ * Hiding is the third of these, and the only one that is not about position: a
+ * `-` in front of everything else takes the session out of the fleet list
+ * altogether — `-+20-atlas` is that same pinned, twentieth `atlas`, folded away
+ * at the bottom of the panel. Nothing about the session changes; the agents in
+ * it keep running and keep being counted. Read outside in, the three markers are
+ * the three questions in the order they are asked: is it in the list, which tier,
+ * where in the tier.
+ *
  * The prefix is a display detail, so fleetwood hides it: cards, the palette and
  * `fw status` all show the label. Every action still carries the real name —
  * focus, kill, spawn and the `@fw_*` options are tmux's business and tmux knows
@@ -26,7 +34,8 @@
  */
 
 /**
- * An optional pin marker, then an optional slot, then the name itself.
+ * An optional hidden marker, then an optional pin, then an optional slot, then
+ * the name itself.
  *
  * The slot is two or more digits and a dash. Two, not one, because a single digit
  * makes real names ambiguous: `2fa-login` is safe either way, but
@@ -40,11 +49,23 @@
  * an interactive shell, and a marker you have to quote is a marker that makes
  * `tmux rename-session` a worse tool than fleetwood.
  *
- * Both parts are optional and each is only a marker when a name is left over, so
- * a session literally called `20-` or `+` keeps its name instead of rendering as
- * a blank card.
+ * The hidden marker is a `-` and it comes before the pin, because it outranks
+ * it: a session that is not in the list is not in a tier of it either, and this
+ * is the order in which the two are decided. So `-+20-atlas` is a hidden,
+ * pinned, twentieth `atlas`, and unhiding it puts it back at the top of the
+ * pinned tier rather than anywhere new.
+ *
+ * A leading `-` is the one marker that costs something: tmux reads it as flags,
+ * so `tmux.renameSession` passes `--` before the new name. It is still the right
+ * character, by the rule that picked `+` over `!` — the marker has to survive
+ * being typed, and `tmux rename-session -t atlas -- -atlas` is a hand-edit,
+ * while a quoted marker is a trap.
+ *
+ * Every part is optional and each is only a marker when a name is left over, so
+ * a session literally called `20-`, `+` or `-` keeps its name instead of
+ * rendering as a blank card.
  */
-const NAME_PREFIX = /^(\+?)(?:(\d{2,})-)?(.+)$/;
+const NAME_PREFIX = /^(-?)(\+?)(?:(\d{2,})-)?(.+)$/;
 
 export const ORDER_STEP = 10;
 
@@ -53,18 +74,21 @@ export interface SessionName {
   order?: number;
   /** Whether the session is in the pinned tier, above every unpinned one. */
   pinned: boolean;
+  /** Whether the fleet list leaves it out, folded under `hidden` instead. */
+  hidden: boolean;
   /** The name with its prefix taken off: what fleetwood shows. */
   label: string;
 }
 
 export function parseSessionName(name: string): SessionName {
   const match = NAME_PREFIX.exec(name);
-  if (!match) return { pinned: false, label: name };
-  const digits = match[2];
+  if (!match) return { pinned: false, hidden: false, label: name };
+  const digits = match[3];
   return {
     ...(digits === undefined ? {} : { order: Number.parseInt(digits, 10) }),
-    pinned: match[1] === '+',
-    label: match[3] as string,
+    hidden: match[1] === '-',
+    pinned: match[2] === '+',
+    label: match[4] as string,
   };
 }
 
@@ -83,19 +107,37 @@ export function isPinned(name: string): boolean {
   return parseSessionName(name).pinned;
 }
 
+/** Whether the fleet list leaves this one out. */
+export function isHidden(name: string): boolean {
+  return parseSessionName(name).hidden;
+}
+
+/**
+ * A name back from its parts — the one place the markers are assembled.
+ *
+ * One place because there are three of them now and each `nameWith*` changes a
+ * single part: a second copy of this is how a marker gets dropped by the
+ * function that was not thinking about it.
+ *
+ * Zero-padded to two digits so slot 5 is `05-` and sorts before `10-` in any
+ * plain text listing, tmux's own included.
+ */
+function composeName({ hidden, pinned, order, label }: SessionName): string {
+  const slot =
+    order === undefined ? '' : `${String(Math.max(0, Math.trunc(order))).padStart(2, '0')}-`;
+  return `${hidden ? '-' : ''}${pinned ? '+' : ''}${slot}${label}`;
+}
+
 /**
  * The same session, in a given slot — or with no slot at all when `order` is
  * `undefined`.
  *
- * Zero-padded to two digits so slot 5 is `05-` and sorts before `10-` in any
- * plain text listing, tmux's own included. A pin is not a position, so it rides
- * along untouched: renumbering the fleet must not quietly unpin half of it.
+ * Neither a pin nor the fold is a position, so both ride along untouched:
+ * renumbering the fleet must not quietly unpin half of it, nor lift a card out
+ * of the fold and back onto the screen.
  */
 export function nameWithOrder(name: string, order: number | undefined): string {
-  const { label, pinned } = parseSessionName(name);
-  const pin = pinned ? '+' : '';
-  if (order === undefined) return `${pin}${label}`;
-  return `${pin}${String(Math.max(0, Math.trunc(order))).padStart(2, '0')}-${label}`;
+  return composeName({ ...parseSessionName(name), order });
 }
 
 /**
@@ -106,9 +148,20 @@ export function nameWithOrder(name: string, order: number | undefined): string {
  * somewhere the pin invented for it.
  */
 export function nameWithPin(name: string, pinned: boolean): string {
-  const { label, order } = parseSessionName(name);
-  const slot = order === undefined ? '' : `${String(order).padStart(2, '0')}-`;
-  return `${pinned ? '+' : ''}${slot}${label}`;
+  return composeName({ ...parseSessionName(name), pinned });
+}
+
+/**
+ * The same session, hidden or shown — its tier and its slot kept either way.
+ *
+ * The fold is not a move either, for the same reason and with a longer way back:
+ * a session hidden out of slot 20 of the pinned tier comes back into slot 20 of
+ * the pinned tier. Hiding a pinned session does not unpin it — that would make
+ * the fold quietly destructive of the other marker — it just means the pin has
+ * nothing to be above until the session is shown again.
+ */
+export function nameWithHidden(name: string, hidden: boolean): string {
+  return composeName({ ...parseSessionName(name), hidden });
 }
 
 /**
@@ -118,7 +171,9 @@ export function nameWithPin(name: string, pinned: boolean): string {
  * would have given it — `openProject`, `ensureTaskSession`, the PR session's
  * last-resort match. Comparing raw names there would see `20-fleetwood` as a
  * stranger and create a second session called `fleetwood`, which is the one
- * failure this whole feature could plausibly cause.
+ * failure this whole feature could plausibly cause. Hiding is the same hazard
+ * with a louder failure — a hidden session nothing can find again — and is
+ * covered by the same comparison: `-fleetwood` is `fleetwood`.
  */
 export function sameSession(a: string, b: string): boolean {
   return sessionLabel(a) === sessionLabel(b);

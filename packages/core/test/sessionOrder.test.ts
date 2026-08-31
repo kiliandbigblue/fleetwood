@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  isHidden,
   isPinned,
+  nameWithHidden,
   nameWithOrder,
   nameWithPin,
   parseSessionName,
@@ -12,25 +14,26 @@ import {
 } from '../src/sessionOrder.ts';
 
 test('a slot prefix is read off the name and hidden', () => {
-  assert.deepEqual(parseSessionName('20-atlas'), { order: 20, pinned: false, label: 'atlas' });
+  assert.deepEqual(parseSessionName('20-atlas'), { order: 20, pinned: false, hidden: false, label: 'atlas' });
   assert.equal(sessionLabel('20-atlas'), 'atlas');
   // Zero-padded, so the fleet sorts as text in tmux's own listings too.
   assert.deepEqual(parseSessionName('05-fleetwood'), {
     order: 5,
     pinned: false,
+    hidden: false,
     label: 'fleetwood',
   });
 });
 
 test('a pin is a + in front of the slot, and is hidden with it', () => {
-  assert.deepEqual(parseSessionName('+20-atlas'), { order: 20, pinned: true, label: 'atlas' });
+  assert.deepEqual(parseSessionName('+20-atlas'), { order: 20, pinned: true, hidden: false, label: 'atlas' });
   assert.equal(sessionLabel('+20-atlas'), 'atlas');
   assert.equal(isPinned('+20-atlas'), true);
   assert.equal(isPinned('20-atlas'), false);
   // A pin needs no slot: the tier is the opinion, the number is optional.
-  assert.deepEqual(parseSessionName('+HOME'), { pinned: true, label: 'HOME' });
+  assert.deepEqual(parseSessionName('+HOME'), { pinned: true, hidden: false, label: 'HOME' });
   // And a session literally called `+` is called `+`, not a nameless pin.
-  assert.deepEqual(parseSessionName('+'), { pinned: false, label: '+' });
+  assert.deepEqual(parseSessionName('+'), { pinned: false, hidden: false, label: '+' });
 });
 
 test('pinning keeps the slot, and renumbering keeps the pin', () => {
@@ -52,9 +55,63 @@ test('a pinned session is still the same session', () => {
   assert.equal(sameSession('+fleetwood', 'atlas'), false);
 });
 
+test('a hidden session is a - in front of everything else', () => {
+  assert.deepEqual(parseSessionName('-20-atlas'), {
+    order: 20,
+    pinned: false,
+    hidden: true,
+    label: 'atlas',
+  });
+  assert.equal(sessionLabel('-20-atlas'), 'atlas');
+  assert.equal(isHidden('-20-atlas'), true);
+  assert.equal(isHidden('20-atlas'), false);
+  // Outside the pin, because it outranks it: a session that is not in the list
+  // is not in a tier of it either.
+  assert.deepEqual(parseSessionName('-+20-atlas'), {
+    order: 20,
+    pinned: true,
+    hidden: true,
+    label: 'atlas',
+  });
+  // A session literally called `-` is called `-`, like `+` and `20-` before it.
+  assert.deepEqual(parseSessionName('-'), { pinned: false, hidden: false, label: '-' });
+  // And a name that genuinely starts with a dash keeps the rest of itself.
+  assert.deepEqual(parseSessionName('--wip'), { pinned: false, hidden: true, label: '-wip' });
+});
+
+test('hiding keeps the tier and the slot, and both survive the way back', () => {
+  assert.equal(nameWithHidden('20-atlas', true), '-20-atlas');
+  assert.equal(nameWithHidden('-20-atlas', false), '20-atlas');
+  // The point of putting the marker outside the pin: hiding a pinned session
+  // does not unpin it, so unhiding returns it to the tier it was in.
+  assert.equal(nameWithHidden('+20-atlas', true), '-+20-atlas');
+  assert.equal(nameWithHidden('-+20-atlas', false), '+20-atlas');
+  // Idempotent, for the reason `nameWithPin` is: no `--atlas` from a race.
+  assert.equal(nameWithHidden('-atlas', true), '-atlas');
+  assert.equal(nameWithHidden('atlas', false), 'atlas');
+  // And the other two markers must not quietly unhide what they renumber or
+  // repin — a reorder inside the fold cannot put a card back on screen.
+  assert.equal(nameWithOrder('-+20-atlas', 30), '-+30-atlas');
+  assert.equal(nameWithOrder('-20-atlas', undefined), '-atlas');
+  assert.equal(nameWithPin('-20-atlas', true), '-+20-atlas');
+  assert.deepEqual(planReorder(['-10-atlas', '-20-HOME'], '-20-HOME', 'up'), [
+    { from: '-20-HOME', to: '-10-HOME' },
+    { from: '-10-atlas', to: '-20-atlas' },
+  ]);
+});
+
+test('a hidden session is still the same session', () => {
+  // The loudest version of the stake the slot and the pin share: without this,
+  // `ensureTaskSession` would not find a hidden session and would build a second
+  // one beside it, which nobody would see.
+  assert.equal(sameSession('-fleetwood', 'fleetwood'), true);
+  assert.equal(sameSession('-+20-fleetwood', '20-fleetwood'), true);
+  assert.equal(sameSession('-fleetwood', 'atlas'), false);
+});
+
 test('a name that merely begins with digits keeps every word of itself', () => {
   // The reason a slot is two digits: one would eat this name's first word.
-  assert.deepEqual(parseSessionName('2-factor-auth'), { pinned: false, label: '2-factor-auth' });
+  assert.deepEqual(parseSessionName('2-factor-auth'), { pinned: false, hidden: false, label: '2-factor-auth' });
   assert.equal(sessionLabel('2fa-login'), '2fa-login');
   // A session literally called `20-` has no label to show, so it is not a slot.
   assert.equal(sessionLabel('20-'), '20-');

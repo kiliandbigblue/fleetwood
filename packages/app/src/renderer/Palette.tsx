@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { sameSession, sessionLabel } from '@fleetwood/core/sessionOrder';
+import { isHidden, sameSession, sessionLabel } from '@fleetwood/core/sessionOrder';
 import { send, tildify } from './api.ts';
 
 interface Project {
@@ -181,6 +181,13 @@ export function Palette({ open, onClose, sessions, onNewTask, onResult }: Props)
                     : 'new task…'
                   : item.label}
               </span>
+              {/* Hidden sessions are still offered here: out of the way is not
+                  the same as unreachable, and ⌘K is how you get back to one
+                  without expanding the drawer. Said in words so the jump is not
+                  a surprise. */}
+              {item.kind === 'session' && isHidden(item.name) && (
+                <span className="path">hidden</span>
+              )}
               {item.kind === 'new-task' && (
                 <span className="path" style={{ marginLeft: 'auto' }}>
                   ⌘T

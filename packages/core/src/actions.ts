@@ -4,7 +4,9 @@ import { run } from './exec.ts';
 import { looksLikeClaude } from './claudeDaemon.ts';
 import { classify, scanProcesses } from './procScan.ts';
 import {
+  isHidden,
   isPinned,
+  nameWithHidden,
   nameWithOrder,
   nameWithPin,
   sameSession,
@@ -706,6 +708,39 @@ export async function setSessionPinned(session: string, pinned: boolean): Promis
   return {
     ok: true,
     detail: pinned ? `${label} is pinned to the top` : `${label} is no longer pinned`,
+  };
+}
+
+/**
+ * Take a session out of the fleet list, or put it back.
+ *
+ * The same kind of rename as the pin, one step further out: the `-` goes on the
+ * front of the tmux name, so the fold is inspectable with `tmux ls`, survives a
+ * restart, and `tmux rename-session -t atlas -- -atlas` does it by hand.
+ *
+ * The tier and the slot are both left alone, so this is reversible down to the
+ * position — a session hidden out of slot 20 of the pinned tier comes back into
+ * slot 20 of the pinned tier. Nothing about the session itself changes either:
+ * the agents in it keep running and keep reporting, and the fleet's counts still
+ * count them. What changes is which list the card is drawn in.
+ */
+export async function setSessionHidden(session: string, hidden: boolean): Promise<ActionResult> {
+  if (!(await tmux.hasSession(session))) {
+    return { ok: false, detail: `no tmux session named ${session}` };
+  }
+  const label = sessionLabel(session);
+  if (isHidden(session) === hidden) {
+    return { ok: true, detail: `${label} was already ${hidden ? 'hidden' : 'shown'}` };
+  }
+  const target = nameWithHidden(session, hidden);
+  if (!(await tmux.renameSession(session, target))) {
+    // The one way this fails on its own: another session already answers to the
+    // name being asked for. tmux refuses a duplicate.
+    return { ok: false, detail: `tmux refused to rename ${session} → ${target}` };
+  }
+  return {
+    ok: true,
+    detail: hidden ? `${label} is hidden from the fleet` : `${label} is back in the fleet`,
   };
 }
 
