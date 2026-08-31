@@ -8,6 +8,7 @@ import { isPinned } from '@fleetwood/core/sessionOrder';
 import { AgentRow } from './AgentRow.tsx';
 import { CHECK_GLYPH, REVIEW_LABEL } from './PrList.tsx';
 import { Reorder } from './Reorder.tsx';
+import { TaskNotes } from './TaskNotes.tsx';
 import { send } from './api.ts';
 
 interface Props {
@@ -44,10 +45,19 @@ interface Props {
   /** The configured editor command, so the per-repo button says what it runs. */
   editor: string;
   onResult: (message: string, ok: boolean) => void;
+  /**
+   * Open this task on its own, with the fleet put away.
+   *
+   * A control rather than the header click, which stays what it has always been:
+   * the way to the tmux session. Focusing the pane and focusing the terminal are
+   * the two things you do with a task all day, and quietly swapping which one the
+   * card head means would retrain a habit to buy nothing.
+   */
+  onFocus: () => void;
 }
 
 /** `nvim -u NONE` is a legal editor setting; only the command itself names the button. */
-function editorLabel(editor: string): string {
+export function editorLabel(editor: string): string {
   // `||`, not `??`: an empty setting splits to `['']`, which is not nullish but is
   // also not a label — the button would read as a bare `+`.
   return editor.trim().split(/\s+/)[0] || 'editor';
@@ -169,8 +179,11 @@ const VIA_MARK: Record<TaskPr['via'], string> = { head: '', stack: '⇡', histor
  * Flatter than the PR tab's row on purpose — it sits inside a card, and a second
  * bordered surface nested in the first reads as a different kind of object. The
  * facts are the same ones, in the same colours.
+ *
+ * Exported for `TaskPane`, which draws the same rows with more room around them:
+ * a pull request has to read identically in both, down to the marks.
  */
-function PrRow({ pr, onResult }: { pr: TaskPr; onResult: Props['onResult'] }): React.JSX.Element {
+export function PrRow({ pr, onResult }: { pr: TaskPr; onResult: Props['onResult'] }): React.JSX.Element {
   const where = pr.repoName ?? pr.repo;
   const open = (): void => {
     void send({ kind: 'openExternal', url: pr.url }).then((r) => onResult(r.detail, r.ok));
@@ -229,6 +242,7 @@ export function TaskCard({
   order,
   editor,
   onResult,
+  onFocus,
 }: Props): React.JSX.Element {
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [addingRepo, setAddingRepo] = useState(false);
@@ -294,6 +308,35 @@ export function TaskCard({
         )}
         <span className="badge kind">task</span>
         <span className="repo-summary">{repoSummary(task.repos, task.branch)}</span>
+        {/* Two arrows out of a box: the same mark a window uses for "make this
+            the whole of the view", which is exactly what it does. Drawn rather
+            than typed, like the rail's controls and for the same reason — no
+            codepoint means this and `⤢` renders as a different weight in every
+            face. */}
+        <button
+          className="pane-open"
+          title={`open ${task.slug} on its own`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onFocus();
+          }}
+        >
+          <svg
+            className="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.9}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M14 4.5h5.5V10" />
+            <path d="M10 19.5H4.5V14" />
+            <path d="M19.5 4.5 13 11" />
+            <path d="M4.5 19.5 11 13" />
+          </svg>
+        </button>
         {/* Last, on the trailing edge, as on a session card. The slug is already
             the session's name minus its slot, so nothing here needs relabelling —
             only moving. */}
@@ -341,43 +384,17 @@ export function TaskCard({
         </div>
       )}
 
-      {editingNotes ? (
-        <div className="task-notes-edit">
-          <textarea
-            autoFocus
-            rows={5}
-            value={draft}
-            placeholder="notes on this task — saved to NOTES.md beside the worktrees"
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') {
-                setEditingNotes(false);
-                return;
-              }
-              // ⌘↵ saves. A bare Enter has to stay a newline — it is a notes box.
-              if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-                event.preventDefault();
-                saveNotes();
-              }
-            }}
-          />
-          <div className="task-notes-actions">
-            <span className="task-notes-hint">⌘↵ save · esc cancel</span>
-            <button className="chip" onClick={() => setEditingNotes(false)}>
-              cancel
-            </button>
-            <button className="chip" onClick={saveNotes}>
-              save
-            </button>
-          </div>
-        </div>
-      ) : (
-        task.notes && (
-          <div className="task-notes" onClick={openNotes} title="click to edit · kept in NOTES.md">
-            {task.notes.trim()}
-          </div>
-        )
-      )}
+      {/* No placeholder: a card with no note shows nothing at all, because twelve
+          empty boxes down a list is what the pane exists to get away from. */}
+      <TaskNotes
+        notes={task.notes}
+        editing={editingNotes}
+        draft={draft}
+        onDraft={setDraft}
+        onOpen={openNotes}
+        onCancel={() => setEditingNotes(false)}
+        onSave={saveNotes}
+      />
 
       {addingRepo ? (
         <form

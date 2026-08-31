@@ -5,6 +5,7 @@ import { SessionCard } from './SessionCard.tsx';
 import { AgentRow } from './AgentRow.tsx';
 import { PrList } from './PrList.tsx';
 import { TaskCard } from './TaskCard.tsx';
+import { TaskPane } from './TaskPane.tsx';
 import { NewTask } from './NewTask.tsx';
 import { Palette } from './Palette.tsx';
 import { StatusBar } from './StatusBar.tsx';
@@ -15,6 +16,7 @@ import { ThemePicker } from './ThemePicker.tsx';
 // the renderer bundle on `node:child_process`.
 import { needsDeploy } from '@fleetwood/core/deployState';
 import { isHidden, sortSessions } from '@fleetwood/core/sessionOrder';
+import { resolveFocus } from './focus.ts';
 import { applyTheme } from './theme.ts';
 import { watchZoom } from './zoom.ts';
 import { send } from './api.ts';
@@ -43,6 +45,14 @@ export function App(): React.JSX.Element {
    * make the fleet look like hiding had come undone.
    */
   const [hiddenOpen, setHiddenOpen] = useState(false);
+  /**
+   * The one task the panel is showing, if it is showing one.
+   *
+   * A slug, not a task: a snapshot lands every second and replaces every object
+   * in it, so a held task would be the task as it was when you clicked. See
+   * `focus.ts`, which turns it back into the pair the pane needs.
+   */
+  const [focusedSlug, setFocusedSlug] = useState<string | undefined>();
 
   useEffect(() => api.onSnapshot(setSnapshot), []);
   // Before the first paint of anything in the rails: the top one's inset into the
@@ -91,16 +101,29 @@ export function App(): React.JSX.Element {
       } else if ((event.metaKey || event.ctrlKey) && event.key === 't') {
         event.preventDefault();
         setTab('fleet');
+        // The card it creates is in the list, so that is where you should be.
+        setFocusedSlug(undefined);
         setNewTaskSummary('');
         setNewTaskOpen((open) => !open);
       } else if ((event.metaKey || event.ctrlKey) && event.key === 'r') {
         event.preventDefault();
         refresh();
+      } else if (event.key === 'Escape' && !paletteOpen && !newTaskOpen && !themeOpen) {
+        /*
+         * The way out of the pane.
+         *
+         * Guarded on what else is open rather than trusting each of them to stop
+         * the event: escape means the innermost thing showing, and closing a
+         * palette that happened to be over the pane must not also close the pane
+         * behind it. The inline editors — notes, add-repo — do stop it, because
+         * this handler cannot see them.
+         */
+        setFocusedSlug(undefined);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [refresh]);
+  }, [refresh, paletteOpen, newTaskOpen, themeOpen]);
 
   const onResult = (message: string, ok: boolean): void => setToast({ message, ok });
 
@@ -144,6 +167,16 @@ export function App(): React.JSX.Element {
   const hiddenOrder = hidden.map((session) => session.name);
 
   /*
+   * The focused task, re-found in the snapshot that just landed.
+   *
+   * `undefined` covers the task being archived while you are looking at it —
+   * from the pane's own button, or from `fw` in the terminal beside the panel —
+   * and the fleet is simply what is drawn instead. No banner: the list coming
+   * back is the message.
+   */
+  const focused = resolveFocus(snapshot?.tasks, sessions, focusedSlug);
+
+  /*
    * The join that merges the two lists: `@fw_task` is stamped on the session at
    * creation, so a session knows its task and a task knows its session name.
    * Keyed by name rather than id because that is what `Task.session` holds.
@@ -184,6 +217,7 @@ export function App(): React.JSX.Element {
         order={rowOrder}
         editor={snapshot?.editor ?? ''}
         onResult={onResult}
+        onFocus={() => setFocusedSlug(task.slug)}
       />
     ) : (
       <SessionCard
@@ -199,7 +233,11 @@ export function App(): React.JSX.Element {
     <div className="app">
       <TopBar
         tab={tab}
-        onTab={setTab}
+        onTab={(next) => {
+          // Leaving the pane is implied by asking for a list.
+          setFocusedSlug(undefined);
+          setTab(next);
+        }}
         counts={counts}
         fleetCount={sessions.length + dormantTasks.length}
         prCount={prCount}
@@ -212,6 +250,8 @@ export function App(): React.JSX.Element {
         }}
         onRefresh={refresh}
         refreshing={refreshing}
+        focusedTask={focused?.task.slug}
+        onBack={() => setFocusedSlug(undefined)}
         themePicker={
           snapshot && (
             <ThemePicker
@@ -225,7 +265,7 @@ export function App(): React.JSX.Element {
         }
       />
 
-      <div className="body">
+      <div className={`body${focused ? ' body-pane' : ''}`}>
         {snapshot && !snapshot.hooksInstalled && (
           <div className="banner">
             <span>
@@ -242,7 +282,21 @@ export function App(): React.JSX.Element {
 
         {!snapshot && <div className="empty">connecting to tmux…</div>}
 
-        {snapshot && tab === 'fleet' && (
+        {/* One task, and nothing else. Ahead of both lists rather than as a third
+            tab: it is one of them, opened. */}
+        {snapshot && focused && (
+          <TaskPane
+            task={focused.task}
+            prs={snapshot.taskPrs?.byTask[focused.task.slug]}
+            prsStale={snapshot.taskPrs?.degraded}
+            session={focused.session}
+            editor={snapshot.editor}
+            onResult={onResult}
+            onBack={() => setFocusedSlug(undefined)}
+          />
+        )}
+
+        {snapshot && !focused && tab === 'fleet' && (
           <>
             {sessions.length === 0 && dormantTasks.length === 0 && (
               // "No tmux sessions" over a drawer saying there are three would read
@@ -265,6 +319,7 @@ export function App(): React.JSX.Element {
                     prsStale={snapshot.taskPrs?.degraded}
                     editor={snapshot.editor}
                     onResult={onResult}
+                    onFocus={() => setFocusedSlug(task.slug)}
                   />
                 ))}
               </>
@@ -342,7 +397,7 @@ export function App(): React.JSX.Element {
           </>
         )}
 
-        {snapshot && tab === 'prs' && (
+        {snapshot && !focused && tab === 'prs' && (
           <PrList
             prs={snapshot.prs}
             merged={snapshot.merged}
@@ -372,6 +427,7 @@ export function App(): React.JSX.Element {
            Forcing the fleet tab first so the card it creates is in view. */
         onNewTask={(summary) => {
           setTab('fleet');
+          setFocusedSlug(undefined);
           setNewTaskSummary(summary);
           setNewTaskOpen(true);
         }}

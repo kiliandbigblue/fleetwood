@@ -4,6 +4,16 @@ import { duration, send } from './api.ts';
 
 interface Props {
   agent: FleetAgent;
+  /**
+   * The worktree this agent is working in, when the list it is in mixes them.
+   *
+   * The card files agents under the repo row they belong to, so there it would be
+   * saying twice what the nesting already says and it is left off. `TaskPane`
+   * lists every agent of a task in one place — you go to that section to see what
+   * is running, not to see how the folder is arranged — so there the repo has to
+   * ride on the row.
+   */
+  where?: string;
   onResult: (message: string, ok: boolean) => void;
 }
 
@@ -44,7 +54,7 @@ function killNote(agent: FleetAgent): string {
   return 'close this agent — its pane, scrollback and session stay';
 }
 
-export function AgentRow({ agent, onResult }: Props): React.JSX.Element {
+export function AgentRow({ agent, where, onResult }: Props): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [confirmingKill, setConfirmingKill] = useState(false);
 
@@ -73,6 +83,11 @@ export function AgentRow({ agent, onResult }: Props): React.JSX.Element {
           title={`${STATUS_LABEL[agent.status] ?? agent.status} — ${PROVENANCE_NOTE[agent.provenance] ?? agent.provenance}`}
         />
         <span className={`tool tool-${agent.tool}`}>{agent.tool}</span>
+        {where && (
+          <span className="agent-where" title={`working in ${where}`}>
+            {where}
+          </span>
+        )}
         {agent.nested && (
           <span className="nested" title="a background or spawned agent, not the one at the terminal">
             ⤶

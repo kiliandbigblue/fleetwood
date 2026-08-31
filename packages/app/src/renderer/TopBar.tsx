@@ -33,6 +33,15 @@ interface Props {
   refreshing: boolean;
   /** The theme picker, passed in because it owns its own popover state. */
   themePicker?: React.ReactNode;
+  /**
+   * The task the panel is focused on, when it is on one.
+   *
+   * The tabs step aside for it rather than sitting beside it: the pane is not a
+   * third list, it is one of the two you are already in, opened. Leaving the tabs
+   * up with neither of them marked would say the opposite.
+   */
+  focusedTask?: string;
+  onBack: () => void;
 }
 
 /**
@@ -66,6 +75,8 @@ export function TopBar({
   onRefresh,
   refreshing,
   themePicker,
+  focusedTask,
+  onBack,
 }: Props): React.JSX.Element {
   const permission = counts?.blocked_permission ?? 0;
   const input = counts?.blocked_input ?? 0;
@@ -109,6 +120,54 @@ export function TopBar({
           : `${toDeploy} merged and built, nothing deployed it`,
     },
   ];
+
+  if (focusedTask) {
+    return (
+      <header className="rail rail-top">
+        {/* One way back, in the place the tabs were, so the eye does not have to
+            go looking for it. Escape does the same thing. */}
+        <button className="nav-back" onClick={onBack} title="back to the fleet (esc)">
+          <svg
+            className="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.9}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M20 12H5" />
+            <path d="m11.5 5.5-6.5 6.5 6.5 6.5" />
+          </svg>
+          <span>fleet</span>
+        </button>
+        {/* Not a control: it says which task you are in, and the pane below is
+            already all about it. */}
+        <span className="nav-here">{focusedTask}</span>
+
+        <div className="rail-controls">
+          {themePicker}
+          <button
+            className={`icon-button${pinned ? ' on' : ''}`}
+            title="keep on top of other windows"
+            aria-pressed={pinned}
+            onClick={onPin}
+          >
+            <Icon name="above" />
+          </button>
+          <button
+            className={`icon-button${refreshing ? ' spinning' : ''}`}
+            title={refreshing ? 're-reading…' : 'refresh the fleet and every pull request list (⌘R)'}
+            aria-busy={refreshing}
+            onClick={onRefresh}
+          >
+            <Icon name="refresh" />
+          </button>
+        </div>
+      </header>
+    );
+  }
 
   return (
     <header className="rail rail-top">

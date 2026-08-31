@@ -852,6 +852,24 @@ button {
 }
 
 /*
+ * Which worktree an agent is in, on a row in a list that mixes them.
+ *
+ * Mono and dim, like every other "where" in this panel — a path, a branch, a
+ * repo row's name. Allowed to shrink, because the activity beside it is the
+ * thing you are reading and a long worktree name must not push it out.
+ */
+.agent-where {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/*
  * Close one agent. Dim rather than hidden until hover: a control you can only
  * find by accident may as well not exist, but this one destroys context and has
  * no business competing with the status for attention.
@@ -1674,6 +1692,365 @@ button {
 }
 .add-repo input:focus {
   border-color: var(--accent);
+}
+
+/* --- the focused task pane ----------------------------------------------- */
+
+/*
+ * Open this task on its own.
+ *
+ * Sits between the repo count and the reorder menu, dim like every other piece of
+ * resting furniture in a card head and brightening with the card — the same rule
+ * `.reorder-open` follows, because they are the same kind of thing: a control that
+ * belongs to this card and must not compete with what the card says.
+ *
+ * No `margin-left: auto`: `.repo-summary` already claims the free space, so this
+ * sits at the end of that group rather than taking the space itself.
+ */
+.pane-open {
+  flex: none;
+  align-self: center;
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  margin-left: 2px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.card-head:hover .pane-open {
+  color: var(--soft);
+}
+
+.pane-open:hover {
+  background: var(--edge);
+  color: var(--text);
+}
+
+/*
+ * The way back, in the place the tabs were.
+ *
+ * Set as a tab is — mono, tracked, uppercase — because it stands where one stood
+ * and is reached for the same way. It is the only thing in this rail that moves
+ * you, so it is the only thing that lights up.
+ */
+.nav-back {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px 0 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--soft);
+  flex: none;
+}
+
+.nav-back:hover {
+  color: var(--text);
+}
+
+.nav-back .icon {
+  width: 13px;
+  height: 13px;
+}
+
+/* Where you are. Not a control — the pane below is already all about it. */
+.nav-here {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/*
+ * The body, with one thing in it.
+ *
+ * More air than the list gets, and that is the whole feature: 8px is the right
+ * gutter for twelve cards being scanned and the wrong one for the single thing
+ * you stopped to read.
+ */
+.body-pane {
+  padding: 20px 16px 16px;
+  gap: 20px;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+/* No card around it: the window is already the border. */
+.pane-head {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.pane-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pane-slug {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* The same softening a dormant card's name gets, for the same reason. */
+.pane-slug.dormant {
+  color: var(--soft);
+}
+
+/* Aligned under the slug rather than under the dot, as on a card. */
+.pane-branch,
+.pane-dir {
+  padding-left: 17px;
+  font-family: var(--mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pane-branch {
+  font-size: 11.5px;
+  color: var(--branch);
+}
+
+/*
+ * The task folder, in full.
+ *
+ * The card has nowhere to put this at all. It is the string you paste into a
+ * terminal, so it is shown rather than left in a tooltip.
+ */
+.pane-dir {
+  font-size: 10.5px;
+  color: var(--dim);
+}
+
+/* Under the title: on a page about one thing, what you do to it belongs beside
+   its name rather than at the bottom of a card. */
+.pane-actions {
+  display: flex;
+  gap: 2px;
+  padding-left: 13px;
+}
+
+/*
+ * The one action on the page that goes somewhere.
+ *
+ * Tinted because it is what the card's header click used to be, and losing a
+ * gesture to an unmarked chip in a row of four is how you lose it for good.
+ * `ok` is the colour the panel already gives an attached session.
+ */
+.chip.go {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 10%, transparent);
+}
+
+.chip.go:hover {
+  background: color-mix(in srgb, var(--ok) 20%, transparent);
+  color: var(--ok);
+}
+
+.pane-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pane-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* `.section-title`'s mark — this file's existing "a label, not content". */
+.pane-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dim);
+  flex: none;
+}
+
+.pane-section-dot {
+  color: var(--edge);
+  flex: none;
+}
+
+/*
+ * The sentence the collapsed card shows, kept word for word.
+ *
+ * Deliberately the same string from `taskView.ts`: the pane must not be a place
+ * where the fleet's numbers are recomputed differently.
+ */
+.pane-section-summary {
+  font-size: 11px;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* One surface per section, so the labels do the separating and the rows do not
+   each need a box. */
+.pane-block {
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+/*
+ * A section with nothing in it yet.
+ *
+ * Dashed, like the dormant card and the new-task strip — this panel's mark for
+ * "real, not running". Kept rather than hidden: a section that vanished when
+ * empty would make a page about one task change shape as the task progressed, and
+ * the empty state is usually the one carrying the next thing to do.
+ */
+.pane-empty {
+  padding: 14px 12px;
+  border: 1px dashed var(--edge);
+  border-radius: var(--radius);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--dim);
+}
+
+.pane-repo {
+  padding: 9px 11px;
+}
+
+.pane-repo + .pane-repo {
+  border-top: 1px solid color-mix(in srgb, var(--edge) 45%, var(--panel));
+}
+
+.pane-repo-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pane-repo-name {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* Keeps the two buttons on the trailing edge whatever else is on the row. */
+.pane-repo-gap {
+  flex: 1 1 auto;
+}
+
+/*
+ * Which of the four checkouts of this repo you are looking at.
+ *
+ * The card elides this to fit it beside the dirty count; here it is the second
+ * line, in full, because that is the question the pane exists to answer without
+ * a tooltip.
+ */
+.pane-repo-path {
+  margin-top: 3px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pane-repo .chip {
+  font-size: 10px;
+  padding: 1px 5px;
+  color: var(--dim);
+}
+
+.pane-repo .chip:hover {
+  color: var(--ok);
+}
+
+/*
+ * The shared rows, given the room the list could not spare them.
+ *
+ * `AgentRow`, `PrRow` and `TaskNotes` are the card's own — that is the point, a
+ * pull request must read identically in both — so only their padding and their
+ * seams are restated here. Nothing below changes what a row says.
+ */
+.pane .agent,
+.pane .task-pr {
+  padding: 9px 11px;
+}
+
+.pane .task-pr + .task-pr,
+.pane .agent + .agent {
+  border-top: 1px solid color-mix(in srgb, var(--edge) 45%, var(--panel));
+}
+
+.pane .prompt {
+  padding-left: 25px;
+}
+
+/* Inside a section, so the block below it supplies the surface and the label
+   above it supplies the separation the border-top used to. */
+.pane .task-notes,
+.pane .task-notes-edit {
+  border-top: 0;
+  padding: 0;
+}
+
+.pane .task-notes {
+  padding: 10px 11px;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  max-height: 220px;
+}
+
+/*
+ * A note you have not written yet.
+ *
+ * Dashed like the other empty sections rather than an empty box, so the pane
+ * never shows a surface with nothing on it.
+ */
+.pane .task-notes.empty {
+  background: none;
+  border-style: dashed;
+  color: var(--dim);
+}
+
+.pane .add-repo {
+  padding: 0 0 0 13px;
 }
 
 /* --- modal (new task) ---------------------------------------------------- */
