@@ -7,10 +7,18 @@
  * survives restarts, it is editable with `tmux rename-session` alone, and there
  * is no second registry to fall out of sync with the first.
  *
+ * A pin is the same idea one step up: a `+` before the slot puts the session in
+ * a tier of its own — `+20-atlas` sorts above every unpinned session whatever
+ * their numbers, and "move to top" on an unpinned card means the top of the
+ * unpinned tier, not the top of the panel. That is what a pin is for: a
+ * short-list that stays on top while the rest of the fleet is reshuffled under
+ * it. It lives in the name for the reason the slot does — one mechanism, no
+ * registry, and `tmux rename-session` is still enough to do it by hand.
+ *
  * The prefix is a display detail, so fleetwood hides it: cards, the palette and
  * `fw status` all show the label. Every action still carries the real name —
  * focus, kill, spawn and the `@fw_*` options are tmux's business and tmux knows
- * the session as `20-atlas`.
+ * the session as `+20-atlas`.
  *
  * A leaf module with no `node:` imports, for the reason `naming.ts` and
  * `taskView.ts` are: the renderer needs these and cannot reach anything that
@@ -18,32 +26,46 @@
  */
 
 /**
- * Two or more digits and a dash.
+ * An optional pin marker, then an optional slot, then the name itself.
  *
- * Two, not one, because a single digit makes real names ambiguous: `2fa-login`
- * is safe either way, but `2-factor-auth` would read as "second in the fleet,
- * called factor-auth" and lose a word off its own name. Nothing is called
- * `20-factor-auth`, and two digits also sort as text in tmux's own listings.
+ * The slot is two or more digits and a dash. Two, not one, because a single digit
+ * makes real names ambiguous: `2fa-login` is safe either way, but
+ * `2-factor-auth` would read as "second in the fleet, called factor-auth" and
+ * lose a word off its own name. Nothing is called `20-factor-auth`, and two
+ * digits also sort as text in tmux's own listings.
  *
- * The label must be non-empty, so a session literally named `20-` keeps its name
- * instead of rendering as a blank card.
+ * The pin marker is a leading `+`, and it comes before the slot: `+20-atlas` is
+ * `atlas`, twentieth, pinned. `+` rather than `!` or `*` because the name has to
+ * survive being typed — `tmux attach -t '!20-atlas'` is a history expansion in
+ * an interactive shell, and a marker you have to quote is a marker that makes
+ * `tmux rename-session` a worse tool than fleetwood.
+ *
+ * Both parts are optional and each is only a marker when a name is left over, so
+ * a session literally called `20-` or `+` keeps its name instead of rendering as
+ * a blank card.
  */
-const ORDER_PREFIX = /^(\d{2,})-(.+)$/;
+const NAME_PREFIX = /^(\+?)(?:(\d{2,})-)?(.+)$/;
 
-/** The step between slots: gaps so a number can be typed in between two others. */
 export const ORDER_STEP = 10;
 
 export interface SessionName {
-  /** Absent when the session has no prefix — an opinion nobody has expressed. */
+  /** Absent when the session has no slot — an opinion nobody has expressed. */
   order?: number;
+  /** Whether the session is in the pinned tier, above every unpinned one. */
+  pinned: boolean;
   /** The name with its prefix taken off: what fleetwood shows. */
   label: string;
 }
 
 export function parseSessionName(name: string): SessionName {
-  const match = ORDER_PREFIX.exec(name);
-  if (!match) return { label: name };
-  return { order: Number.parseInt(match[1] as string, 10), label: match[2] as string };
+  const match = NAME_PREFIX.exec(name);
+  if (!match) return { pinned: false, label: name };
+  const digits = match[2];
+  return {
+    ...(digits === undefined ? {} : { order: Number.parseInt(digits, 10) }),
+    pinned: match[1] === '+',
+    label: match[3] as string,
+  };
 }
 
 /** What to show for a session. */
@@ -56,17 +78,37 @@ export function sessionOrder(name: string): number | undefined {
   return parseSessionName(name).order;
 }
 
+/** Whether it is pinned to the top tier. */
+export function isPinned(name: string): boolean {
+  return parseSessionName(name).pinned;
+}
+
 /**
- * The same session, in a given slot — or with no prefix at all when `order` is
+ * The same session, in a given slot — or with no slot at all when `order` is
  * `undefined`.
  *
  * Zero-padded to two digits so slot 5 is `05-` and sorts before `10-` in any
- * plain text listing, tmux's own included.
+ * plain text listing, tmux's own included. A pin is not a position, so it rides
+ * along untouched: renumbering the fleet must not quietly unpin half of it.
  */
 export function nameWithOrder(name: string, order: number | undefined): string {
-  const { label } = parseSessionName(name);
-  if (order === undefined) return label;
-  return `${String(Math.max(0, Math.trunc(order))).padStart(2, '0')}-${label}`;
+  const { label, pinned } = parseSessionName(name);
+  const pin = pinned ? '+' : '';
+  if (order === undefined) return `${pin}${label}`;
+  return `${pin}${String(Math.max(0, Math.trunc(order))).padStart(2, '0')}-${label}`;
+}
+
+/**
+ * The same session, pinned or not — its slot kept either way.
+ *
+ * Pinning is deliberately not a move: a pinned session keeps the number it had,
+ * so unpinning drops it back where it was in the unpinned tier rather than
+ * somewhere the pin invented for it.
+ */
+export function nameWithPin(name: string, pinned: boolean): string {
+  const { label, order } = parseSessionName(name);
+  const slot = order === undefined ? '' : `${String(order).padStart(2, '0')}-`;
+  return `${pinned ? '+' : ''}${slot}${label}`;
 }
 
 /**
@@ -92,20 +134,26 @@ export interface Orderable {
 /**
  * The fleet, in the order it is shown.
  *
- * A slot is absolute: a numbered session sits where you put it, and a blocked
- * agent does not jump the queue — that is what asking for a hand-edited order
- * means, and a list that rearranges itself under you is exactly what the numbers
- * are for. Unnumbered sessions follow, and among *them* fleetwood's own reading
- * still applies: whoever needs you first, then sessions with agents in them, then
+ * Pinned sessions come first, as a block: that is the whole of what a pin does,
+ * and it outranks the numbers because a short-list that a renumber could break
+ * out of would not be a short-list. Inside each tier a slot is absolute — a
+ * numbered session sits where you put it, and a blocked agent does not jump the
+ * queue, because that is what asking for a hand-edited order means and a list
+ * that rearranges itself under you is exactly what the numbers are for.
+ * Unnumbered sessions follow, and among *them* fleetwood's own reading still
+ * applies: whoever needs you first, then sessions with agents in them, then
  * tmux's creation order.
  *
- * So the numbers are opt-in per session. Number nothing and this is the list
- * fleetwood always drew; number one thing and only that one is pinned.
+ * So both markers are opt-in per session. Mark nothing and this is the list
+ * fleetwood always drew; number one thing and only that one is placed; pin one
+ * thing and only that one is held on top.
  */
 export function sortSessions<T extends Orderable>(sessions: readonly T[]): T[] {
   return sessions
-    .map((session, index) => ({ session, index, order: sessionOrder(session.name) }))
+    .map((session, index) => ({ session, index, ...parseSessionName(session.name) }))
     .sort((a, b) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+
       if (a.order !== undefined && b.order !== undefined) {
         if (a.order !== b.order) return a.order - b.order;
       } else if (a.order !== undefined) return -1;
@@ -139,6 +187,14 @@ export type MoveDirection = 'up' | 'down' | 'top' | 'bottom';
  * made against — "up" has to mean "above the card I can see above this one",
  * whatever mixture of numbered and unnumbered sessions produced it.
  *
+ * Every move stays inside the session's own tier: "top" for an unpinned session
+ * is the first row below the pins, and "up" from the row under them does
+ * nothing. Letting it aim higher would rename the fleet and change nothing on
+ * screen, because the sort puts the pins back on top afterwards — a button that
+ * reports success and visibly does nothing is worse than one that is plainly
+ * disabled. The tiers are contiguous in a displayed order because that is how
+ * `sortSessions` drew it.
+ *
  * Then it numbers the whole list. The alternative — swapping two neighbours'
  * numbers — only works when both already have one: give a number to a session
  * sitting in the unnumbered tail and it leaps over every numbered session ahead
@@ -147,7 +203,8 @@ export type MoveDirection = 'up' | 'down' | 'top' | 'bottom';
  * first move renames every session; after that a move renames the two that
  * swapped, since only their numbers change.
  *
- * Empty when the session is already at that end of the list, or is not in it.
+ * Empty when the session is already at that end of its tier, or is not in the
+ * list.
  */
 export function planReorder(
   order: readonly string[],
@@ -156,15 +213,23 @@ export function planReorder(
 ): SessionRename[] {
   const from = order.indexOf(name);
   if (from < 0) return [];
+
+  // The run of same-tier rows around it: the ends "top" and "bottom" mean here.
+  const tier = isPinned(name);
+  let first = from;
+  while (first > 0 && isPinned(order[first - 1] as string) === tier) first -= 1;
+  let last = from;
+  while (last < order.length - 1 && isPinned(order[last + 1] as string) === tier) last += 1;
+
   const to =
     direction === 'top'
-      ? 0
+      ? first
       : direction === 'bottom'
-        ? order.length - 1
+        ? last
         : direction === 'up'
           ? from - 1
           : from + 1;
-  if (to < 0 || to >= order.length || to === from) return [];
+  if (to < first || to > last || to === from) return [];
 
   const moved = [...order];
   moved.splice(to, 0, ...moved.splice(from, 1));

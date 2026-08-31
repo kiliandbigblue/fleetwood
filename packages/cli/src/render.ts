@@ -1,5 +1,5 @@
 import type { AgentStatus, FleetAgent, FleetState, PlanLimits } from '@fleetwood/core';
-import { sessionLabel, sortSessions } from '@fleetwood/core';
+import { isPinned, sessionLabel, sortSessions } from '@fleetwood/core';
 import { c, pad, relativeAge, tildify, width } from './ui.ts';
 
 /**
@@ -146,13 +146,15 @@ export function renderFleet(fleet: FleetState, limits?: PlanLimits): string {
 
   for (const session of sessions) {
     const attached = session.attached > 0 ? c.ok('●') : c.muted('○');
+    // Why this row is up here rather than where its agents would put it.
+    const pin = isPinned(session.name) ? c.accent(' +') : '';
     const attention = session.needsAttention ? c.danger(' ✋') : '';
     const kind = session.meta.kind ? c.accent(session.meta.kind) : '';
     const pr = session.meta.pr ? c.warn(` ${session.meta.pr}`) : '';
     const branch = session.meta.branch ? c.branch(` ${session.meta.branch}`) : '';
 
     lines.push(
-      `${attached} ${c.bold(pad(sessionLabel(session.name), nameWidth))}${attention} ${kind}${branch}${pr} ${c.muted(tildify(session.path))} ${c.dim(relativeAge(session.createdAt))}`,
+      `${attached} ${c.bold(pad(sessionLabel(session.name), nameWidth))}${pin}${attention} ${kind}${branch}${pr} ${c.muted(tildify(session.path))} ${c.dim(relativeAge(session.createdAt))}`,
     );
 
     if (session.agents.length === 0) {

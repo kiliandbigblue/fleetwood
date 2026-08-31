@@ -98,6 +98,14 @@ export type Request =
    * before anyone pinned anything.
    */
   | { kind: 'clearSessionOrder'; session: string }
+  /**
+   * Hold a session in the top tier, or let it go — a `+` on the tmux name.
+   *
+   * Separate from `reorderSession` because it is not a position: the session
+   * keeps the slot it had, and what changes is which tier the moves happen
+   * inside. Unpinning drops it back among the unpinned at its own number.
+   */
+  | { kind: 'setSessionPinned'; session: string; pinned: boolean }
   | { kind: 'openPr'; repo: string; number: number; branch?: string }
   | { kind: 'answerPrompt'; pane: string; key: string }
   | { kind: 'interrupt'; pane: string }

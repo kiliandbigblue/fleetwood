@@ -3,7 +3,14 @@ import { basename } from 'node:path';
 import { run } from './exec.ts';
 import { looksLikeClaude } from './claudeDaemon.ts';
 import { classify, scanProcesses } from './procScan.ts';
-import { nameWithOrder, sameSession, sessionLabel, sessionOrder } from './sessionOrder.ts';
+import {
+  isPinned,
+  nameWithOrder,
+  nameWithPin,
+  sameSession,
+  sessionLabel,
+  sessionOrder,
+} from './sessionOrder.ts';
 import type { SessionRename } from './sessionOrder.ts';
 import * as tmux from './tmux.ts';
 import { resolveBaseRef, reviewBase } from './worktree.ts';
@@ -669,6 +676,37 @@ export async function setSessionOrder(
   return order === undefined
     ? { ok: true, detail: `${sessionLabel(session)} is no longer ordered` }
     : { ok: true, detail: `${sessionLabel(session)} moved to slot ${order}` };
+}
+
+/**
+ * Pin a session to the top tier, or take it out of it.
+ *
+ * A rename like every other position change: the `+` goes on the front of the
+ * tmux name, so the pin is inspectable with `tmux ls`, survives a restart the
+ * way the slot does, and can be undone by hand with `tmux rename-session`.
+ *
+ * The slot is left alone. Pinning is a tier, not a move — an already-pinned
+ * session keeps its number and its place among the other pins.
+ */
+export async function setSessionPinned(session: string, pinned: boolean): Promise<ActionResult> {
+  if (!(await tmux.hasSession(session))) {
+    return { ok: false, detail: `no tmux session named ${session}` };
+  }
+  const label = sessionLabel(session);
+  if (isPinned(session) === pinned) {
+    return { ok: true, detail: `${label} was already ${pinned ? 'pinned' : 'unpinned'}` };
+  }
+  const target = nameWithPin(session, pinned);
+  if (!(await tmux.renameSession(session, target))) {
+    // The one way this fails on its own: another session already answers to the
+    // name being asked for — a `+atlas` while this one is `atlas`. tmux refuses
+    // a duplicate.
+    return { ok: false, detail: `tmux refused to rename ${session} → ${target}` };
+  }
+  return {
+    ok: true,
+    detail: pinned ? `${label} is pinned to the top` : `${label} is no longer pinned`,
+  };
 }
 
 /**

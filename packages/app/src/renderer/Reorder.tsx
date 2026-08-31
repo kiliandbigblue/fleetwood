@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { sessionLabel, sessionOrder } from '@fleetwood/core/sessionOrder';
+import { isPinned, sessionLabel, sessionOrder } from '@fleetwood/core/sessionOrder';
 import type { MoveDirection } from '@fleetwood/core/sessionOrder';
 import { send } from './api.ts';
 import { useDismiss } from './useDismiss.ts';
@@ -38,15 +38,25 @@ interface Props {
  * What it does is rename the tmux session's number prefix, which is why the menu
  * says which slot the card is in: the effect outlives fleetwood, and
  * `tmux rename-session` or `fw order` will do the same thing.
+ *
+ * The moves are bounded by the card's own tier, which is why "move to top" can
+ * be inert on a card that is not at the top of the panel: a pinned short-list
+ * sits above, and the top this card has is the top of the unpinned list. The
+ * last item is the tier itself — a pin is the one thing in here that changes
+ * which rows the other four are about.
  */
 export function Reorder({ session, order, onResult }: Props): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLSpanElement>(null);
   useDismiss(wrapRef, open, () => setOpen(false));
 
+  const pinned = isPinned(session);
   const index = order.indexOf(session);
-  const first = index <= 0;
-  const last = index < 0 || index >= order.length - 1;
+  // The ends of this card's tier, not of the panel: the moves stop at the pins.
+  const above = index > 0 ? order[index - 1] : undefined;
+  const below = index >= 0 ? order[index + 1] : undefined;
+  const first = index < 0 || above === undefined || isPinned(above) !== pinned;
+  const last = index < 0 || below === undefined || isPinned(below) !== pinned;
   const slot = sessionOrder(session);
 
   const act = async (request: Parameters<typeof send>[0]): Promise<void> => {
@@ -76,9 +86,9 @@ export function Reorder({ session, order, onResult }: Props): React.JSX.Element 
       <button
         className={`reorder-open${open ? ' showing' : ''}`}
         title={
-          slot === undefined
-            ? `${sessionLabel(session)} has no slot — where it sits in the fleet`
-            : `${sessionLabel(session)} is in slot ${slot} — where it sits in the fleet`
+          `${sessionLabel(session)} ${
+            slot === undefined ? 'has no slot' : `is in slot ${slot}`
+          }${pinned ? ' and is pinned to the top' : ''} — where it sits in the fleet`
         }
         onClick={() => setOpen((was) => !was)}
       >
@@ -88,11 +98,33 @@ export function Reorder({ session, order, onResult }: Props): React.JSX.Element 
         <span className="reorder-menu">
           <span className="reorder-slot">
             {slot === undefined ? 'no slot' : `slot ${slot}`}
+            {pinned && ' · pinned'}
           </span>
-          {item('Move to top', () => move('top'), first, 'first in the fleet, above everything')}
+          {item(
+            'Move to top',
+            () => move('top'),
+            first,
+            pinned ? 'first of the pinned sessions' : 'first below the pinned sessions',
+          )}
           {item('Up one', () => move('up'), first, 'swap with the card above')}
           {item('Down one', () => move('down'), last, 'swap with the card below')}
-          {item('Move to bottom', () => move('bottom'), last, 'last in the fleet')}
+          {item(
+            'Move to bottom',
+            () => move('bottom'),
+            last,
+            pinned ? 'last of the pinned sessions' : 'last in the fleet',
+          )}
+          {/* Divided off too, and above "clear slot" because it is the bigger of
+              the two: a pin decides which list the four moves above are about. */}
+          <span className="reorder-divider" />
+          {item(
+            pinned ? 'Unpin' : 'Pin to top',
+            () => void act({ kind: 'setSessionPinned', session, pinned: !pinned }),
+            false,
+            pinned
+              ? 'back among the unpinned, at the slot it already has'
+              : 'hold it above every unpinned session, whatever they are doing',
+          )}
           {/* Divided off: everything above is a position, this one is whether the
               card has one at all. Without a slot it is sorted by what it is
               doing, which is what the panel did before any of this. */}
@@ -101,7 +133,7 @@ export function Reorder({ session, order, onResult }: Props): React.JSX.Element 
             'Clear slot',
             () => void act({ kind: 'clearSessionOrder', session }),
             slot === undefined,
-            'drop the prefix — sorted by what it is doing again',
+            'drop the number — sorted by what it is doing again',
           )}
         </span>
       )}

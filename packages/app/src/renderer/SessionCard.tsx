@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { FleetSession } from '@fleetwood/core';
-import { sessionLabel } from '@fleetwood/core/sessionOrder';
+import { isPinned, sessionLabel } from '@fleetwood/core/sessionOrder';
 import { AgentRow } from './AgentRow.tsx';
 import { Reorder } from './Reorder.tsx';
 import { send, shortenPath, tildify } from './api.ts';
@@ -53,6 +53,14 @@ export function SessionCard({ session, order, onResult }: Props): React.JSX.Elem
             and reading `20-atlas` on the card would be noise. The tooltip above
             carries the real name, which is what tmux answers to. */}
         <span className="session-name">{sessionLabel(session.name)}</span>
+        {/* The one part of the prefix that is worth showing: a pinned card is at
+            the top because someone put it there, and without a mark that reads
+            as fleetwood having reordered the fleet on its own. */}
+        {isPinned(session.name) && (
+          <span className="pin-mark" title="pinned above the unpinned sessions">
+            📌
+          </span>
+        )}
         {session.meta.pr ? (
           <span className="badge pr">#{session.meta.pr.split('#')[1]}</span>
         ) : (

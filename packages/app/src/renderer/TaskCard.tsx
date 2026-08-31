@@ -4,6 +4,7 @@ import type { FleetAgent, FleetSession, Task, TaskPr, TaskRepo } from '@fleetwoo
 // renderer bundle on `node:child_process`.
 import { baseFor, partitionAgents, prSummary, repoSummary, VIA_LABEL } from '@fleetwood/core/taskView';
 import { hasDriftedOffBranch } from '@fleetwood/core/naming';
+import { isPinned } from '@fleetwood/core/sessionOrder';
 import { AgentRow } from './AgentRow.tsx';
 import { CHECK_GLYPH, REVIEW_LABEL } from './PrList.tsx';
 import { Reorder } from './Reorder.tsx';
@@ -285,6 +286,12 @@ export function TaskCard({
       >
         <span className={`attached-dot${session && session.attached > 0 ? '' : ' detached'}`}>●</span>
         <span className="session-name">{task.slug}</span>
+        {/* As on a session card: the pin is the reason this one is up here. */}
+        {task.session && isPinned(task.session) && (
+          <span className="pin-mark" title="pinned above the unpinned sessions">
+            📌
+          </span>
+        )}
         <span className="badge kind">task</span>
         <span className="repo-summary">{repoSummary(task.repos, task.branch)}</span>
         {/* Last, on the trailing edge, as on a session card. The slug is already

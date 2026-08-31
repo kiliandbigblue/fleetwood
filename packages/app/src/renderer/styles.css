@@ -505,6 +505,23 @@ button {
 }
 
 /*
+ * A pinned card's mark, beside the name.
+ *
+ * Small and unclickable: the pin is set from the card's own menu, and a second
+ * control for it in the header would be the fifth glyph that menu exists to
+ * avoid. It sits between the name and the badges, where it reads as part of the
+ * title rather than as another status.
+ */
+.pin-mark {
+  flex: none;
+  font-size: 9px;
+  line-height: 1;
+  /* The emoji renders high in its box; nudge it onto the text's baseline. */
+  transform: translateY(1px);
+  opacity: 0.8;
+}
+
+/*
  * Where a card sits in the fleet: one dot column, four moves behind it.
  *
  * A row of four arrows was the shape before this one, and four glyphs on every
