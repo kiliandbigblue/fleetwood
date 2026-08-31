@@ -21,7 +21,7 @@ export * as prSession from './prSession.ts';
 export * as task from './task.ts';
 export { findTrackedSessionId, findCursorChatId, resumeArgsFor } from './resume.ts';
 export * as taskPrs from './taskPrs.ts';
-export { partitionAgents, prSummary, repoSummary } from './taskView.ts';
+export { partitionAgents, prRepoTags, prSummary, repoSummary } from './taskView.ts';
 // Flat, for the same reason as the theme below: both front ends order and label
 // sessions with these, and the renderer must not import the barrel to get them.
 export {

@@ -2,7 +2,14 @@ import { useState } from 'react';
 import type { FleetAgent, FleetSession, Task, TaskPr, TaskRepo } from '@fleetwood/core';
 // The leaf module: the barrel re-exports tmux and process scanning, which fail the
 // renderer bundle on `node:child_process`.
-import { baseFor, partitionAgents, prSummary, repoSummary, VIA_LABEL } from '@fleetwood/core/taskView';
+import {
+  baseFor,
+  partitionAgents,
+  prRepoTags,
+  prSummary,
+  repoSummary,
+  VIA_LABEL,
+} from '@fleetwood/core/taskView';
 import { hasDriftedOffBranch } from '@fleetwood/core/naming';
 import { isPinned } from '@fleetwood/core/sessionOrder';
 import { AgentRow } from './AgentRow.tsx';
@@ -183,7 +190,20 @@ const VIA_MARK: Record<TaskPr['via'], string> = { head: '', stack: '⇡', histor
  * Exported for `TaskPane`, which draws the same rows with more room around them:
  * a pull request has to read identically in both, down to the marks.
  */
-export function PrRow({ pr, onResult }: { pr: TaskPr; onResult: Props['onResult'] }): React.JSX.Element {
+export function PrRow({
+  pr,
+  repoTag,
+  onResult,
+}: {
+  pr: TaskPr;
+  /**
+   * The repo this pull request is on, when the list it sits in needs telling apart.
+   *
+   * Absent for a task whose pull requests all sit in one repo — see `prRepoTags`.
+   */
+  repoTag?: string;
+  onResult: Props['onResult'];
+}): React.JSX.Element {
   const where = pr.repoName ?? pr.repo;
   const open = (): void => {
     void send({ kind: 'openExternal', url: pr.url }).then((r) => onResult(r.detail, r.ok));
@@ -206,6 +226,14 @@ export function PrRow({ pr, onResult }: { pr: TaskPr; onResult: Props['onResult'
         {CHECK_GLYPH[pr.checks ?? 'none']}
       </span>
       <span className="pr-number">#{pr.number}</span>
+      {/* Beside the number rather than out among the flags: it says which thing
+          this row is, so it belongs with the identifier and not with the states
+          the row reports about it. */}
+      {repoTag && (
+        <span className="task-pr-repo" title={pr.repo}>
+          {repoTag}
+        </span>
+      )}
       {/* The title, which under this repo's convention *is* the branch name — so
           the branch is not repeated beside it, only in the tooltip. */}
       <span className="task-pr-title">{pr.title}</span>
@@ -262,6 +290,9 @@ export function TaskCard({
   };
 
   const { taskLevel, byRepo } = partitionAgents(task, session?.agents ?? []);
+  // Empty unless the pull requests actually span repos, which is the only case
+  // where the tag tells you anything — see `prRepoTags`.
+  const repoTags = prRepoTags(prs ?? []);
   const needsAttention = session?.needsAttention ?? false;
   const dormant = !task.session;
 
@@ -379,7 +410,12 @@ export function TaskCard({
             {prsStale && <span className="task-pr-via"> · stale</span>}
           </div>
           {prs.map((pr) => (
-            <PrRow key={`${pr.repo}#${pr.number}`} pr={pr} onResult={onResult} />
+            <PrRow
+              key={`${pr.repo}#${pr.number}`}
+              pr={pr}
+              repoTag={repoTags[`${pr.repo}#${pr.number}`]}
+              onResult={onResult}
+            />
           ))}
         </div>
       )}

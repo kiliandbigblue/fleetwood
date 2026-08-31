@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { FleetSession, Task, TaskPr, TaskRepo } from '@fleetwood/core';
 // The leaf module: the barrel re-exports tmux and process scanning, which fail the
 // renderer bundle on `node:child_process`.
-import { baseFor, partitionAgents, prSummary, repoSummary } from '@fleetwood/core/taskView';
+import { baseFor, partitionAgents, prRepoTags, prSummary, repoSummary } from '@fleetwood/core/taskView';
 import { hasDriftedOffBranch } from '@fleetwood/core/naming';
 import { AgentRow } from './AgentRow.tsx';
 import { editorLabel, parseRepoInput, PrRow } from './TaskCard.tsx';
@@ -186,6 +186,9 @@ export function TaskPane({
   };
 
   const { taskLevel, byRepo } = partitionAgents(task, session?.agents ?? []);
+  // Same rule as the card's: empty unless the pull requests span repos, so the
+  // two views cannot come to disagree about when the tag is worth showing.
+  const repoTags = prRepoTags(prs ?? []);
   const dormant = !task.session;
 
   const openNotes = (): void => {
@@ -384,7 +387,12 @@ export function TaskPane({
             title={prsStale ? 'gh returned nothing on the last search — this is the previous answer' : undefined}
           >
             {prs.map((pr) => (
-              <PrRow key={`${pr.repo}#${pr.number}`} pr={pr} onResult={onResult} />
+              <PrRow
+                key={`${pr.repo}#${pr.number}`}
+                pr={pr}
+                repoTag={repoTags[`${pr.repo}#${pr.number}`]}
+                onResult={onResult}
+              />
             ))}
           </div>
         ) : (

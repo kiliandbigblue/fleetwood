@@ -124,3 +124,28 @@ export const VIA_LABEL: Record<BranchVia, string> = {
   history: 'worked on in this worktree at some point',
   task: "the task's own branch",
 };
+
+/**
+ * The repo each of a task's pull requests is on, keyed by `owner/name#number`.
+ *
+ * Only worth saying when the card holds pull requests from more than one repo,
+ * which is the case this exists for: a task spanning two repos shows two rows
+ * that otherwise differ only in a number, and "which one is the API change" is
+ * then a tooltip away rather than in front of you. A stack is several pull
+ * requests in *one* repo, so it gets no tags at all — the same word four times
+ * says nothing, and `⇡` already explains how those rows relate.
+ *
+ * The bare name rather than `owner/name`: the owner is the same for every repo
+ * you would be telling apart, so it is the half carrying no information.
+ *
+ * Keyed rather than returned per-row so both front ends can decide once, from
+ * the whole list, whether the tags are worth showing.
+ */
+export function prRepoTags(prs: TaskPr[]): Record<string, string> {
+  const tags: Record<string, string> = {};
+  if (new Set(prs.map((pr) => pr.repo)).size < 2) return tags;
+  for (const pr of prs) {
+    tags[`${pr.repo}#${pr.number}`] = pr.repo.split('/').pop() ?? pr.repo;
+  }
+  return tags;
+}

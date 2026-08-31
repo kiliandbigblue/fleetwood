@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { baseFor, partitionAgents, repoSummary } from '../src/taskView.ts';
+import { baseFor, partitionAgents, prRepoTags, repoSummary } from '../src/taskView.ts';
 import type { FleetAgent } from '../src/fleet.ts';
 import type { Task, TaskRepo } from '../src/task.ts';
 import type { TaskPr } from '../src/taskPrs.ts';
@@ -177,4 +177,29 @@ test('no pull request, no base — the trunk decides instead', () => {
   // A worktree with no branch at all (detached) cannot be matched on one.
   const detached: TaskRepo = { ...upsertLayer, branch: undefined };
   assert.equal(baseFor([pr({ base: 'dev', repoName: upsertLayer.name })], detached), undefined);
+});
+
+test('a task whose pull requests span repos tags each row with its repo', () => {
+  const tags = prRepoTags([
+    pr({ repo: 'bigbluedisco/reflow', number: 10427 }),
+    pr({ repo: 'bigbluedisco/proto', number: 88 }),
+  ]);
+  assert.deepEqual(tags, {
+    'bigbluedisco/reflow#10427': 'reflow',
+    'bigbluedisco/proto#88': 'proto',
+  });
+});
+
+test('a stack — several pull requests in one repo — gets no tags', () => {
+  const tags = prRepoTags([
+    pr({ repo: 'bigbluedisco/reflow', number: 10427 }),
+    pr({ repo: 'bigbluedisco/reflow', number: 10428 }),
+    pr({ repo: 'bigbluedisco/reflow', number: 10429 }),
+  ]);
+  assert.deepEqual(tags, {});
+});
+
+test('one pull request has nothing to be told apart from', () => {
+  assert.deepEqual(prRepoTags([pr({})]), {});
+  assert.deepEqual(prRepoTags([]), {});
 });

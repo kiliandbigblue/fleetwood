@@ -1569,6 +1569,25 @@ button {
   flex: none;
 }
 
+/*
+ * Which repo a pull request is on — worn only when the card holds more than one.
+ *
+ * Reads as a label rather than a state: a border instead of the filled `.badge`
+ * used in a card head, since these rows already carry three coloured states and a
+ * fourth filled patch would compete with them. Mono, because it is a repo name
+ * and the title beside it is one too.
+ */
+.task-pr-repo {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  padding: 0 4px;
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  color: var(--soft);
+  white-space: nowrap;
+  flex: none;
+}
+
 .task-pr-title {
   font-family: var(--mono);
   font-size: 10.5px;

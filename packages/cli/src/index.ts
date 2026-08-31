@@ -10,6 +10,7 @@ import {
   deployMarks,
   prSession,
   proc,
+  prRepoTags,
   prSummary,
   repoIndex,
   repoSummary,
@@ -1029,10 +1030,21 @@ async function cmdTaskList(argv: string[], json: boolean): Promise<void> {
     const open = prs?.byTask[t.slug] ?? [];
     if (open.length === 0) continue;
     process.stdout.write(`    ${c.muted(prSummary(open))}\n`);
+    // Empty unless this task's pull requests span repos, which is the only case
+    // where naming one tells you anything — see `prRepoTags`.
+    const repoTags = prRepoTags(open);
+    // Padded to the widest of them, so adding the column does not stagger the
+    // branch names it sits in front of.
+    const tagWidth = Math.max(0, ...Object.values(repoTags).map((t) => t.length));
+    // Numbers differ in width across repos — `#3004` beside `#10427` — so both
+    // this and the tag are padded, or the branch names step in and out.
+    const numWidth = Math.max(...open.map((pr) => `#${pr.number}`.length));
     for (const pr of open) {
+      const tag = repoTags[`${pr.repo}#${pr.number}`];
       process.stdout.write(
-        `    ${viaMark(pr)} ${checksMark(pr)} ${c.dim(`#${pr.number}`)} ${pad(pr.branch, 46)} ${reviewMark(pr)}` +
-          `${pr.isDraft ? c.dim(' draft') : ''}\n`,
+        `    ${viaMark(pr)} ${checksMark(pr)} ${c.dim(pad(`#${pr.number}`, numWidth))}` +
+          `${tagWidth > 0 ? ` ${c.muted(pad(tag ?? '', tagWidth))}` : ''}` +
+          ` ${pad(pr.branch, 46)} ${reviewMark(pr)}${pr.isDraft ? c.dim(' draft') : ''}\n`,
       );
     }
   }
