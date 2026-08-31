@@ -41,12 +41,37 @@ cd ~/projects/fleetwood
 `git -C ~/projects/fleetwood merge --ff-only <branch>` instead of checking `main`
 out where you are.
 
+## When `main` moved while you worked
+
+Landing here is always a fast-forward, so a branch based on an older tip has to
+catch up first. **Rebase it — don't ask.** `/integrate-to-main` says to offer the
+choice between a rebase and a merge commit; that question is settled for this
+repo and this flow, and asking it again is just a prompt in the way:
+
+```bash
+git rebase main                                          # in the worktree
+pnpm typecheck && pnpm test                              # the replayed commit is new code
+git -C ~/projects/fleetwood merge --ff-only <branch>
+```
+
+Kilian wants linear history here and these branches are local — nothing published
+gets rewritten. Re-run the checks *after* the rebase as well as before: the commit
+that lands is not the one you tested, and that is the whole reason the replay can
+go wrong.
+
+Two things still stop and ask, because neither has a standing answer:
+
+- **Conflicts during the rebase** that are not trivially mechanical. Never guess
+  at a resolution on work that no one is going to review.
+- **`main` having commits you did not expect at all** — someone else's, or your
+  own from another session. Say what they are before folding your work in on top.
+
 ## The rest of the chain, briefly
 
 | Phase | Command | Watch for |
 |---|---|---|
 | 1 | `git add` + `git commit -F <file>` | Zero commits ahead with everything uncommitted is the normal case here, not an error — commit first, then say so in the report. |
-| 2 | `pnpm typecheck && pnpm test`, then `merge --ff-only` | Red stops the chain. Not fast-forwardable means `main` moved — ask, don't pick. |
+| 2 | `pnpm typecheck && pnpm test`, then `merge --ff-only` | Red stops the chain. Not fast-forwardable means `main` moved — rebase; see the section above. |
 | 2 | — | **There is no remote.** Nothing to push, and nothing to say about pushing. |
 | 3 | `osascript -e 'quit app "Fleetwood"'` | Quit *before* installing: `install-app` `rm -rf`s the live bundle. |
 | 3 | `pnpm --filter @fleetwood/app install-app` | ~20s, no sudo, no prompts. |
