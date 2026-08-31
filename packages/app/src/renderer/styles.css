@@ -511,7 +511,7 @@ button {
  * card is four glyphs however faded they are. One is furniture; four are chrome.
  *
  * So it is dim rather than faded — `--dim` at full strength, the weight this
- * panel already gives resting furniture like `.head-path` and `.repo-toggle`,
+ * panel already gives resting furniture like `.head-path` and `.repo-summary`,
  * brightening to `--text` on the card you point at. `.agent-kill`'s
  * fade-until-hover was tried here first and could not be found at all: that rule
  * works for the `×` because the whole agent row is its hover target, while this
@@ -536,7 +536,7 @@ button {
 }
 
 .card-head:has(.head-path) .reorder,
-.card-head:has(.repo-toggle) .reorder {
+.card-head:has(.repo-summary) .reorder {
   margin-left: 2px;
 }
 
@@ -1342,15 +1342,14 @@ button {
 }
 
 /*
- * The repo count in a task's header, doubling as the disclosure for the rows.
+ * The repo count in a task's header. The rows below it are always shown now —
+ * this is a label, not a disclosure.
  *
  * Deliberately not `.head-path`, which it otherwise looks exactly like: that one
- * is dropped below 400px, and a toggle you cannot reach is worse than a path you
- * cannot read.
+ * is dropped below 400px, where this stays put.
  */
-.repo-toggle {
+.repo-summary {
   margin-left: auto;
-  padding: 0;
   font-family: ui-monospace, SFMono-Regular, monospace;
   font-size: 10.5px;
   color: var(--dim);
@@ -1360,9 +1359,6 @@ button {
   text-align: right;
   flex: 0 1 auto;
   min-width: 0;
-}
-.repo-toggle:hover {
-  color: var(--text);
 }
 
 .new-task {

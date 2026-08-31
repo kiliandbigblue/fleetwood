@@ -234,15 +234,6 @@ export function TaskCard({
   const [repoName, setRepoName] = useState('');
   const [editingNotes, setEditingNotes] = useState(false);
   /**
-   * Whether the repo rows are showing, once you have said so.
-   *
-   * `undefined` means you haven't — the card then follows the fleet (see `expanded`
-   * below), which is what makes a task that starts needing attention open itself.
-   * A click pins it either way, because a card you deliberately opened must not
-   * close under you on the next snapshot.
-   */
-  const [showRepos, setShowRepos] = useState<boolean | undefined>();
-  /**
    * What is being typed, held locally on purpose.
    *
    * A snapshot lands every second, so a textarea bound straight to `task.notes`
@@ -258,9 +249,6 @@ export function TaskCard({
   const { taskLevel, byRepo } = partitionAgents(task, session?.agents ?? []);
   const needsAttention = session?.needsAttention ?? false;
   const dormant = !task.session;
-  // Open when there is something in there to see: an agent working inside a repo,
-  // or anything waiting on you. Otherwise the summary line is the whole story.
-  const expanded = showRepos ?? (needsAttention || byRepo.size > 0);
 
   const openNotes = (): void => {
     setDraft(task.notes ?? '');
@@ -298,18 +286,7 @@ export function TaskCard({
         <span className={`attached-dot${session && session.attached > 0 ? '' : ' detached'}`}>●</span>
         <span className="session-name">{task.slug}</span>
         <span className="badge kind">task</span>
-        {/* Doubles as the repo-rows toggle: it is already the count they summarise. */}
-        <button
-          className="repo-toggle"
-          title={expanded ? 'hide the repos' : 'show the repos'}
-          onClick={(event) => {
-            event.stopPropagation();
-            setShowRepos(!expanded);
-          }}
-        >
-          {expanded ? '▾ ' : '▸ '}
-          {repoSummary(task.repos, task.branch)}
-        </button>
+        <span className="repo-summary">{repoSummary(task.repos, task.branch)}</span>
         {/* Last, on the trailing edge, as on a session card. The slug is already
             the session's name minus its slot, so nothing here needs relabelling —
             only moving. */}
@@ -326,22 +303,20 @@ export function TaskCard({
         <AgentRow key={agent.key} agent={agent} onResult={onResult} />
       ))}
 
-      {expanded && (
-        <div className="task-repos">
-          {task.repos.map((repo) => (
-            <RepoRow
-              key={repo.name}
-              repo={repo}
-              taskBranch={task.branch}
-              session={task.session}
-              editor={editor}
-              base={baseFor(prs, repo)}
-              agents={byRepo.get(repo.name) ?? []}
-              onResult={onResult}
-            />
-          ))}
-        </div>
-      )}
+      <div className="task-repos">
+        {task.repos.map((repo) => (
+          <RepoRow
+            key={repo.name}
+            repo={repo}
+            taskBranch={task.branch}
+            session={task.session}
+            editor={editor}
+            base={baseFor(prs, repo)}
+            agents={byRepo.get(repo.name) ?? []}
+            onResult={onResult}
+          />
+        ))}
+      </div>
 
       {/* Above the notes, which is where these links were being kept by hand. */}
       {prs && prs.length > 0 && (
