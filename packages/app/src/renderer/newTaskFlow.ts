@@ -13,6 +13,7 @@
  */
 export { buildBranch, slugify } from '@fleetwood/core/naming';
 import { buildBranch, slugify } from '@fleetwood/core/naming';
+import { fuzzyRank } from '@fleetwood/core/fuzzy';
 
 export type StepKey = 'repos' | 'type' | 'microservice' | 'summary' | 'goal';
 
@@ -134,19 +135,24 @@ export function moveCursor(cursor: number, delta: number, length: number): numbe
 }
 
 /**
- * The rows on screen: what the filter matches, with anything already picked held
- * on top of it.
+ * The rows on screen: what the filter matches, best first, with anything already
+ * picked held on top of it.
  *
  * A selection the filter has hidden is one you can no longer un-pick, and the
  * only way back out of it would be to abandon the form.
+ *
+ * The filter is a subsequence match rather than the substring one it was, which
+ * is the difference between having to recall how a repo is spelled and only
+ * having to recall its letters: `fltwd` finds `fleetwood`, `pg` finds `proto-go`.
+ * An empty filter is still the plain list in the order the roots gave it —
+ * ranking a list nobody has filtered would reorder forty repos for no reason.
  */
 export function visibleChoices(
   names: readonly string[],
   query: string,
   toggled: readonly string[],
 ): string[] {
-  const needle = query.toLowerCase().trim();
-  const matches = needle.length === 0 ? [...names] : names.filter((n) => n.toLowerCase().includes(needle));
+  const matches = fuzzyRank(names, query, (name) => name);
   const pinned = toggled.filter((t) => names.includes(t) && !matches.includes(t));
   return [...pinned, ...matches];
 }

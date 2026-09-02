@@ -22,6 +22,30 @@ export interface RepoIndex {
 const CACHE_FILE = join(FW_HOME, 'repos.json');
 
 /**
+ * The last answer, and when it was last checked against the filesystem.
+ *
+ * In process rather than on disk, and it is what makes the filesystem check
+ * affordable: `readTaskRepos` asks for the index once per task and the snapshot
+ * runs every second, so without this a five-task fleet would readdir the roots
+ * five times a second forever. One pass validates once and the rest of it reads
+ * this.
+ */
+let memo: { index: RepoIndex; checkedAt: number } | undefined;
+
+/**
+ * How long an answer stands before the roots are looked at again.
+ *
+ * Short enough that a repo you just cloned is offerable by the time you have
+ * reached for the mouse, long enough that a snapshot pass costs one scan.
+ */
+const REVALIDATE_MS = 2_000;
+
+function remember(index: RepoIndex): RepoIndex {
+  memo = { index, checkedAt: Date.now() };
+  return index;
+}
+
+/**
  * Extract owner/name from any remote URL shape git uses.
  *
  * Handles scp-style (`git@github.com:owner/repo.git`), https, ssh:// and the
@@ -52,6 +76,40 @@ async function isDirectory(path: string): Promise<boolean> {
   }
 }
 
+/** One directory found under the roots, and whether git owns it. */
+interface Scanned {
+  path: string;
+  isRepo: boolean;
+}
+
+/**
+ * Every directory under the configured roots, in the order the picker shows them.
+ *
+ * The cheap half of building the index — a readdir per root and a couple of stats
+ * per entry, no subprocesses — which is what lets `getIndex` check its cache
+ * against the filesystem on every open rather than against the clock.
+ */
+async function scanRoots(roots: readonly string[]): Promise<Scanned[]> {
+  const found: Scanned[] = [];
+  for (const root of roots) {
+    let entries: string[];
+    try {
+      entries = await readdir(root);
+    } catch {
+      continue;
+    }
+    for (const entry of entries.sort()) {
+      if (entry.startsWith('.')) continue;
+      const path = join(root, entry);
+      if (!(await isDirectory(path))) continue;
+      // `.git` is a directory in a normal clone and a file in a linked worktree.
+      const isRepo = (await isDirectory(join(path, '.git'))) || (await isFile(join(path, '.git')));
+      found.push({ path, isRepo });
+    }
+  }
+  return found;
+}
+
 /**
  * Discover projects under the configured roots.
  *
@@ -62,44 +120,38 @@ async function isDirectory(path: string): Promise<boolean> {
  *
  * One level deep only: descending further would walk into node_modules and, worse,
  * into the worktrees fleetwood itself creates.
+ *
+ * `reuse` carries the previous index in, and is what makes an incremental rebuild
+ * nearly free: the only per-directory cost here is asking git for the origin
+ * remote, and a checkout's remote does not change because a repo was cloned next
+ * to it. Only genuinely new directories pay for one. Called without it — `fw
+ * reindex`, or the age backstop in `getIndex` — every remote is read again, which
+ * is the point of that call.
+ *
+ * `scanned` is the scan `getIndex` already did on its way here, passed through so
+ * the roots are walked once per rebuild rather than twice.
  */
-export async function buildIndex(): Promise<RepoIndex> {
+export async function buildIndex(reuse?: RepoIndex, scanned?: readonly Scanned[]): Promise<RepoIndex> {
   const config = await loadConfig();
-  const repos: LocalRepo[] = [];
+  const known = new Map((reuse?.repos ?? []).map((r) => [r.path, r]));
+  const entries = scanned ?? (await scanRoots(config.projectRoots));
 
-  for (const root of config.projectRoots) {
-    let entries: string[];
-    try {
-      entries = await readdir(root);
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      if (entry.startsWith('.')) continue;
-      const path = join(root, entry);
-      if (!(await isDirectory(path))) continue;
+  const repos = await Promise.all(
+    entries.map(async ({ path, isRepo }): Promise<LocalRepo> => {
+      if (!isRepo) return { path, isRepo: false };
 
-      // `.git` is a directory in a normal clone and a file in a linked worktree.
-      const isRepo =
-        (await isDirectory(join(path, '.git'))) || (await isFile(join(path, '.git')));
-      if (!isRepo) {
-        repos.push({ path, isRepo: false });
-        continue;
-      }
+      const cached = known.get(path);
+      if (cached?.isRepo && cached.nameWithOwner !== undefined) return { ...cached, isRepo: true };
 
       const { code, stdout } = await run('git', ['-C', path, 'remote', 'get-url', 'origin']);
-      repos.push({
-        path,
-        isRepo: true,
-        nameWithOwner: code === 0 ? parseRemote(stdout) : undefined,
-      });
-    }
-  }
+      return { path, isRepo: true, nameWithOwner: code === 0 ? parseRemote(stdout) : undefined };
+    }),
+  );
 
   const index: RepoIndex = { builtAt: Math.floor(Date.now() / 1000), repos };
   await ensureDirs();
   await writeFile(CACHE_FILE, `${JSON.stringify(index, null, 2)}\n`, 'utf8');
-  return index;
+  return remember(index);
 }
 
 async function isFile(path: string): Promise<boolean> {
@@ -110,15 +162,47 @@ async function isFile(path: string): Promise<boolean> {
   }
 }
 
-/** Cached index, rebuilt when older than `maxAgeSeconds`. */
+/**
+ * The index, checked against the filesystem rather than against the clock.
+ *
+ * It used to be the clock alone — serve `repos.json` for fifteen minutes, then
+ * rebuild — and the result was that a repo you had just cloned was not offerable
+ * for a quarter of an hour. Not only in the picker: `resolveRepoInput` reads this
+ * too, so `+ repo` answered "not a git repo under your project roots" about a
+ * directory sitting right there. A cache whose staleness you can see on disk
+ * beside it is the wrong cache.
+ *
+ * So what validates it is the scan: the directories under the roots and which of
+ * them git owns. The same answer means the cache stands however old it is; any
+ * difference rebuilds at once, reusing the remotes it already knows so only what
+ * actually changed costs anything. `isRepo` is part of the comparison and not
+ * just the paths, so `git init` in a scratch directory you already had promotes
+ * it rather than waiting for the backstop.
+ *
+ * `maxAgeSeconds` remains that backstop, for the one thing a scan cannot see — a
+ * remote repointed, a repo renamed on GitHub — and that rebuild is a full one.
+ */
 export async function getIndex(maxAgeSeconds = 900): Promise<RepoIndex> {
-  try {
-    const cached = JSON.parse(await readFile(CACHE_FILE, 'utf8')) as RepoIndex;
-    if (Math.floor(Date.now() / 1000) - cached.builtAt < maxAgeSeconds) return cached;
-  } catch {
-    // No cache yet.
+  const now = Date.now();
+  const fresh = (index: RepoIndex): boolean => Math.floor(now / 1000) - index.builtAt < maxAgeSeconds;
+
+  if (memo && now - memo.checkedAt < REVALIDATE_MS && fresh(memo.index)) return memo.index;
+
+  let cached = memo?.index;
+  if (!cached) {
+    try {
+      cached = JSON.parse(await readFile(CACHE_FILE, 'utf8')) as RepoIndex;
+    } catch {
+      // No cache yet.
+    }
   }
-  return buildIndex();
+  if (!cached?.repos || !fresh(cached)) return buildIndex();
+
+  const present = await scanRoots((await loadConfig()).projectRoots);
+  const held = new Map(cached.repos.map((r) => [r.path, r.isRepo]));
+  const unchanged =
+    present.length === held.size && present.every((entry) => held.get(entry.path) === entry.isRepo);
+  return unchanged ? remember(cached) : buildIndex(cached, present);
 }
 
 /**

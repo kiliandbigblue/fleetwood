@@ -1691,10 +1691,49 @@ button {
   font-size: 10px;
 }
 
+/*
+ * `+ repo`, which is two beats: pick the repo from a list, then say the branch.
+ * A column, so the pick step can put its list under its filter — the row inside
+ * is what the branch step and the filter field still share.
+ */
 .add-repo {
   display: flex;
+  flex-direction: column;
   gap: 4px;
   padding: 6px 10px 8px;
+}
+
+.add-repo-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.add-repo-foot {
+  display: flex;
+}
+
+/* The repo already taken, held beside the branch field as a value, not a label. */
+.add-repo-picked {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--accent);
+}
+
+/* Trailing, and dim: it qualifies the row rather than disqualifying it. */
+.add-repo-held {
+  margin-left: auto;
+  padding-left: 8px;
+  flex: none;
+  color: var(--dim);
+  font-size: 10px;
+}
+
+.add-repo-empty {
+  color: var(--dim);
+  font-size: 11px;
+  padding: 5px 8px;
 }
 
 .add-repo input {
@@ -2180,6 +2219,10 @@ button {
   padding: 4px 8px 0;
 }
 
+/*
+ * Shared with `+ repo` on a task card, which asks the same question the new-task
+ * flow opens with — so it is answered by the same rows, with the same keys.
+ */
 .choices {
   border: 1px solid var(--edge);
   border-radius: 5px;

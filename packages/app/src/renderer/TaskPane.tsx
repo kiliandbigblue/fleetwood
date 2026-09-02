@@ -4,8 +4,9 @@ import type { FleetSession, Task, TaskPr, TaskRepo } from '@fleetwood/core';
 // renderer bundle on `node:child_process`.
 import { baseFor, partitionAgents, prRepoTags, prSummary, repoSummary } from '@fleetwood/core/taskView';
 import { hasDriftedOffBranch } from '@fleetwood/core/naming';
+import { AddRepo } from './AddRepo.tsx';
 import { AgentRow } from './AgentRow.tsx';
-import { editorLabel, parseRepoInput, PrRow } from './TaskCard.tsx';
+import { editorLabel, PrRow } from './TaskCard.tsx';
 import { TaskNotes } from './TaskNotes.tsx';
 import { send, tildify } from './api.ts';
 
@@ -175,7 +176,6 @@ export function TaskPane({
 }: Props): React.JSX.Element {
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [addingRepo, setAddingRepo] = useState(false);
-  const [repoName, setRepoName] = useState('');
   const [editingNotes, setEditingNotes] = useState(false);
   /* Held apart from `task.notes`, which a snapshot replaces every second. */
   const [draft, setDraft] = useState('');
@@ -308,35 +308,7 @@ export function TaskPane({
       </div>
 
       {addingRepo && (
-        <form
-          className="add-repo"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const [name, branch] = parseRepoInput(repoName);
-            if (name === undefined) return;
-            setAddingRepo(false);
-            setRepoName('');
-            void act({ kind: 'addRepoToTask', slug: task.slug, repo: name, branch });
-          }}
-        >
-          <input
-            autoFocus
-            value={repoName}
-            placeholder="proto — or `reflow feature/orders-dual-write` for another branch"
-            onChange={(event) => setRepoName(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') {
-                // Not the pane: escape closes whatever is innermost.
-                event.stopPropagation();
-                setAddingRepo(false);
-                setRepoName('');
-              }
-            }}
-          />
-          <button className="chip" type="submit">
-            add
-          </button>
-        </form>
+        <AddRepo task={task} onClose={() => setAddingRepo(false)} onResult={onResult} />
       )}
 
       <Section title="agents" summary={agentSummary || undefined}>

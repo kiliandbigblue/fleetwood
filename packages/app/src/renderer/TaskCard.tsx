@@ -12,6 +12,7 @@ import {
 } from '@fleetwood/core/taskView';
 import { hasDriftedOffBranch } from '@fleetwood/core/naming';
 import { isPinned } from '@fleetwood/core/sessionOrder';
+import { AddRepo } from './AddRepo.tsx';
 import { AgentRow } from './AgentRow.tsx';
 import { CHECK_GLYPH, REVIEW_LABEL } from './PrList.tsx';
 import { Reorder } from './Reorder.tsx';
@@ -160,18 +161,6 @@ function RepoRow({
 }
 
 /**
- * `reflow` — or `reflow feature/orders-dual-write-order-type`.
- *
- * The second word is what lets a task hold a second branch of a repo it already
- * has, which is the shape stacked work takes. Left off, the task's own branch is
- * used, exactly as before.
- */
-export function parseRepoInput(text: string): [repo: string | undefined, branch: string | undefined] {
-  const [repo, branch] = text.trim().split(/\s+/);
-  return [repo && repo.length > 0 ? repo : undefined, branch];
-}
-
-/**
  * How a branch that isn't simply the one a worktree is on got here.
  *
  * Marked rather than explained, the way an inferred agent status is: the label
@@ -274,7 +263,6 @@ export function TaskCard({
 }: Props): React.JSX.Element {
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [addingRepo, setAddingRepo] = useState(false);
-  const [repoName, setRepoName] = useState('');
   const [editingNotes, setEditingNotes] = useState(false);
   /**
    * What is being typed, held locally on purpose.
@@ -433,33 +421,7 @@ export function TaskCard({
       />
 
       {addingRepo ? (
-        <form
-          className="add-repo"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const [name, branch] = parseRepoInput(repoName);
-            if (name === undefined) return;
-            setAddingRepo(false);
-            setRepoName('');
-            void act({ kind: 'addRepoToTask', slug: task.slug, repo: name, branch });
-          }}
-        >
-          <input
-            autoFocus
-            value={repoName}
-            placeholder="proto — or `reflow feature/orders-dual-write` for another branch"
-            onChange={(event) => setRepoName(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') {
-                setAddingRepo(false);
-                setRepoName('');
-              }
-            }}
-          />
-          <button className="chip" type="submit">
-            add
-          </button>
-        </form>
+        <AddRepo task={task} onClose={() => setAddingRepo(false)} onResult={onResult} />
       ) : (
         <div className="card-actions">
           <button
