@@ -26,6 +26,7 @@ export interface PullRequest {
    * the other.
    */
   base?: string;
+  /** Normalised by `effectiveReviewDecision` — not raw `gh` output. */
   reviewDecision?: string;
   checks?: ChecksState;
   checksDetail?: { passing: number; failing: number; pending: number };
@@ -118,9 +119,37 @@ interface ViewResult {
   headRefName?: string;
   baseRefName?: string;
   reviewDecision?: string;
+  latestReviews?: Array<{ state?: string }>;
   additions?: number;
   deletions?: number;
   statusCheckRollup?: CheckRun[];
+}
+
+/**
+ * The review state as the pull request actually stands, not as GitHub reports it.
+ *
+ * `reviewDecision` is sticky: re-request a review from the person who asked for
+ * changes and it stays `CHANGES_REQUESTED` until they submit again, so a pull
+ * request that is waiting on a reviewer reads as one waiting on the author —
+ * exactly backwards for a board whose whole job is showing what you owe.
+ *
+ * `latestReviews` is the field that does move. GitHub drops a reviewer from it
+ * the moment their review is re-requested, because that review is no longer
+ * current, so a `CHANGES_REQUESTED` decision with nothing blocking in
+ * `latestReviews` is precisely the re-requested case, and becomes
+ * `REVIEW_REQUIRED` here. Every other decision is passed through untouched:
+ * `APPROVED` is not weakened by a re-request, and an absent decision stays
+ * absent rather than being invented.
+ *
+ * Pure, and exported for its test.
+ */
+export function effectiveReviewDecision(
+  decision: string | undefined,
+  latestReviews: Array<{ state?: string }> | undefined,
+): string | undefined {
+  if (decision !== 'CHANGES_REQUESTED') return decision;
+  const blocking = (latestReviews ?? []).some((review) => review.state === 'CHANGES_REQUESTED');
+  return blocking ? decision : 'REVIEW_REQUIRED';
 }
 
 /**
@@ -216,7 +245,7 @@ export async function enrichPr(pr: PullRequest): Promise<PullRequest> {
       '-R',
       pr.repo,
       '--json',
-      'headRefName,baseRefName,reviewDecision,additions,deletions,statusCheckRollup',
+      'headRefName,baseRefName,reviewDecision,latestReviews,additions,deletions,statusCheckRollup',
     ],
     { timeoutMs: 20_000 },
   );
@@ -228,7 +257,7 @@ export async function enrichPr(pr: PullRequest): Promise<PullRequest> {
       ...pr,
       branch: view.headRefName,
       base: view.baseRefName,
-      reviewDecision: view.reviewDecision,
+      reviewDecision: effectiveReviewDecision(view.reviewDecision, view.latestReviews),
       additions: view.additions,
       deletions: view.deletions,
       checks: checks.state,
