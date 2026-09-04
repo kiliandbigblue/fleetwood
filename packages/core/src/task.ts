@@ -661,6 +661,126 @@ export async function addRepoToTask(
   };
 }
 
+/**
+ * Which worktree `fw task rm reflow` means.
+ *
+ * Pure, and deliberately fussy about ambiguity: the directory name is the only
+ * unique handle a task has — a stack holds three worktrees whose `repo` is all
+ * `bigbluedisco/reflow`, so "reflow" cannot be allowed to pick one of them at
+ * random. Exact directory name first, then the repo it belongs to, and a repo
+ * that matches more than one worktree is an error rather than a guess.
+ */
+export function matchTaskRepo(
+  repos: TaskRepo[],
+  name: string,
+): { repo?: TaskRepo; candidates: TaskRepo[] } {
+  const wanted = name.trim().toLowerCase();
+  const exact = repos.find((r) => r.name.toLowerCase() === wanted);
+  if (exact) return { repo: exact, candidates: [exact] };
+
+  // `reflow` for `bigbluedisco/reflow`, and the full `owner/name` too.
+  const byRepo = repos.filter((r) => {
+    const repo = r.repo?.toLowerCase();
+    return repo === wanted || repo?.split('/')[1] === wanted;
+  });
+  // A branch also names a layer, which is the other way you think of one.
+  const byBranch = repos.filter((r) => r.branch?.toLowerCase() === wanted);
+  const candidates = byRepo.length > 0 ? byRepo : byBranch;
+  return { repo: candidates.length === 1 ? candidates[0] : undefined, candidates };
+}
+
+/**
+ * Drop one worktree from a task — the answer to "that PR landed, this is done".
+ *
+ * The inverse of `addRepoToTask`, and `archiveTask` for a single repo: same
+ * refusal on uncommitted work, same conservative branch prune, and the brief and
+ * skill links are rewritten so the task stops advertising a repo it no longer
+ * holds. The task folder itself always stays, even when this empties it —
+ * removing the last worktree is not the same decision as archiving the task, and
+ * `task.json` is the record of work that happened.
+ */
+export async function removeRepoFromTask(
+  slug: string,
+  repoName: string,
+  force = false,
+): Promise<TaskResult> {
+  const dir = await taskDirFor(slug);
+  const record = await readRecord(dir);
+  if (!record) return { ok: false, detail: `no task named ${slug}`, repoResults: [] };
+
+  const before = await readTaskRepos(dir);
+  const { repo, candidates } = matchTaskRepo(before, repoName);
+  if (!repo) {
+    const detail =
+      candidates.length > 1
+        ? `${repoName} matches ${candidates.length} worktrees in ${slug}: ${candidates
+            .map((r) => r.name)
+            .join(', ')} — name one`
+        : `no worktree ${repoName} in ${slug}${
+            before.length > 0 ? ` (has ${before.map((r) => r.name).join(', ')})` : ''
+          }`;
+    return { ok: false, task: { ...record, dir, repos: before }, detail, repoResults: [] };
+  }
+
+  // Git first, exactly as archive does: the worktree knows which checkout owns
+  // it, and the name-based routes each have a case they cannot answer.
+  const owner = (await mainCheckoutFor(repo.path)) ?? (await resolveRepoInput(repo.repo ?? repo.name))?.path;
+  if (!owner) {
+    return {
+      ok: false,
+      task: { ...record, dir, repos: before },
+      detail: `${repo.name} — owning checkout not found`,
+      repoResults: [{ repo: repo.name, ok: false, detail: 'owning checkout not found' }],
+    };
+  }
+
+  const result = await removeWorktree(owner, repo.path, force);
+  if (!result.ok) {
+    return {
+      ok: false,
+      task: { ...record, dir, repos: before },
+      detail: `${repo.name} — ${result.detail}${result.dirty ? '; pass force to discard' : ''}`,
+      repoResults: [{ repo: repo.name, ok: false, detail: result.detail }],
+    };
+  }
+
+  // Same rule as archive: no commits of its own and never pushed. A landed
+  // branch is a pushed one, so it stays — untidy beats unrecoverable.
+  const pruned = repo.branch ? await pruneEmptyBranch(owner, repo.branch) : false;
+
+  // The brief and the skill links both name the repos, so they have to be
+  // rewritten here — otherwise the task keeps telling agents to go and read a
+  // directory that is gone.
+  const repos = await readTaskRepos(dir);
+  await writeMeta(dir, record, repos);
+
+  const sessions = await tmux.listSessions();
+  const session = (await resolveTaskSession(sessions, record, dir, repos))?.name;
+  let windows = 0;
+  if (session) {
+    await tmux.setSessionMeta(session, { repo: repos.map((r) => r.repo ?? r.name).join(',') });
+    // A window whose cwd has just been deleted is a shell that cannot run
+    // anything, so it goes with the worktree. The task window sits on the task
+    // root, above every worktree, so it is never one of these.
+    for (const id of tmux.windowsUnderPath(await tmux.listPanes(), session, repo.path)) {
+      if (await tmux.killWindow(id)) windows += 1;
+    }
+  }
+
+  const notes = [
+    pruned ? `pruned ${repo.branch}` : undefined,
+    windows > 0 ? `closed ${windows} window(s)` : undefined,
+    repos.length === 0 ? `${slug} now holds no worktrees — \`fw task archive ${slug}\`` : undefined,
+  ].filter((n) => n !== undefined);
+
+  return {
+    ok: true,
+    task: { ...record, dir, repos, session, notes: await readTaskNotes(dir) },
+    detail: `removed ${repo.name} from ${slug}${notes.length > 0 ? ` — ${notes.join(', ')}` : ''}`,
+    repoResults: [{ repo: repo.name, ok: true, detail: result.detail }],
+  };
+}
+
 export async function getTask(slug: string): Promise<Task | undefined> {
   const dir = await taskDirFor(slug);
   const record = await readRecord(dir);

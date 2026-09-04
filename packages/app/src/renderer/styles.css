@@ -1527,6 +1527,14 @@ button {
 .task-repo .chip:hover {
   color: var(--ok);
 }
+/*
+ * Except the destructive one. `.task-repo .chip:hover` is as specific as
+ * `.chip.danger:hover` and comes after it, so without this the remove chip
+ * lights up green like the two chips that only ever open something.
+ */
+.task-repo .chip.danger:hover {
+  color: var(--danger);
+}
 
 /*
  * What the task has open on GitHub.

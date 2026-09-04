@@ -332,8 +332,29 @@ fw task add flow-execution-labels api-scripts    # grow it as the work reveals i
 fw task add order-type-filling reflow --branch feature/orders-dual-write-order-type
 fw task start flow-execution-labels              # a session for one that has none
 fw task ls [--prs]                               # --prs also asks GitHub
+fw task rm order-type-filling reflow-orders-use-order-type   # that layer landed
 fw task archive flow-execution-labels
 ```
+
+A task **shrinks** as well as grows. Work lands one branch at a time — the bottom
+layer of a stack merges while the top is still in review — and the worktree it
+leaves behind is a checkout of a branch nobody will touch again: dead weight in
+the folder, a row on the card, and one more directory for the next agent to read
+before it finds the one that matters. `fw task rm <slug> <worktree>`, and the
+`remove` chip on the repo row, take exactly one out and leave the task standing.
+
+It is keyed by the **directory**, not the repo, for the reason the directories are
+named that way at all: `reflow` is four worktrees in a stacked task, and picking
+one of them is not a guess anything should make — a name matching more than one
+is refused with the list. It is `archiveTask` for a single repo otherwise: the
+same refusal when the worktree has uncommitted work (`--force` discards it, and
+the chip never sends it), the same conservative prune that deletes the local
+branch only when it holds nothing and was never pushed — a landed branch is a
+pushed one, so it stays. `TASK.md` and the linked skills are rewritten, so the
+brief stops pointing agents at a directory that is gone, and the worktree's own
+tmux windows are closed with it. Emptying a task does not archive it: the folder
+and `task.json` are the record that the work happened, and it says so rather than
+deciding for you.
 
 The session's first window is rooted at the task folder, so **an agent there can grep
 and edit across every involved repo** — that's what removes the upfront guessing.

@@ -73,6 +73,7 @@ export function editorLabel(editor: string): string {
 
 function RepoRow({
   repo,
+  slug,
   taskBranch,
   session,
   editor,
@@ -81,6 +82,8 @@ function RepoRow({
   onResult,
 }: {
   repo: TaskRepo;
+  /** The task this worktree belongs to — `removeRepoFromTask` is keyed by slug. */
+  slug: string;
   taskBranch: string;
   /** The task's tmux session, when it has one — the editor needs somewhere to land. */
   session?: string;
@@ -96,6 +99,8 @@ function RepoRow({
   agents: FleetAgent[];
   onResult: Props['onResult'];
 }): React.JSX.Element {
+  const [confirmRemove, setConfirmRemove] = useState(false);
+
   const act = async (request: Parameters<typeof send>[0]): Promise<void> => {
     const result = await send(request);
     onResult(result.detail, result.ok);
@@ -151,6 +156,25 @@ function RepoRow({
           title={`difit on ${repo.path} vs ${base ?? 'its trunk'} — committed and uncommitted work together, from where the branch left it. New files are marked intent-to-add.`}
         >
           review
+        </button>
+        {/* The landed-PR case: this branch is merged, the checkout is dead weight,
+            and the task is still going. Two steps, like archive — and never
+            forced from here: uncommitted work refuses, and clearing it is a
+            deliberate `fw task rm --force`. */}
+        <button
+          className="chip repo-remove danger"
+          onClick={() => {
+            if (!confirmRemove) {
+              setConfirmRemove(true);
+              setTimeout(() => setConfirmRemove(false), 4_000);
+              return;
+            }
+            setConfirmRemove(false);
+            void act({ kind: 'removeRepoFromTask', slug, repo: repo.name });
+          }}
+          title={`remove this worktree from the task — the task and its other repos stay. Refuses while ${repo.name} has uncommitted work.`}
+        >
+          {confirmRemove ? 'remove — sure?' : 'remove'}
         </button>
       </div>
       {agents.map((agent) => (
@@ -377,6 +401,7 @@ export function TaskCard({
           <RepoRow
             key={repo.name}
             repo={repo}
+            slug={task.slug}
             taskBranch={task.branch}
             session={task.session}
             editor={editor}

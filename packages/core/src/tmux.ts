@@ -316,6 +316,32 @@ export async function killSession(name: string): Promise<boolean> {
 }
 
 /**
+ * Windows of a session sitting in a directory that is about to stop existing.
+ *
+ * Pure so it can be tested without a server. A window is named by any one of its
+ * panes: a split with one pane in the doomed worktree and another elsewhere still
+ * has to go, because the window's directory is the one git is removing.
+ *
+ * Matched on the path boundary rather than a bare prefix — `reflow-orders` must
+ * not claim `reflow-orders-drop-b2b-flag`.
+ */
+export function windowsUnderPath(panes: PaneRow[], session: string, root: string): string[] {
+  const ids: string[] = [];
+  for (const pane of panes) {
+    if (pane.sessionName !== session) continue;
+    if (pane.cwd !== root && !pane.cwd.startsWith(`${root}/`)) continue;
+    if (!ids.includes(pane.windowId)) ids.push(pane.windowId);
+  }
+  return ids;
+}
+
+/** Kill one window by id. A session's last window takes the session with it. */
+export async function killWindow(windowId: string): Promise<boolean> {
+  const { ok } = await tmux(['kill-window', '-t', windowId]);
+  return ok;
+}
+
+/**
  * `--` before the new name, always.
  *
  * A hidden session is named with a leading dash (`-20-atlas`, see

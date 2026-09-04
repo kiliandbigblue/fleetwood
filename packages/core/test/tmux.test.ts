@@ -1,6 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildTree, findTaskSession, parsePanes, parseSessions, planSessionKill, tmuxEnv } from '../src/tmux.ts';
+import {
+  buildTree,
+  findTaskSession,
+  parsePanes,
+  parseSessions,
+  planSessionKill,
+  tmuxEnv,
+  windowsUnderPath,
+} from '../src/tmux.ts';
 import type { ClientInfo, SessionRow } from '../src/tmux.ts';
 
 const SEP = '\x1f';
@@ -310,4 +318,27 @@ test('no session matches by option, name or path', () => {
 test('a stamped session for a different task is not adopted for this one', () => {
   const other = { ...session('atlas-pr-1', 1785781023), meta: { ...session('x', 0).meta, task: 'atlas-pr-1' } };
   assert.equal(findTaskSession([other], 'flow-execution-labels', '/Users/k/flow-execution-labels'), undefined);
+});
+
+test('the windows sitting in a doomed worktree are named once each, on a path boundary', () => {
+  const task = '/Users/k/projects/.agents/tasks/order-type';
+  const panes = parsePanes(
+    [
+      // The task's own window, on the root above every worktree — never doomed.
+      row('$1', 'order-type', '@1', '1', 'task', '1', '%1', '0', '10', 'zsh', task, '1', '80', '24', ''),
+      // Two panes of one window in the worktree: one window, listed once.
+      row('$1', 'order-type', '@2', '2', 'reflow-a', '0', '%2', '0', '11', 'zsh', `${task}/reflow-a`, '1', '80', '24', ''),
+      row('$1', 'order-type', '@2', '2', 'reflow-a', '0', '%3', '1', '12', 'nvim', `${task}/reflow-a/packages`, '0', '80', '24', ''),
+      // The sibling layer of a stack, whose name starts with the same string.
+      row('$1', 'order-type', '@3', '3', 'reflow-a-b2b', '0', '%4', '0', '13', 'zsh', `${task}/reflow-a-b2b`, '1', '80', '24', ''),
+      // Same path, another session — not ours to kill.
+      row('$2', 'elsewhere', '@1', '1', 'w', '1', '%5', '0', '14', 'zsh', `${task}/reflow-a`, '1', '80', '24', ''),
+    ].join('\n'),
+  );
+
+  assert.deepEqual(windowsUnderPath(panes, 'order-type', `${task}/reflow-a`), ['@2']);
+  assert.deepEqual(windowsUnderPath(panes, 'order-type', `${task}/reflow-a-b2b`), ['@3']);
+  // A split with one pane outside still goes: the window's directory is the one
+  // git is removing.
+  assert.deepEqual(windowsUnderPath(panes, 'order-type', `${task}/nothing-here`), []);
 });

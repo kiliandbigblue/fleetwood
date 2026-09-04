@@ -495,6 +495,14 @@ async function handle(request: Request): Promise<Response> {
       return { ok: result.ok, detail: result.detail };
     }
 
+    case 'removeRepoFromTask': {
+      const result = await taskApi.removeRepoFromTask(request.slug, request.repo, request.force ?? false);
+      // Force: a row that just disappeared must not come back for 5s.
+      await getTasks(true);
+      await pushSnapshot();
+      return { ok: result.ok, detail: result.detail };
+    }
+
     case 'setTaskNotes': {
       const result = await taskApi.writeTaskNotes(request.slug, request.notes);
       // Force: the task cache is 5s old and the textarea has to settle at once.

@@ -7,6 +7,7 @@ import {
   branchToSlug,
   buildBranch,
   linkTaskSkills,
+  matchTaskRepo,
   renderBrief,
   readTaskNotes,
   readTaskRepos,
@@ -286,4 +287,54 @@ test('a kept worktree says which one and why, and only offers force when force w
   assert.equal(dirty.ok, false);
   assert.equal(dirty.dirty, true);
   assert.match(dirty.detail, /uncommitted change/);
+});
+
+/** The three-layer stack, as `readTaskRepos` would report it. */
+const STACK = [
+  {
+    name: 'reflow-orders-use-order-type',
+    path: '/t/reflow-orders-use-order-type',
+    repo: 'bigbluedisco/reflow',
+    branch: 'feature/orders-use-order-type',
+    dirty: 0,
+  },
+  {
+    name: 'reflow-orders-dual-write-order-type',
+    path: '/t/reflow-orders-dual-write-order-type',
+    repo: 'bigbluedisco/reflow',
+    branch: 'feature/orders-dual-write-order-type',
+    dirty: 0,
+  },
+  { name: 'proto', path: '/t/proto', repo: 'bigbluedisco/proto', branch: 'feature/x', dirty: 0 },
+];
+
+test('a worktree is named by its directory, and a repo name that fits one worktree also works', () => {
+  assert.equal(matchTaskRepo(STACK, 'proto').repo?.name, 'proto');
+  // Case-insensitive, and the full owner/name too.
+  assert.equal(matchTaskRepo(STACK, 'bigbluedisco/proto').repo?.name, 'proto');
+  assert.equal(matchTaskRepo(STACK, 'PROTO').repo?.name, 'proto');
+  assert.equal(
+    matchTaskRepo(STACK, 'reflow-orders-use-order-type').repo?.name,
+    'reflow-orders-use-order-type',
+  );
+  // A branch names a layer, which is the other way you think of one.
+  assert.equal(
+    matchTaskRepo(STACK, 'feature/orders-dual-write-order-type').repo?.name,
+    'reflow-orders-dual-write-order-type',
+  );
+});
+
+test('a repo name matching several worktrees is an error, not a guess', () => {
+  // The whole reason removal is keyed by directory: `reflow` is two layers of a
+  // stack, and picking either one deletes work nobody asked about.
+  const { repo, candidates } = matchTaskRepo(STACK, 'reflow');
+  assert.equal(repo, undefined);
+  assert.deepEqual(candidates.map((r) => r.name), [
+    'reflow-orders-use-order-type',
+    'reflow-orders-dual-write-order-type',
+  ]);
+});
+
+test('a name matching nothing reports nothing rather than the first worktree', () => {
+  assert.deepEqual(matchTaskRepo(STACK, 'atlas'), { repo: undefined, candidates: [] });
 });

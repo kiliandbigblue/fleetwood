@@ -150,6 +150,14 @@ export type Request =
    */
   | { kind: 'startTaskSession'; slug: string; agent?: 'claude' | 'cursor' | 'codex' | 'none' }
   | { kind: 'addRepoToTask'; slug: string; repo: string; branch?: string }
+  /**
+   * Drop one worktree from a task and keep the task — the landed-PR case.
+   *
+   * Named by the worktree's directory, which is the only unique handle: a stacked
+   * task holds several worktrees of one repo. `force` discards uncommitted work,
+   * so the card asks twice before sending it.
+   */
+  | { kind: 'removeRepoFromTask'; slug: string; repo: string; force?: boolean }
   /** Replace a task's NOTES.md. Empty text clears it. */
   | { kind: 'setTaskNotes'; slug: string; notes: string }
   /** Editor in a fresh pane of an existing session, on one repo's worktree. */

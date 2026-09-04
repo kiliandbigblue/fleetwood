@@ -54,6 +54,7 @@ ${c.bold('commands')}
   task start <slug> [--agent claude]    give a dormant task its session
   task ls [--prs]   tasks, their repos, branches and dirty state
                     ${c.dim('--prs also asks GitHub what each task has open')}
+  task rm <slug> <worktree> [--force]   drop one worktree, keep the task
   task archive <slug> [--force]         remove every worktree and the session
                     ${c.dim('the description and its PRs are kept — see task history')}
   task history [--limit n]              tasks you archived, newest first
@@ -94,6 +95,7 @@ ${c.bold('examples')}
   fw task new fix flow "execution labels" --repo proto --repo graphy
   fw task add flow-execution-labels api-scripts
   fw task add order-type-filling reflow --branch feature/orders-dual-write-order-type
+  fw task rm order-type-filling reflow-orders-use-order-type
   fw order atlas 15
   fw pin atlas
   fw open-pr bigbluedisco/atlas#3671
@@ -976,6 +978,27 @@ async function cmdTaskAdd(argv: string[], json: boolean): Promise<void> {
   if (!result.ok) process.exitCode = 1;
 }
 
+async function cmdTaskRemove(argv: string[], json: boolean): Promise<void> {
+  const positional = positionalArgs(argv);
+  const slug = positional[2];
+  const repo = positional[3];
+  if (!slug || !repo) {
+    process.stderr.write(`${c.danger('usage')} fw task rm <slug> <worktree> [--force]\n`);
+    process.exitCode = 2;
+    return;
+  }
+  const result = await taskApi.removeRepoFromTask(slug, repo, argv.includes('--force'));
+  if (json) return jsonOut(result);
+  process.stdout.write(`${result.ok ? c.ok('✓') : c.danger('✗')} ${result.detail}\n`);
+  // What is left, so you can see whether the task still has anything in it.
+  if (result.ok) {
+    for (const r of result.task?.repos ?? []) {
+      process.stdout.write(`  ${c.muted(pad(r.name, 22))} ${c.dim(r.branch ?? '')}\n`);
+    }
+  }
+  if (!result.ok) process.exitCode = 1;
+}
+
 async function cmdTaskStart(argv: string[], json: boolean): Promise<void> {
   const slug = positionalArgs(argv)[2];
   if (!slug) {
@@ -1117,6 +1140,9 @@ async function cmdTask(argv: string[], json: boolean): Promise<void> {
     case 'ls':
     case 'list':
       return cmdTaskList(argv, json);
+    case 'rm':
+    case 'remove':
+      return cmdTaskRemove(argv, json);
     case 'archive':
       return cmdTaskArchive(argv, json);
     case 'history':
