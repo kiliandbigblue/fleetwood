@@ -14,7 +14,7 @@ import { Icon } from './Icon.tsx';
  * one number that would make you come over. `App` only needs the name of the one
  * that is showing.
  */
-export type Tab = 'fleet' | 'prs';
+export type Tab = 'fleet' | 'prs' | 'history';
 
 interface Props {
   tab: Tab;
@@ -25,6 +25,8 @@ interface Props {
   fleetCount: number;
   /** Undefined while GitHub is still answering, which the count shows as `…`. */
   prCount?: number;
+  /** Archived tasks. Read from a file, so it is never pending. */
+  historyCount: number;
   toDeploy: number;
   pinned: boolean;
   onPin: () => void;
@@ -69,6 +71,7 @@ export function TopBar({
   counts,
   fleetCount,
   prCount,
+  historyCount,
   toDeploy,
   pinned,
   onPin,
@@ -118,6 +121,16 @@ export function TopBar({
         toDeploy === 0
           ? 'pull requests — yours, waiting on your review, and recently merged'
           : `${toDeploy} merged and built, nothing deployed it`,
+    },
+    {
+      id: 'history',
+      label: 'history',
+      total: historyCount,
+      // A record never needs you. Nothing in here is actionable by design, so it
+      // is the one tab that has no reason to ever grow a dot.
+      alert: 0,
+      tone: 'accent',
+      title: 'tasks you archived — what they were, and where the work landed',
     },
   ];
 

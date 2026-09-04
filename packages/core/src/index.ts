@@ -21,6 +21,7 @@ export * as prSession from './prSession.ts';
 export * as task from './task.ts';
 export { findTrackedSessionId, findCursorChatId, resumeArgsFor } from './resume.ts';
 export * as taskPrs from './taskPrs.ts';
+export * as taskHistory from './taskHistory.ts';
 export { partitionAgents, prRepoTags, prSummary, repoSummary } from './taskView.ts';
 // Flat, for the same reason as the theme below: both front ends order and label
 // sessions with these, and the renderer must not import the barrel to get them.
@@ -74,6 +75,7 @@ export type { Config, MergedConfig, DeployPatterns } from './config.ts';
 export type { Palette, Theme, ThemeName } from './theme.ts';
 export type { Task, TaskRepo, CreateTaskInput, TaskResult } from './task.ts';
 export type { BranchVia, TaskBranch, TaskBranches, TaskPr, TaskPrs } from './taskPrs.ts';
+export type { ArchivedTask, ArchivedRepo, ArchivedPr } from './taskHistory.ts';
 export type { ActionResult } from './actions.ts';
 export type { PromptOption, ScreenRead } from './screen.ts';
 export type { PlanLimits, LimitWindow } from './limits.ts';

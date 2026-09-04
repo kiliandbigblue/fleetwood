@@ -16,6 +16,7 @@ import {
   repoSummary,
   spool,
   task as taskApi,
+  taskHistory as taskHistoryApi,
   taskPrs as taskPrsApi,
   tmux,
 } from '@fleetwood/core';
@@ -54,6 +55,8 @@ ${c.bold('commands')}
   task ls [--prs]   tasks, their repos, branches and dirty state
                     ${c.dim('--prs also asks GitHub what each task has open')}
   task archive <slug> [--force]         remove every worktree and the session
+                    ${c.dim('the description and its PRs are kept — see task history')}
+  task history [--limit n]              tasks you archived, newest first
 
   prs               pull requests awaiting your review, and your own
   open-pr <ref>     focus the session for a PR, or build one on a fresh worktree
@@ -882,7 +885,7 @@ async function cmdRepos(json: boolean): Promise<void> {
  * positional argument — which quietly turned `--repo proto` into part of a task
  * summary.
  */
-const VALUE_FLAGS = new Set(['--repo', '--branch', '--goal', '--agent', '--interval']);
+const VALUE_FLAGS = new Set(['--repo', '--branch', '--goal', '--agent', '--interval', '--limit']);
 
 function positionalArgs(argv: string[]): string[] {
   const out: string[] = [];
@@ -1064,6 +1067,44 @@ async function cmdTaskArchive(argv: string[], json: boolean): Promise<void> {
   if (!result.ok) process.exitCode = 1;
 }
 
+/**
+ * The archived tasks, newest first.
+ *
+ * The read side of what `task archive` writes: a task's folder is deleted, so
+ * this log is the only place its description and pull requests survive.
+ */
+async function cmdTaskHistory(argv: string[], json: boolean): Promise<void> {
+  const history = await taskHistoryApi.loadHistory();
+  const parsed = Number.parseInt(flagValue(argv, '--limit') ?? '', 10);
+  const shown = Number.isFinite(parsed) && parsed > 0 ? history.slice(0, parsed) : history;
+
+  if (json) return jsonOut({ ok: true, total: history.length, history: shown });
+
+  if (shown.length === 0) {
+    process.stdout.write(`${c.dim('no archived tasks yet')}\n`);
+    return;
+  }
+
+  for (const entry of shown) {
+    process.stdout.write(
+      `${c.bold(entry.slug)} ${c.dim(`${entry.type}/${entry.microservice}`)} ${c.dim(`${relativeAge(entry.archivedAt)} ago`)}\n`,
+    );
+    if (entry.summary && entry.summary !== entry.slug) {
+      process.stdout.write(`  ${entry.summary}\n`);
+    }
+    // The branch is the pointer to the commits now that the worktrees are gone.
+    const repos = entry.repos.map((r) => (r.branch ? `${r.repo} (${r.branch})` : r.repo));
+    if (repos.length > 0) process.stdout.write(`  ${c.dim(repos.join(', '))}\n`);
+    for (const pr of entry.prs) {
+      process.stdout.write(`  ${c.ok('⇄')} ${pr.repo}#${pr.number} ${c.dim(pr.title)}\n`);
+    }
+  }
+
+  if (shown.length < history.length) {
+    process.stdout.write(`${c.dim(`… ${history.length - shown.length} more`)}\n`);
+  }
+}
+
 async function cmdTask(argv: string[], json: boolean): Promise<void> {
   const sub = positionalArgs(argv)[1] ?? 'ls';
   switch (sub) {
@@ -1078,6 +1119,8 @@ async function cmdTask(argv: string[], json: boolean): Promise<void> {
       return cmdTaskList(argv, json);
     case 'archive':
       return cmdTaskArchive(argv, json);
+    case 'history':
+      return cmdTaskHistory(argv, json);
     default:
       process.stderr.write(`${c.danger('unknown')} fw task ${sub}\n`);
       process.exitCode = 2;

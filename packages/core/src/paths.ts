@@ -9,6 +9,14 @@ export const FW_HOME = process.env.FLEETWOOD_HOME ?? join(homedir(), '.fleetwood
 export const SPOOL_DIR = join(FW_HOME, 'spool');
 /** Append-only history, for the activity feed and for debugging. */
 export const EVENTS_LOG = join(FW_HOME, 'events.jsonl');
+/**
+ * What archived tasks left behind — see `taskHistory.ts`.
+ *
+ * Archiving deletes the task folder, so this is the only surviving record that a
+ * task existed. Append-only like the event log, and never pruned: it is the point
+ * of the file that a task from a year ago is still in it.
+ */
+export const HISTORY_LOG = join(FW_HOME, 'history.jsonl');
 /** Cache only — tmux user options are the source of truth for session metadata. */
 export const STATE_FILE = join(FW_HOME, 'state.json');
 export const CONFIG_FILE = join(FW_HOME, 'config.json');

@@ -15,6 +15,7 @@ import {
   repoIndex,
   spool,
   task as taskApi,
+  taskHistory as taskHistoryApi,
   taskPrs as taskPrsApi,
   THEMES,
 } from '@fleetwood/core';
@@ -121,6 +122,19 @@ async function saveWindowState(): Promise<void> {
 
 const TASK_TTL_MS = 5_000;
 
+/**
+ * The archived-task log, read once and then only when it changes.
+ *
+ * It changes exactly when this process archives something, so there is no clock
+ * on it at all — unlike the task list, which a `fw` command in a terminal can
+ * change behind our back.
+ */
+let history: taskHistoryApi.ArchivedTask[] = [];
+
+async function reloadHistory(): Promise<void> {
+  history = await taskHistoryApi.loadHistory();
+}
+
 async function getTasks(force = false): Promise<Task[]> {
   const now = Date.now();
   if (!force && now - taskCache.at < TASK_TTL_MS) return taskCache.tasks;
@@ -168,6 +182,7 @@ async function buildSnapshot(): Promise<Snapshot> {
     theme: settings.theme,
     bgOpacity: settings.bgOpacity,
     limits: planLimits,
+    history,
   };
 }
 
@@ -305,6 +320,9 @@ async function handle(request: Request): Promise<Response> {
   switch (request.kind) {
     case 'refresh':
       await collector?.drain();
+      // Re-read too: `fw task archive` in a terminal appends a row this process
+      // never sees, and a manual refresh is when you'd expect it to show up.
+      await reloadHistory();
       await pushSnapshot();
       return { ok: true, detail: 'refreshed' };
 
@@ -507,7 +525,18 @@ async function handle(request: Request): Promise<Response> {
     }
 
     case 'archiveTask': {
-      const result = await taskApi.archiveTask(request.slug, request.force ?? false);
+      /*
+       * Hand over the pull requests we already hold.
+       *
+       * This is the only chance: they were found from the worktrees' git state,
+       * and archiving deletes those. Free here — the list is in the snapshot the
+       * user was just looking at, so no `gh` call happens on the teardown path.
+       */
+      const result = await taskApi.archiveTask(request.slug, request.force ?? false, {
+        prs: taskPrs?.byTask[request.slug],
+      });
+      // Only a successful archive wrote a row; a refusal left the task in place.
+      if (result.ok) await reloadHistory();
       await getTasks(true);
       await pushSnapshot();
       return { ok: result.ok, detail: result.detail };
@@ -609,6 +638,9 @@ app.whenReady().then(async () => {
   // Before any tmux/git/gh call: a GUI launch has none of them on PATH.
   await repairPath();
   await paths.ensureDirs();
+  // One file read, and the history tab is populated on the first paint rather
+  // than after whatever would have happened to reload it.
+  await reloadHistory();
 
   // The collector keeps folding hook events whether or not the window is open.
   collector = await spool.Collector.start({ onUpdate: () => void pushSnapshot() });

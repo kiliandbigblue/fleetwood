@@ -16,6 +16,8 @@ import {
 import type { EnsureWorktreeResult } from './worktree.ts';
 import { branchToSlug, buildBranch, slugify, worktreeDirName } from './naming.ts';
 import { sameSession } from './sessionOrder.ts';
+import { recordArchive } from './taskHistory.ts';
+import type { TaskPr } from './taskPrs.ts';
 import { run } from './exec.ts';
 import * as tmux from './tmux.ts';
 import { focusSession, spawnAgent } from './actions.ts';
@@ -748,14 +750,34 @@ export interface ArchiveResult {
   kept: string[];
 }
 
+export interface ArchiveTaskOptions {
+  /**
+   * The task's pull requests, for the history record.
+   *
+   * Passed in rather than fetched because the caller usually has them already —
+   * the app keeps them in its snapshot — and because `discoverTaskBranches` only
+   * works while the worktrees exist, which is the very thing this function is
+   * about to undo. Omitted, the record keeps the branches and no PRs; archiving
+   * does not make a network call to fill them in.
+   */
+  prs?: TaskPr[];
+}
+
 /**
  * Tear a task down: every worktree, the folder, the session.
  *
  * Refuses per repo when a worktree has uncommitted work, and only removes the rest
  * — losing an agent's unpushed changes is unrecoverable, so `force` has to be a
  * deliberate choice.
+ *
+ * On the way out it writes the task to the history log, so the description and
+ * where the work landed outlive the folder — see `taskHistory.ts`.
  */
-export async function archiveTask(slug: string, force = false): Promise<ArchiveResult> {
+export async function archiveTask(
+  slug: string,
+  force = false,
+  options: ArchiveTaskOptions = {},
+): Promise<ArchiveResult> {
   const dir = await taskDirFor(slug);
   const record = await readRecord(dir);
   if (!record) return { ok: false, detail: `no task named ${slug}`, removed: [], kept: [] };
@@ -800,6 +822,16 @@ export async function archiveTask(slug: string, force = false): Promise<ArchiveR
       kept,
     };
   }
+
+  /*
+   * The last moment the task still exists anywhere.
+   *
+   * After the `rm` there is nothing left to read it from — and `repos` was read
+   * at the top, while the worktrees were still there, so it carries the branches
+   * that the pruning above may since have deleted. Best-effort by construction:
+   * `recordArchive` swallows its own failures rather than block the teardown.
+   */
+  await recordArchive({ task: record, repos, prs: options.prs });
 
   // Only now is the folder disposable: nothing but our own two files is left.
   await rm(dir, { recursive: true, force: true });

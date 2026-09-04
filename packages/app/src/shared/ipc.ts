@@ -1,5 +1,6 @@
 import type {
   ActionResult,
+  ArchivedTask,
   FleetState,
   MergedPrs,
   PlanLimits,
@@ -54,6 +55,14 @@ export interface Snapshot {
   bgOpacity: number;
   /** Plan quota bars. Absent unless `limits.tokenCommand` is configured. */
   limits?: PlanLimits;
+  /**
+   * Tasks that have been archived, most recent first.
+   *
+   * Read from disk rather than derived, and only changes when something is
+   * archived — so unlike `tasks` it costs a single file read, and unlike
+   * `taskPrs` nothing about it can go stale: the rows are frozen snapshots.
+   */
+  history: ArchivedTask[];
 }
 
 export const CHANNELS = {

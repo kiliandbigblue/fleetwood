@@ -4,6 +4,7 @@ import type { Snapshot } from '../shared/ipc.ts';
 import { SessionCard } from './SessionCard.tsx';
 import { AgentRow } from './AgentRow.tsx';
 import { PrList } from './PrList.tsx';
+import { HistoryList } from './HistoryList.tsx';
 import { TaskCard } from './TaskCard.tsx';
 import { TaskPane } from './TaskPane.tsx';
 import { NewTask } from './NewTask.tsx';
@@ -241,6 +242,7 @@ export function App(): React.JSX.Element {
         counts={counts}
         fleetCount={sessions.length + dormantTasks.length}
         prCount={prCount}
+        historyCount={snapshot?.history.length ?? 0}
         toDeploy={toDeploy}
         pinned={pinned}
         onPin={() => {
@@ -405,6 +407,10 @@ export function App(): React.JSX.Element {
             prSessions={snapshot.prSessions}
             onResult={onResult}
           />
+        )}
+
+        {snapshot && !focused && tab === 'history' && (
+          <HistoryList history={snapshot.history} onResult={onResult} />
         )}
       </div>
 
