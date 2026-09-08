@@ -34,7 +34,7 @@ export type { Severity, StackRow } from './taskView.ts';
 export { worktreeShortName } from './naming.ts';
 // Flat, because the CLI's picker renders these rows and the urgency order is
 // shared with the fleet list — see switchTargets.ts.
-export { agentUrgency, buildSwitchTargets } from './switchTargets.ts';
+export { agentTitle, agentUrgency, buildSwitchTargets } from './switchTargets.ts';
 export type { SwitchInput, SwitchKind, SwitchTarget, SwitchTier } from './switchTargets.ts';
 // Flat, for the same reason as the theme below: both front ends order and label
 // sessions with these, and the renderer must not import the barrel to get them.

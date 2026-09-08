@@ -63,8 +63,10 @@ ${c.bold('commands')}
 
   prs               pull requests awaiting your review, and your own
   open-pr <ref>     focus the session for a PR, or build one on a fresh worktree
-  switch [--all]    pick a session, an agent's pane, a dormant task or a project
+  switch [--all]    pick a live session, one agent's pane, or a dormant task
                     ${c.dim('the fleet in an fzf popup — what `prefix+g` runs')}
+  switch --projects every directory under your project roots, session or not
+                    ${c.dim('find-or-create one — what `prefix+G` runs')}
   focus <session>   point the terminal at a session
   resume-agent <tool>
                     launch <tool> here, resuming its last conversation in this
@@ -1244,7 +1246,13 @@ async function main(): Promise<void> {
       break;
     case 'switch':
     case 'pick':
-      await cmdSwitch({ capture, all: showHidden, json, list: argv.includes('--list') });
+      await cmdSwitch({
+        capture,
+        all: showHidden,
+        json,
+        list: argv.includes('--list'),
+        projects: argv.includes('--projects'),
+      });
       break;
     case 'focus':
       await cmdFocus(arg);

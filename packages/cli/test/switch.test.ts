@@ -145,6 +145,33 @@ test('an agent row is indented under its session and named by its window', () =>
   assert.ok(row.includes('~/projects'));
 });
 
+test('an agent row is named by what the agent called the conversation', () => {
+  const agent = {
+    key: 'claude:%7',
+    tool: 'claude' as const,
+    pane: '%7',
+    status: 'working' as const,
+    provenance: 'hook' as const,
+    since: 0,
+    lastEventAt: 0,
+    lastEvent: 'PreToolUse',
+    turns: 1,
+    toolCalls: 1,
+    errorCount: 0,
+    subagents: 0,
+    alive: true,
+    nested: false,
+    forSeconds: 120,
+  };
+  const window = { index: 3, name: 'claude' };
+  const named = shown(target({ kind: 'agent', ref: '%7', agent, window, title: 'Mono Or Multi' }));
+  assert.ok(named.includes('Mono Or Multi'));
+  // The window is in the preview, not spent twice on the row.
+  assert.ok(!named.includes('3:claude'));
+  // Without a title, the pane's window is the useful thing left to say.
+  assert.ok(shown(target({ kind: 'agent', ref: '%7', agent, window })).includes('3:claude'));
+});
+
 test('a session with no agent says how many panes it has instead', () => {
   assert.ok(shown(target({ panes: 3 })).includes('3 panes'));
   // Singular, and last on the row — the column's padding is trimmed off the end

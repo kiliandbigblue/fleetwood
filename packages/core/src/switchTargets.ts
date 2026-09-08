@@ -48,6 +48,17 @@ export interface SwitchTarget {
   agentCount?: number;
   /** Which tmux window that agent's pane is in, for the row to name it. */
   window?: { index: number; name: string };
+  /**
+   * What the agent called this conversation, from the pane's title.
+   *
+   * Claude Code and cursor-agent both set the terminal title to a running
+   * summary of what they are doing — `Prefix+g flashing popup`, `Chronopost
+   * Label Test` — and tmux hands it back as `pane_title`. It is the one label
+   * in this list the agent wrote itself, and it beats everything fleetwood can
+   * say about a pane: `3:claude` tells you where an agent is, and this tells you
+   * which agent it is. Absent when the title is still a placeholder.
+   */
+  title?: string;
   attached?: boolean;
   /** Some agent in this session is waiting on the human. */
   needsAttention?: boolean;
@@ -65,9 +76,57 @@ export interface SwitchTarget {
 export interface SwitchInput {
   sessions: readonly FleetSession[];
   tasks: readonly Task[];
+  /**
+   * Plain directories to offer, if any.
+   *
+   * The caller's choice rather than a flag here, because the two keys differ in
+   * what they *fetch*: the projects browser has no business paying for a fleet
+   * scan, and the fleet picker has none paying for a filesystem walk.
+   */
   projects: readonly LocalRepo[];
   /** Include sessions marked hidden, as `--all` does everywhere else. */
   all?: boolean;
+  /**
+   * This machine's name, which is also tmux's *default* pane title.
+   *
+   * Passed in rather than read, to keep this module free of `node:` imports —
+   * and needed at all because a pane whose agent has not set a title yet
+   * reports the hostname, which would read as an agent called
+   * `Kilians-MacBook-Pro`.
+   */
+  hostname?: string;
+}
+
+/**
+ * Titles that are not names: what a pane says before an agent has named it.
+ *
+ * Each agent CLI parks its product name in the title until the conversation has
+ * a subject, and tmux's own default is the hostname — so all of these mean "no
+ * title yet" rather than being what this agent is doing.
+ */
+const PLACEHOLDER_TITLES = new Set(['claude code', 'cursor agent', 'cursor', 'codex', 'claude']);
+
+/**
+ * The agent's own name for what it is doing, or undefined if it has none.
+ *
+ * Leading decoration comes off — Claude Code prefixes a `✳` that is its spinner,
+ * not part of the title — and so does a title that is really the pane's process
+ * (`2.1.263`, `zsh`), which is what tmux reports when nothing set one.
+ */
+export function agentTitle(
+  title: string | undefined,
+  paneCommand?: string,
+  hostname?: string,
+): string | undefined {
+  if (!title) return undefined;
+  // Strip leading glyphs and whitespace, keeping the first real character.
+  const clean = title.replace(/^[^\p{L}\p{N}]+/u, '').trim();
+  if (clean.length === 0) return undefined;
+  const flat = clean.toLowerCase();
+  if (PLACEHOLDER_TITLES.has(flat)) return undefined;
+  if (paneCommand && flat === paneCommand.toLowerCase()) return undefined;
+  if (hostname && flat === hostname.toLowerCase()) return undefined;
+  return clean;
 }
 
 /** An agent worth offering: a dead one is a row that goes nowhere. */
@@ -158,6 +217,7 @@ export function buildSwitchTargets(input: SwitchInput): SwitchTarget[] {
     if (!needsOwnRow(agents, activePane)) continue;
     for (const agent of agents) {
       const window = session.windows.find((w) => w.panes.some((p) => p.paneId === agent.pane));
+      const pane = panes.find((p) => p.paneId === agent.pane);
       targets.push({
         kind: 'agent',
         tier: 'live',
@@ -165,6 +225,7 @@ export function buildSwitchTargets(input: SwitchInput): SwitchTarget[] {
         label: sessionLabel(session.name),
         agent,
         window: window ? { index: window.index, name: window.name } : undefined,
+        title: agentTitle(pane?.title, pane?.command, input.hostname),
         path: agent.cwd ?? session.path,
         task,
       });

@@ -1,10 +1,31 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSwitchTargets } from '../src/switchTargets.ts';
+import { agentTitle, buildSwitchTargets } from '../src/switchTargets.ts';
 import type { FleetAgent, FleetSession } from '../src/fleet.ts';
 import type { LocalRepo } from '../src/repoIndex.ts';
 import type { Task } from '../src/task.ts';
 import type { AgentStatus, PaneInfo } from '../src/types.ts';
+
+test('an agent’s own title is read off the pane, decoration and all removed', () => {
+  // What Claude Code and cursor-agent put in the terminal title, `✳` spinner
+  // included — the one label in this list written by the thing it describes.
+  assert.equal(agentTitle('✳ Prefix+g flashing popup'), 'Prefix+g flashing popup');
+  assert.equal(agentTitle('Chronopost Label Test'), 'Chronopost Label Test');
+});
+
+test('a placeholder title is no title', () => {
+  // Each CLI parks its product name there until the conversation has a subject.
+  assert.equal(agentTitle('✳ Claude Code'), undefined);
+  assert.equal(agentTitle('Cursor Agent'), undefined);
+  assert.equal(agentTitle('codex'), undefined);
+  // tmux's own default is the hostname, which would read as an agent's name.
+  assert.equal(agentTitle('Kilians-MacBook-Pro', 'node', 'Kilians-MacBook-Pro'), undefined);
+  // As does the pane's process — Claude Code's is its version number.
+  assert.equal(agentTitle('2.1.263', '2.1.263'), undefined);
+  assert.equal(agentTitle(''), undefined);
+  assert.equal(agentTitle('✳'), undefined);
+  assert.equal(agentTitle(undefined), undefined);
+});
 
 function pane(paneId: string, active = false): PaneInfo {
   return {
@@ -139,6 +160,31 @@ test('an agent in a window the session is not showing gets its own row', () => {
   );
   // Named by its window, because that is what picking it selects.
   assert.deepEqual(targets[1]?.window, { index: 2, name: 'claude' });
+});
+
+test('an agent row carries the title, so the row can be named by it', () => {
+  const windows = [
+    { windowId: '@1', index: 1, name: 'main', active: true, panes: [pane('%1', true)] },
+    {
+      windowId: '@2',
+      index: 2,
+      name: 'claude',
+      active: false,
+      panes: [{ ...pane('%7'), title: '✳ Mono Or Multi' }],
+    },
+  ];
+  const targets = buildSwitchTargets({
+    ...NO_INPUT,
+    sessions: [session({ windows, agents: [agent('%7')] })],
+    hostname: 'Kilians-MacBook-Pro',
+  });
+  assert.equal(targets[1]?.title, 'Mono Or Multi');
+});
+
+test('no projects handed in means no project rows — the browser is another key', () => {
+  const targets = buildSwitchTargets({ ...NO_INPUT, sessions: [session()], tasks: [task()] });
+  assert.equal(targets.filter((t) => t.tier === 'project').length, 0);
+  assert.deepEqual(targets.map((t) => t.kind), ['session', 'task']);
 });
 
 test('several agents are all offered, whoever needs you first', () => {

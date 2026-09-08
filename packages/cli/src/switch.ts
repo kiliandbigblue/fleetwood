@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
-import { homedir, tmpdir } from 'node:os';
+import { homedir, hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   actions,
@@ -51,20 +51,35 @@ export interface SwitchOptions {
   json?: boolean;
   /** Print the lines it would hand fzf and exit, for reading the layout. */
   list?: boolean;
+  /**
+   * The projects browser: every directory under the roots, and nothing else.
+   *
+   * `prefix+g` is the fleet and `prefix+G` is this, because they answer
+   * different questions and only one of them is asked all day. The old binding
+   * offered sixty directories to get at eight live sessions, and a fuzzy match
+   * over the work you are doing is worth more than one over everything you have
+   * ever cloned. Nothing is lost, it is one shift away — and this mode pays for
+   * neither a fleet scan nor a git read, so it opens instantly.
+   */
+  projects?: boolean;
 }
 
 export async function cmdSwitch(options: SwitchOptions): Promise<void> {
+  const projectsOnly = options.projects === true;
+  // Each key fetches only what its own list is made of: the fleet picker never
+  // walks the project roots, and the projects browser never scans the fleet.
   const [fleet, tasks, projects] = await Promise.all([
-    buildFleet({ capture: options.capture }),
-    taskApi.listTasks(),
-    repoIndex.getIndex(),
+    projectsOnly ? undefined : buildFleet({ capture: options.capture }),
+    projectsOnly ? [] : taskApi.listTasks(),
+    projectsOnly ? repoIndex.getIndex().then((index) => index.repos) : [],
   ]);
 
   const targets = buildSwitchTargets({
-    sessions: fleet.sessions,
+    sessions: fleet?.sessions ?? [],
     tasks,
-    projects: projects.repos,
+    projects,
     all: options.all,
+    hostname: hostname(),
   });
 
   if (options.json) {
@@ -96,9 +111,17 @@ export async function cmdSwitch(options: SwitchOptions): Promise<void> {
     return;
   }
 
-  const previews = await writePreviews(targets);
+  /*
+   * The projects browser gets no preview pane.
+   *
+   * There is nothing to put in one: a directory with no session has a path and
+   * a remote, and both fit on the row. A pane showing two lines beside a column
+   * of names is a narrower list for no information, and skipping it means
+   * skipping the files too.
+   */
+  const previews = projectsOnly ? undefined : await writePreviews(targets);
   try {
-    const chosen = await runFzf(rows, previews.dir, targets);
+    const chosen = await runFzf(rows, previews?.dir, targets);
     // Escape, or fzf not there at all: both mean "carry on where you were", and
     // the popup closing is all the answer needed.
     if (chosen === undefined) return;
@@ -108,7 +131,7 @@ export async function cmdSwitch(options: SwitchOptions): Promise<void> {
     process.stdout.write(`${result.ok ? c.ok('✓') : c.danger('✗')} ${result.detail}\n`);
     if (!result.ok) process.exitCode = 1;
   } finally {
-    await previews.cleanup();
+    await previews?.cleanup();
   }
 }
 
@@ -181,8 +204,17 @@ export function renderRows(targets: readonly SwitchTarget[]): string[] {
   });
 }
 
-/** `3:cursor` — the window an agent sits in, which is where picking it lands you. */
+/**
+ * What to call an agent row.
+ *
+ * The agent's own title first — it is the only label here written by the thing
+ * being described, and `Chronopost Label Test` is what you would actually type
+ * to find it again. `3:claude` is the fallback and says something different but
+ * useful: which window picking this lands you in. Never both, because the tool
+ * is already in the row's colour and the window is in the preview.
+ */
 function agentSlot(target: SwitchTarget): string {
+  if (target.title) return target.title;
   const window = target.window ? `${target.window.index}:` : '';
   return `${window}${target.agent?.tool ?? 'agent'}`;
 }
@@ -474,17 +506,27 @@ function fzfColors(): string {
  * runs inside a tmux popup that closes the moment it returns, so the only
  * useful thing a failure can do is say so on the way out.
  */
-async function runFzf(rows: readonly string[], previewDir: string, targets: readonly SwitchTarget[]): Promise<number | undefined> {
+async function runFzf(
+  rows: readonly string[],
+  previewDir: string | undefined,
+  targets: readonly SwitchTarget[],
+): Promise<number | undefined> {
   const live = targets.filter((t) => t.kind === 'session').length;
   const agents = targets.filter((t) => t.kind === 'agent').length;
   const dormant = targets.filter((t) => t.kind === 'task').length;
   const projects = targets.filter((t) => t.kind === 'project').length;
-  const header = [
-    `${live} session${live === 1 ? '' : 's'}`,
-    agents > 0 ? `${agents} agent${agents === 1 ? '' : 's'}` : '',
-    dormant > 0 ? `${dormant} dormant` : '',
-    `${projects} project${projects === 1 ? '' : 's'}`,
-  ]
+  const header = (
+    projects > 0
+      ? [`${projects} project${projects === 1 ? '' : 's'}`, 'prefix+g for the fleet']
+      : [
+          `${live} session${live === 1 ? '' : 's'}`,
+          agents > 0 ? `${agents} agent${agents === 1 ? '' : 's'}` : '',
+          dormant > 0 ? `${dormant} dormant` : '',
+          // The tier that is no longer here, and the key that has it. A list
+          // that silently stopped offering something needs to say where it went.
+          'prefix+G for all projects',
+        ]
+  )
     .filter(Boolean)
     .join(' · ');
 
@@ -515,15 +557,21 @@ async function runFzf(rows: readonly string[], previewDir: string, targets: read
     '--scroll-off=3',
     '--no-scrollbar',
     `--color=${fzfColors()}`,
-    `--preview=cat ${previewDir}/{1}`,
-    // Beside the list, and unconditionally. fzf 0.72 honours a width condition
-    // (`right,48%,<110(down,45%)`) whether the width matches or not, so the
-    // spec meant to stack the preview under a *narrow* terminal stacked it
-    // under a 170-column one as well — and a preview is only worth having where
-    // there is room for two columns of text beside each other.
-    '--preview-window=right,48%,border-left,wrap',
-    '--bind=ctrl-/:toggle-preview',
   ];
+
+  if (previewDir !== undefined) {
+    args.push(
+      `--preview=cat ${previewDir}/{1}`,
+      // Beside the list, and unconditionally. fzf 0.72 honours a width
+      // condition (`right,48%,<110(down,45%)`) whether the width matches or
+      // not, so the spec meant to stack the preview under a *narrow* terminal
+      // stacked it under a 170-column one as well — and a preview is only
+      // worth having where there is room for two columns of text beside
+      // each other.
+      '--preview-window=right,48%,border-left,wrap',
+      '--bind=ctrl-/:toggle-preview',
+    );
+  }
 
   return new Promise((resolve) => {
     const child = spawn('fzf', args, { stdio: ['pipe', 'pipe', 'inherit'] });

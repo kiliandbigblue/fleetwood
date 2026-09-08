@@ -144,7 +144,10 @@ guessed onto the wrong terminal. `fw doctor` reports both numbers.
   instead of living in a note you typed yourself. See **Tasks that span repos**.
 - **`prefix+g` switches between agents, not directories.** The tmux binding runs
   `fw switch`: the fleet in an fzf popup, agent status included, down to the pane
-  one agent is blocked in. See **prefix+g**.
+  one agent is blocked in — and each agent row is named by what the agent called
+  the conversation, not by its pane id. Every directory you have ever cloned is
+  still there on `prefix+G`, where it stops competing with the work in front of
+  you. See **prefix+g**.
 - **PR → session in one click.** Find-or-create: an existing session for that PR is
   focused, otherwise a dedicated git worktree and tmux session are built and stamped.
   Clicking twice never gives you two sessions.
@@ -292,23 +295,34 @@ thing that list could never say is which of it is waiting on you. So
 exist:
 
 ```
-  8 sessions · 3 agents · 2 dormant · 57 projects
-switch ›                                                          71/71
+  8 sessions · 3 agents · 2 dormant · prefix+G for all projects
+switch ›                                                          11/11
 ────────────────────────────────────────────────────────────────────────
 ▸ ● ✋ fleetwood                      ✋ permission ×2 1 wt · 2h   fleetwood
-  ↳ 3:claude                         ✋ permission   4m     Write: switch.ts
-  ↳ 5:cursor                         ▶ working      12m    Bash: pnpm test
+  ↳ Prefix+g flashing popup          ✋ permission   4m     Write: switch.ts
+  ↳ Mono Or Multi                    ▶ working      12m    Bash: pnpm test
   ○   atlas-pr-3671                  ○ idle          3h    fix/address-validation
   ◦   orders-b2b-flag-migration      dormant        7 wt · 11d  graphy proto reflow
-  +   graphy                         new session    ~/projects
 ```
 
-Live sessions first, each with the pane of every agent inside it; then tasks
-that have a folder and no session; then the plain project directories the old
-binding offered. **Nothing it could start is out of reach** — picking a project
-is still find-or-create by the same session name, so `prefix+g` and the app's
-⌘K still agree that a project has one session rather than two. A dormant task
-gets `fw task start` and lands you in it.
+Live sessions first, each with the pane of every agent inside it, then tasks
+that have a folder and no session — `fw task start` runs on the way in. A
+dormant task and a live one read the same way round because that is the order
+you would look for them in, not because one is a lesser kind of thing.
+
+**The projects browser is `prefix+G`, and that is the whole of what moved.**
+Every directory under the roots, session or not — what `prefix+g` used to be,
+one shift away, still find-or-create by the same session name so this and the
+app's ⌘K agree that a project has one session rather than two. It is on its own
+key because it is the rarer question by a long way: the work you are doing today
+is already a session or a task, and sixty directories in front of it made the
+fuzzy match answer about clones you have not touched in a year. `prefix+g` says
+where they went, in its header, because a list that quietly stops offering
+something has to.
+
+That mode also costs nothing it doesn't need — no fleet scan, no git reads, just
+the project index — so it opens instantly, and a live session for a project is
+still on `prefix+g` where it belongs.
 
 **The pane is the point.** A session row switches the client; an agent row runs
 `focusPane`, which selects the window *and* the pane — so `✋ permission` is one
@@ -316,6 +330,23 @@ enter away from the prompt that is waiting, in a session holding four agents
 across four windows. An agent sitting in its session's active pane gets no row
 of its own, because switching to the session already lands on it and a second
 row would be the same jump written twice.
+
+**An agent row is named by what the agent called the conversation**, which is
+[herdr](https://herdr.dev)'s idea — its agent list reads `Chronopost Label
+Test`, `Tenant Packaging Cache`, `Count Rows Per Day`, and picking one of those
+out of a list is a different experience from picking `w7:p8`. It needs nothing
+new: both Claude Code and cursor-agent keep the terminal title updated with a
+running summary of what they are doing, tmux hands it back as `pane_title`, and
+fleetwood was already reading it into `PaneInfo.title` and throwing it away.
+
+The fallback is `3:claude`, which says the other useful thing — which window
+picking this lands you in — and never both, because the tool is already in the
+row's colour and the window is in the preview. What counts as *no* title is the
+part with teeth: each CLI parks its own product name there until the
+conversation has a subject (`✳ Claude Code`, `Cursor Agent`), tmux's default is
+the hostname, and Claude Code's pane process is a bare version number — so a row
+named `Kilians-MacBook-Pro` or `2.1.263` is a placeholder leaking through, not
+an agent. The leading `✳` comes off too: it is the spinner, not the name.
 
 **fzf, rather than a picker of our own.** The binding it replaces was already
 `| fzf` in a `display-popup`, so the matching, the keys and the popup are the
@@ -669,7 +700,8 @@ fw open-pr <ref>      focus a PR's session, or build one on a fresh worktree
 fw approve [pane]     answer yes to a blocked agent
 fw deny [pane]        answer no
 fw kill-agent <pane|key>  close one agent, leaving its pane and session alone
-fw switch             pick a session, an agent's pane, a dormant task or a project
+fw switch             pick a live session, one agent's pane, or a dormant task
+fw switch --projects  every directory under your project roots, session or not
 fw focus <session>    point the terminal at a session
 fw order [<session> <slot>|none]  where each session sits in the fleet
 fw pin <session> [on|off]  hold it above every unpinned session
@@ -684,9 +716,10 @@ fleet: a session nobody is looking at still spends tokens and still gets stuck.
 
 `fw open-pr` takes `owner/repo#123` or a full PR URL.
 
-`fw switch` is what `prefix+g` runs (see **prefix+g**); it needs `fzf`. `--json`
-prints the rows it would offer, `--list` the lines it would hand fzf, and
-`--all` includes hidden sessions.
+`fw switch` is what `prefix+g` runs and `fw switch --projects` what `prefix+G`
+does (see **prefix+g**); both need `fzf`. `--json` prints the rows it would
+offer, `--list` the lines it would hand fzf, and `--all` includes hidden
+sessions.
 
 Output is painted in the configured `theme` (see **Themes**), and drops to plain text
 under `NO_COLOR` or when piped.
