@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { FleetAgent, FleetSession, Severity, Task, TaskPr, TaskRepo } from '@fleetwood/core';
+import type { FleetSession, Severity, Task, TaskPr, TaskRepo } from '@fleetwood/core';
 // The leaf module: the barrel re-exports tmux and process scanning, which fail the
 // renderer bundle on `node:child_process`.
 import {
@@ -81,7 +81,6 @@ function RepoRow({
   session,
   editor,
   base,
-  agents,
   onResult,
 }: {
   repo: TaskRepo;
@@ -99,7 +98,6 @@ function RepoRow({
    * Absent (no pull request yet, or the search hasn't landed) main uses the trunk.
    */
   base?: string;
-  agents: FleetAgent[];
   onResult: Props['onResult'];
 }): React.JSX.Element {
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -110,99 +108,94 @@ function RepoRow({
   };
 
   return (
-    <>
-      <div className="task-repo">
-        {/* Shortened for display only, and inline for a reason: the raw name is
-            what `hasDriftedOffBranch` below reasons about, what `repoSummary`
-            counts, and the key `removeRepoFromTask` and `partitionAgents` are
-            held by — a local holding the short form would eventually reach one
-            of them, and the drift check would then never match anything. */}
-        <span className="task-repo-name" title={repo.name}>
-          {worktreeShortName(repo.name, slug)}
+    <div className="task-repo">
+      {/* Shortened for display only, and inline for a reason: the raw name is
+          what `hasDriftedOffBranch` below reasons about, what `repoSummary`
+          counts, and the key `removeRepoFromTask` and `partitionAgents` are
+          held by — a local holding the short form would eventually reach one
+          of them, and the drift check would then never match anything. */}
+      <span className="task-repo-name" title={repo.name}>
+        {worktreeShortName(repo.name, slug)}
+      </span>
+      {/* Before the state token, not after it: the token is what has to land
+          on the row gutter, and these are what used to push it off. */}
+      {/* On the repo row rather than in the card's actions, because they act on
+          this worktree and not on the task root — which is the distinction the
+          row exists to make. */}
+      {session && (
+        <button
+          className="chip repo-open"
+          onClick={() =>
+            void act({
+              kind: 'openEditor',
+              session,
+              cwd: repo.path,
+              // Named apart from the repo's own shell window, so the tmux status
+              // line doesn't carry the same name twice.
+              name: `${repo.name}-${editorLabel(editor)}`,
+            })
+          }
+          title={`${editor} in a new pane on ${repo.path}`}
+        >
+          +{editorLabel(editor)}
+        </button>
+      )}
+      {/* Not gated on a session, unlike the editor: difit is spawned from main
+          and read in a browser, so there is nothing a tmux session would be for.
+          Reviewing a worktree without first starting an agent on it is a real
+          thing to want — it is how you read what the last one did. */}
+      <button
+        className="chip repo-review"
+        onClick={() => void act({ kind: 'openDifit', cwd: repo.path, base })}
+        title={`difit on ${repo.path} vs ${base ?? 'its trunk'} — committed and uncommitted work together, from where the branch left it. New files are marked intent-to-add.`}
+      >
+        review
+      </button>
+      {/* The landed-PR case: this branch is merged, the checkout is dead weight,
+          and the task is still going. Two steps, like archive — and never
+          forced from here: uncommitted work refuses, and clearing it is a
+          deliberate `fw task rm --force`. */}
+      <button
+        /* `confirming` pins the row's revealed actions open: the chips fade
+           out when the pointer leaves the row, and an armed four-second
+           confirm must not be one of the things that goes with them. */
+        className={`chip repo-remove danger${confirmRemove ? ' confirming' : ''}`}
+        onClick={() => {
+          if (!confirmRemove) {
+            setConfirmRemove(true);
+            setTimeout(() => setConfirmRemove(false), 4_000);
+            return;
+          }
+          setConfirmRemove(false);
+          void act({ kind: 'removeRepoFromTask', slug, repo: repo.name });
+        }}
+        title={`remove this worktree from the task — the task and its other repos stay. Refuses while ${repo.name} has uncommitted work.`}
+      >
+        {confirmRemove ? 'remove — sure?' : 'remove'}
+      </button>
+      {/* Only worth saying when nothing accounts for the branch it is on. A
+          stack layer's directory is named for its branch, so it is where it
+          says it is; drift is a branch the directory does not claim. */}
+      {hasDriftedOffBranch(repo.name, repo.branch, taskBranch) && (
+        <span className="off-branch" title="not the branch this worktree was made for">
+          {repo.branch}
         </span>
-        {/* Before the state token, not after it: the token is what has to land
-            on the row gutter, and these are what used to push it off. */}
-        {/* On the repo row rather than in the card's actions, because they act on
-            this worktree and not on the task root — which is the distinction the
-            row exists to make. */}
-        {session && (
-          <button
-            className="chip repo-open"
-            onClick={() =>
-              void act({
-                kind: 'openEditor',
-                session,
-                cwd: repo.path,
-                // Named apart from the repo's own shell window, so the tmux status
-                // line doesn't carry the same name twice.
-                name: `${repo.name}-${editorLabel(editor)}`,
-              })
-            }
-            title={`${editor} in a new pane on ${repo.path}`}
-          >
-            +{editorLabel(editor)}
-          </button>
-        )}
-        {/* Not gated on a session, unlike the editor: difit is spawned from main
-            and read in a browser, so there is nothing a tmux session would be for.
-            Reviewing a worktree without first starting an agent on it is a real
-            thing to want — it is how you read what the last one did. */}
-        <button
-          className="chip repo-review"
-          onClick={() => void act({ kind: 'openDifit', cwd: repo.path, base })}
-          title={`difit on ${repo.path} vs ${base ?? 'its trunk'} — committed and uncommitted work together, from where the branch left it. New files are marked intent-to-add.`}
-        >
-          review
-        </button>
-        {/* The landed-PR case: this branch is merged, the checkout is dead weight,
-            and the task is still going. Two steps, like archive — and never
-            forced from here: uncommitted work refuses, and clearing it is a
-            deliberate `fw task rm --force`. */}
-        <button
-          /* `confirming` pins the row's revealed actions open: the chips fade
-             out when the pointer leaves the row, and an armed four-second
-             confirm must not be one of the things that goes with them. */
-          className={`chip repo-remove danger${confirmRemove ? ' confirming' : ''}`}
-          onClick={() => {
-            if (!confirmRemove) {
-              setConfirmRemove(true);
-              setTimeout(() => setConfirmRemove(false), 4_000);
-              return;
-            }
-            setConfirmRemove(false);
-            void act({ kind: 'removeRepoFromTask', slug, repo: repo.name });
-          }}
-          title={`remove this worktree from the task — the task and its other repos stay. Refuses while ${repo.name} has uncommitted work.`}
-        >
-          {confirmRemove ? 'remove — sure?' : 'remove'}
-        </button>
-        {/* Only worth saying when nothing accounts for the branch it is on. A
-            stack layer's directory is named for its branch, so it is where it
-            says it is; drift is a branch the directory does not claim. */}
-        {hasDriftedOffBranch(repo.name, repo.branch, taskBranch) && (
-          <span className="off-branch" title="not the branch this worktree was made for">
-            {repo.branch}
-          </span>
-        )}
-        {/*
-         * Nothing is said about a clean worktree.
-         *
-         * `clean` was on nearly every row in the fleet, in the gutter the eye
-         * goes to for what needs doing, to report that nothing does. Silence is
-         * the honest rendering of that: a worktree with an empty right edge is
-         * clean, and the only rows that speak are the ones with something to
-         * say. The count is never unknown — an unreadable repo would say so.
-         */}
-        {repo.dirty > 0 && (
-          <span className="dirty" title={`${repo.dirty} uncommitted change(s)`}>
-            {repo.dirty} dirty
-          </span>
-        )}
-      </div>
-      {agents.map((agent) => (
-        <AgentRow key={agent.key} agent={agent} onResult={onResult} />
-      ))}
-    </>
+      )}
+      {/*
+       * Nothing is said about a clean worktree.
+       *
+       * `clean` was on nearly every row in the fleet, in the gutter the eye
+       * goes to for what needs doing, to report that nothing does. Silence is
+       * the honest rendering of that: a worktree with an empty right edge is
+       * clean, and the only rows that speak are the ones with something to
+       * say. The count is never unknown — an unreadable repo would say so.
+       */}
+      {repo.dirty > 0 && (
+        <span className="dirty" title={`${repo.dirty} uncommitted change(s)`}>
+          {repo.dirty} dirty
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -330,9 +323,9 @@ export function PrRow({
  * One task, as a card in the fleet list.
  *
  * This is a session card that knows what its session *is* — same shape, same
- * header, plus the things only a task has: the worktrees under it, agents filed
- * under the repo they are actually in, and the notes. It replaces the pair of
- * cards a live task used to get, one per tab, each missing half the controls.
+ * header, plus the things only a task has: the agents running in it, the
+ * worktrees under it, and the notes. It replaces the pair of cards a live task
+ * used to get, one per tab, each missing half the controls.
  */
 export function TaskCard({
   task,
@@ -361,6 +354,28 @@ export function TaskCard({
   };
 
   const { taskLevel, byRepo } = partitionAgents(task, session?.agents ?? []);
+  /*
+   * Every agent in the task, in one block above the worktrees.
+   *
+   * They used to sit under the repo row they belong to, which grouped them
+   * correctly and read as anything but. An agent row starts on the same rail as
+   * a worktree name by design, so a repo-scoped one came out as a sibling of the
+   * row above rather than as something under it, and repo / agent / repo left no
+   * mark saying where one worktree's block ended — a list you reconstruct rather
+   * than read.
+   *
+   * So the same shape the task pane already uses: what is running first, because
+   * it is the half that changes minute to minute, then the worktrees as one
+   * uninterrupted list. The worktree rides on the row instead — `agent-where`
+   * says which one, and an agent at the task root has nothing to say there.
+   */
+  const agents = [
+    // At the task root first — they are the ones acting on the whole of it.
+    ...taskLevel.map((agent) => ({ agent, where: undefined as string | undefined })),
+    ...[...byRepo.entries()].flatMap(([repo, inRepo]) =>
+      inRepo.map((agent) => ({ agent, where: repo })),
+    ),
+  ];
   // Empty unless the pull requests actually span repos, which is the only case
   // where the tag tells you anything — see `prRepoTags`.
   const repoTags = prRepoTags(prs ?? []);
@@ -517,9 +532,13 @@ export function TaskCard({
         </span>
       </div>
 
-      {taskLevel.map((agent) => (
-        <AgentRow key={agent.key} agent={agent} onResult={onResult} />
-      ))}
+      {agents.length > 0 && (
+        <div className="agents">
+          {agents.map(({ agent, where }) => (
+            <AgentRow key={agent.key} agent={agent} where={where} onResult={onResult} />
+          ))}
+        </div>
+      )}
 
       <div className="task-repos">
         {task.repos.map((repo) => (
@@ -531,7 +550,6 @@ export function TaskCard({
             session={task.session}
             editor={editor}
             base={baseFor(prs, repo)}
-            agents={byRepo.get(repo.name) ?? []}
             onResult={onResult}
           />
         ))}
