@@ -11,7 +11,7 @@
  * take the bundle down. It lives in `core/naming.ts` now, which has no `node:`
  * imports and can simply be used.
  */
-export { buildBranch, slugify } from '@fleetwood/core/naming';
+export { TASK_TYPES, buildBranch, slugify } from '@fleetwood/core/naming';
 import { buildBranch, slugify } from '@fleetwood/core/naming';
 import { fuzzyRank } from '@fleetwood/core/fuzzy';
 
@@ -36,8 +36,6 @@ export interface Step {
   /** How the answer reads on the line left behind once you have moved past it. */
   answer: (draft: Draft) => string;
 }
-
-export const TASK_TYPES = ['feature', 'fix', 'chore'] as const;
 
 /**
  * Repos first, which is not the order the fields were in before.

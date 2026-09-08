@@ -5,9 +5,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   branchToSlug,
+  briefGoalLine,
   buildBranch,
   linkTaskSkills,
   matchTaskRepo,
+  parseBriefGoal,
   renderBrief,
   readTaskNotes,
   readTaskRepos,
@@ -337,4 +339,65 @@ test('a repo name matching several worktrees is an error, not a guess', () => {
 
 test('a name matching nothing reports nothing rather than the first worktree', () => {
   assert.deepEqual(matchTaskRepo(STACK, 'atlas'), { repo: undefined, candidates: [] });
+});
+
+/*
+ * The goal round-trip.
+ *
+ * `TASK.md` is generated, so the goal you type into it only survives because it
+ * is read back out and put in `task.json` — these are the two halves of that,
+ * and the placeholder case is the one that matters most: opening the editor and
+ * quitting without typing must leave the task exactly as it was.
+ */
+
+test('the brief always has a Goal section, so the editor has somewhere to land', () => {
+  const brief = renderBrief(RECORD, []);
+  assert.match(brief, /## Goal/);
+  // An HTML comment, so a brief with no goal reads as a task without one rather
+  // than as an instruction aimed at whichever agent opens it.
+  assert.match(brief, /<!-- Write the goal here/);
+});
+
+test('a goal in the record is rendered as the section body', () => {
+  const brief = renderBrief({ ...RECORD, goal: 'Make the labels line up.' }, []);
+  assert.match(brief, /## Goal\n\nMake the labels line up\./);
+  assert.doesNotMatch(brief, /<!-- Write the goal here/);
+});
+
+test('the goal comes back out of an edited brief', () => {
+  const edited = renderBrief(RECORD, []).replace(
+    '<!-- Write the goal here, then save and quit. -->',
+    'Make the labels line up.\n\nAnd keep them that way.',
+  );
+  assert.equal(parseBriefGoal(edited), 'Make the labels line up.\n\nAnd keep them that way.');
+});
+
+test('an untouched placeholder is no goal at all', () => {
+  assert.equal(parseBriefGoal(renderBrief(RECORD, [])), undefined);
+});
+
+test('the goal stops at the next heading, not at the end of the file', () => {
+  const brief = renderBrief({ ...RECORD, goal: 'Only this.' }, [
+    { name: 'proto-flow', path: '/w/1', repo: 'bigbluedisco/proto', dirty: 0 },
+  ]);
+  assert.equal(parseBriefGoal(brief), 'Only this.');
+});
+
+test('a goal survives a regeneration, which is the whole point', () => {
+  const goal = parseBriefGoal(
+    renderBrief(RECORD, []).replace('<!-- Write the goal here, then save and quit. -->', 'Survive me.'),
+  );
+  // What `syncGoalFromBrief` does: parse, put in the record, render again.
+  assert.equal(parseBriefGoal(renderBrief({ ...RECORD, goal }, [])), 'Survive me.');
+});
+
+test('a brief with no Goal heading yields no goal and opens at the top', () => {
+  assert.equal(parseBriefGoal('# a task\n\nnothing here\n'), undefined);
+  assert.equal(briefGoalLine('# a task\n\nnothing here\n'), 1);
+});
+
+test('the cursor lands on the body under the heading, not on the heading', () => {
+  const brief = renderBrief(RECORD, []);
+  const line = briefGoalLine(brief);
+  assert.equal(brief.split('\n')[line - 1], '<!-- Write the goal here, then save and quit. -->');
 });

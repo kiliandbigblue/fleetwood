@@ -82,6 +82,29 @@ const BRIEF_FILE = 'TASK.md';
 const NOTES_FILE = 'NOTES.md';
 
 /**
+ * The one section of the brief you are meant to type into.
+ *
+ * The rest of `TASK.md` is regenerated from `task.json` every time a repo joins,
+ * so anything written there is on borrowed time. The goal is different: it is
+ * the part of the record only a human can supply, and the most comfortable place
+ * to write a paragraph is an editor, not a prompt. So the heading is a fixed
+ * landmark — `renderBrief` writes it, `parseBriefGoal` reads back under it, and
+ * `syncGoalFromBrief` puts what it finds into `task.json`, whence the next
+ * render reproduces it. Edit it in nvim, save, and it survives.
+ */
+const GOAL_HEADING = '## Goal';
+
+/**
+ * What stands in the empty section, as an HTML comment.
+ *
+ * A comment because it renders as nothing — an agent reading the brief is not
+ * told to write a goal, it just sees a task that has none. And because it lets
+ * `parseBriefGoal` tell an untouched placeholder from a goal, without having to
+ * match the prose: comments are stripped, so leaving it be reads as no goal.
+ */
+const GOAL_PLACEHOLDER = '<!-- Write the goal here, then save and quit. -->';
+
+/**
  * Where skills live, for both agents at once.
  *
  * The same two paths do double duty: they are where a repo keeps its skills, and
@@ -154,7 +177,8 @@ export function renderBrief(record: TaskRecord, repos: TaskRepo[], skills: strin
     `**Microservice** ${record.microservice || '—'}`,
     '',
   ];
-  if (record.goal) lines.push(record.goal, '');
+  // An empty string is as good as no goal here, which `||` already says.
+  lines.push(GOAL_HEADING, '', record.goal?.trim() || GOAL_PLACEHOLDER, '');
   lines.push('## Repos in this task', '');
   for (const repo of repos) {
     lines.push(`- \`${repo.name}/\` — ${repo.repo ?? 'local'} on \`${repo.branch ?? record.branch}\``);
@@ -175,7 +199,9 @@ export function renderBrief(record: TaskRecord, repos: TaskRepo[], skills: strin
     '',
     'Beside this file, `NOTES.md` — when it exists — holds the human\'s own running',
     'notes on this task. Read it. `TASK.md`, the file you are reading, is generated',
-    'and rewritten whenever a repo joins the task, so write nothing into it.',
+    'and rewritten whenever a repo joins the task, so write nothing into it — with',
+    'one exception: `## Goal` above is read back into `task.json` when the human',
+    'edits it, so that section survives a regeneration and the rest does not.',
     '',
   );
   if (skills.length > 0) {
@@ -433,6 +459,86 @@ export async function writeTaskNotes(slug: string, notes: string): Promise<Actio
   return {
     ok: true,
     detail: length === 0 ? `cleared notes on ${slug}` : `saved notes on ${slug} (${length} chars)`,
+  };
+}
+
+/**
+ * The goal, read back out of an edited brief.
+ *
+ * Everything under `## Goal` up to the next heading, with HTML comments stripped
+ * — which is what makes the untouched placeholder read as no goal at all, so
+ * opening the editor and quitting without typing leaves the task as it was.
+ *
+ * `undefined` rather than `''` for "no goal", to match `TaskRecord.goal`: the
+ * key is absent on a task without one, and a blank string would render an empty
+ * section that then round-trips as a change on every save.
+ */
+export function parseBriefGoal(text: string): string | undefined {
+  const lines = text.split('\n');
+  const start = lines.findIndex((line) => line.trim() === GOAL_HEADING);
+  if (start < 0) return undefined;
+
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^##\s/.test(lines[i] as string)) {
+      end = i;
+      break;
+    }
+  }
+
+  const body = lines
+    .slice(start + 1, end)
+    .join('\n')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .trim();
+  return body.length > 0 ? body : undefined;
+}
+
+/**
+ * Which line of the brief to drop the cursor on, 1-based.
+ *
+ * The heading, then its blank line, then the body — so the editor opens with the
+ * caret where the typing goes rather than on line 1, which for a file whose
+ * first screen is generated metadata is the difference between a form and a
+ * document you have to navigate. Falls back to the top when there is no `## Goal`
+ * to find, which is any brief written before this existed.
+ */
+export function briefGoalLine(text: string): number {
+  const start = text.split('\n').findIndex((line) => line.trim() === GOAL_HEADING);
+  return start < 0 ? 1 : start + 3;
+}
+
+/**
+ * Take the goal from `TASK.md` into `task.json`, and re-render the brief.
+ *
+ * The write-back half of the editor step: the brief is a generated file, so a
+ * goal that lives only there is erased the next time a repo joins. Putting it in
+ * the record makes the next render reproduce it — and re-rendering here is what
+ * normalises whatever was typed (stray blank lines, a deleted heading) into the
+ * shape the parser will still recognise tomorrow.
+ */
+export async function syncGoalFromBrief(slug: string): Promise<ActionResult> {
+  const dir = await taskDirFor(slug);
+  const record = await readRecord(dir);
+  if (!record) return { ok: false, detail: `no task named ${slug}` };
+
+  let text: string;
+  try {
+    text = await readFile(join(dir, BRIEF_FILE), 'utf8');
+  } catch {
+    return { ok: false, detail: `${slug} has no ${BRIEF_FILE}` };
+  }
+
+  const goal = parseBriefGoal(text);
+  const repos = await readTaskRepos(dir);
+  // Re-render even when the goal is unchanged: the human may have reflowed the
+  // section, and the file on disk should be what `renderBrief` would produce.
+  await writeMeta(dir, { ...record, goal }, repos);
+
+  if (goal === record.goal) return { ok: true, detail: goal ? 'goal unchanged' : 'no goal written' };
+  return {
+    ok: true,
+    detail: goal ? `goal saved on ${slug} (${goal.length} chars)` : `goal cleared on ${slug}`,
   };
 }
 

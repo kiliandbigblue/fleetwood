@@ -20,6 +20,16 @@ export function slugify(text: string): string {
 }
 
 /**
+ * The kinds of change a branch can be, and the first segment of its name.
+ *
+ * Here rather than in the panel that first had them, for the reason the rest of
+ * this module is here: the tmux popup asks the same question, and a second copy
+ * of the list is a second place to forget to add one. `buildBranch` still
+ * accepts anything sluggable — this is what the pickers offer, not a validator.
+ */
+export const TASK_TYPES = ['feature', 'fix', 'chore'] as const;
+
+/**
  * Build the branch name from the convention `<type>/<microservice>-<summary>`.
  *
  * The microservice is a domain rather than a repo, which is exactly why the same

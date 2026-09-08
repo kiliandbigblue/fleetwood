@@ -34,6 +34,7 @@ import type { AgentTool, FleetState, MergedPr, PlanLimits, PullRequest, TaskPr }
 import { c, pad, relativeAge, tildify, useTheme, width } from './ui.ts';
 import { renderAgentLine, renderFleet, renderLimits } from './render.ts';
 import { cmdSwitch } from './switch.ts';
+import { cmdNewTask } from './newTask.ts';
 
 const HELP = `${c.bold('fleetwood')} — tmux-native cockpit for coding agents
 
@@ -48,6 +49,9 @@ ${c.bold('commands')}
   sessions          tmux sessions and their fleetwood metadata
   panes             every pane and the agent process found in it
 
+  new [--agent claude]
+                    create a task by answering four questions in a gum popup,
+                    then write its goal in $EDITOR  ${c.dim('what `prefix+N` runs')}
   task new <type> <service> <summary> [--repo r]... [--agent claude]
                     create a task: one branch, a worktree per repo, one session
                     ${c.dim('the session is left at a shell; --agent starts one in it')}
@@ -938,6 +942,11 @@ function flagValue(argv: string[], flag: string): string | undefined {
 }
 
 async function cmdTaskNew(argv: string[], json: boolean): Promise<void> {
+  // `fw new` is the short spelling and what the tmux binding runs; this is the
+  // same thing reachable from where the non-interactive form already lives.
+  if (argv.includes('-i') || argv.includes('--interactive')) {
+    return cmdNewTask({ agent: flagValue(argv, '--agent') as AgentTool | 'none' | undefined });
+  }
   const positional = positionalArgs(argv);
   // fw task new <type> <microservice> <summary...>
   const [type, microservice, ...summaryParts] = positional.slice(2);
@@ -945,7 +954,8 @@ async function cmdTaskNew(argv: string[], json: boolean): Promise<void> {
   if (!type || !microservice || summary.length === 0) {
     process.stderr.write(
       `${c.danger('usage')} fw task new <type> <microservice> <summary> --repo <name> [--repo <name>]...\n` +
-        `${c.muted('e.g.')} fw task new fix flow "execution labels" --repo proto --repo graphy\n`,
+        `${c.muted('e.g.')} fw task new fix flow "execution labels" --repo proto --repo graphy\n` +
+        `${c.muted('or')}   fw new — the same thing as a popup form\n`,
     );
     process.exitCode = 2;
     return;
@@ -1243,6 +1253,9 @@ async function main(): Promise<void> {
       break;
     case 'open-pr':
       await cmdOpenPr(arg, background);
+      break;
+    case 'new':
+      await cmdNewTask({ agent: flagValue(argv, '--agent') as AgentTool | 'none' | undefined });
       break;
     case 'switch':
     case 'pick':
