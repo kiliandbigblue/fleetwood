@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { baseFor, partitionAgents, prRepoTags, repoSummary } from '../src/taskView.ts';
+import { baseFor, partitionAgents, prRepoTags, repoSummary, worstState } from '../src/taskView.ts';
 import type { FleetAgent } from '../src/fleet.ts';
 import type { Task, TaskRepo } from '../src/task.ts';
 import type { TaskPr } from '../src/taskPrs.ts';
@@ -202,4 +202,47 @@ test('a stack — several pull requests in one repo — gets no tags', () => {
 test('one pull request has nothing to be told apart from', () => {
   assert.deepEqual(prRepoTags([pr({})]), {});
   assert.deepEqual(prRepoTags([]), {});
+});
+
+/** A clean worktree, for the severity cases below. */
+function repo(dirty: number): TaskRepo {
+  return { ...upsertLayer, dirty };
+}
+
+test('a blocked agent outranks everything else on the card', () => {
+  // It is the only state here that is *waiting* on you and getting nothing done
+  // in the meantime, so it wins even against a card that is otherwise fine.
+  assert.equal(worstState([repo(4)], [pr({ reviewDecision: 'APPROVED' })], true), 'danger');
+});
+
+test('work that has come back outranks work you have not committed', () => {
+  assert.equal(worstState([repo(4)], [pr({ reviewDecision: 'CHANGES_REQUESTED' })], false), 'danger');
+  assert.equal(worstState([repo(4)], [pr({ checks: 'failing' })], false), 'danger');
+});
+
+test('uncommitted changes outrank an approval', () => {
+  // Yours to lose, against a merge you have merely not got round to.
+  assert.equal(worstState([repo(2)], [pr({ reviewDecision: 'APPROVED' })], false), 'warn');
+});
+
+test('an approval is the quietest thing worth a stripe', () => {
+  assert.equal(worstState([repo(0)], [pr({ reviewDecision: 'APPROVED' })], false), 'ok');
+});
+
+test('a task with nothing to say gets no stripe', () => {
+  assert.equal(worstState([repo(0)], [], false), 'quiet');
+  assert.equal(worstState([], [], false), 'quiet');
+});
+
+test('pull requests still being searched for contribute nothing either way', () => {
+  // `undefined` is the first `gh` search being out, which is not the claim that
+  // this task has no pull requests — so it neither raises nor confirms a state.
+  assert.equal(worstState([repo(0)], undefined, false), 'quiet');
+  assert.equal(worstState([repo(3)], undefined, false), 'warn');
+  assert.equal(worstState([repo(0)], undefined, true), 'danger');
+});
+
+test('a draft under review is not treated as reviewed', () => {
+  // The row shows `draft` alone for the same reason: nobody has been asked yet.
+  assert.equal(worstState([repo(0)], [pr({ isDraft: true, reviewDecision: 'REVIEW_REQUIRED' })], false), 'quiet');
 });

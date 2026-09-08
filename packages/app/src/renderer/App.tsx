@@ -351,6 +351,22 @@ export function App(): React.JSX.Element {
                 </div>
               );
             })}
+            {/* Above the hidden drawer, which is the one section deliberately
+                out of the way — nothing should sit under it. It no longer costs
+                the width it was being pushed down for either: it is a quiet
+                control at the gutter now rather than a dashed strip across the
+                list. ⌘T is still the fast path. */}
+            <button
+              className="new-task"
+              onClick={() => {
+                setNewTaskSummary('');
+                setNewTaskOpen(true);
+              }}
+              title="new task (⌘T)"
+            >
+              + new task
+            </button>
+
             {/* Below everything, including the two orphan groups: this is the one
                 section that is here because you asked for it to be out of the
                 way. The count of what needs you rides on the heading rather than
@@ -383,19 +399,6 @@ export function App(): React.JSX.Element {
                 )}
               </>
             )}
-
-            {/* Last, not first: the top of this list is for whatever needs you, and
-                a dashed strip that never changes does not. ⌘T is the fast path. */}
-            <button
-              className="new-task"
-              onClick={() => {
-                setNewTaskSummary('');
-                setNewTaskOpen(true);
-              }}
-              title="new task (⌘T)"
-            >
-              + new task
-            </button>
           </>
         )}
 

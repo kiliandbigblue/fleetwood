@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { FleetAgent, FleetSession, Task, TaskPr, TaskRepo } from '@fleetwood/core';
+import type { FleetAgent, FleetSession, Severity, Task, TaskPr, TaskRepo } from '@fleetwood/core';
 // The leaf module: the barrel re-exports tmux and process scanning, which fail the
 // renderer bundle on `node:child_process`.
 import {
@@ -9,13 +9,16 @@ import {
   prSummary,
   repoSummary,
   VIA_LABEL,
+  worstState,
 } from '@fleetwood/core/taskView';
-import { hasDriftedOffBranch } from '@fleetwood/core/naming';
+import { hasDriftedOffBranch, worktreeShortName } from '@fleetwood/core/naming';
 import { isPinned } from '@fleetwood/core/sessionOrder';
 import { AddRepo } from './AddRepo.tsx';
 import { AgentRow } from './AgentRow.tsx';
+import { Icon } from './Icon.tsx';
 import { CHECK_GLYPH, REVIEW_LABEL } from './PrList.tsx';
 import { Reorder } from './Reorder.tsx';
+import { Slug } from './Slug.tsx';
 import { TaskNotes } from './TaskNotes.tsx';
 import { send } from './api.ts';
 
@@ -109,22 +112,16 @@ function RepoRow({
   return (
     <>
       <div className="task-repo">
-        <span className="task-repo-name">{repo.name}</span>
-        {repo.dirty > 0 ? (
-          <span className="dirty" title={`${repo.dirty} uncommitted change(s)`}>
-            {repo.dirty} dirty
-          </span>
-        ) : (
-          <span className="clean">clean</span>
-        )}
-        {/* Only worth saying when nothing accounts for the branch it is on. A
-            stack layer's directory is named for its branch, so it is where it
-            says it is; drift is a branch the directory does not claim. */}
-        {hasDriftedOffBranch(repo.name, repo.branch, taskBranch) && (
-          <span className="off-branch" title="not the branch this worktree was made for">
-            {repo.branch}
-          </span>
-        )}
+        {/* Shortened for display only, and inline for a reason: the raw name is
+            what `hasDriftedOffBranch` below reasons about, what `repoSummary`
+            counts, and the key `removeRepoFromTask` and `partitionAgents` are
+            held by — a local holding the short form would eventually reach one
+            of them, and the drift check would then never match anything. */}
+        <span className="task-repo-name" title={repo.name}>
+          {worktreeShortName(repo.name, repo.branch, slug)}
+        </span>
+        {/* Before the state token, not after it: the token is what has to land
+            on the row gutter, and these are what used to push it off. */}
         {/* On the repo row rather than in the card's actions, because they act on
             this worktree and not on the task root — which is the distinction the
             row exists to make. */}
@@ -162,7 +159,10 @@ function RepoRow({
             forced from here: uncommitted work refuses, and clearing it is a
             deliberate `fw task rm --force`. */}
         <button
-          className="chip repo-remove danger"
+          /* `confirming` pins the row's revealed actions open: the chips fade
+             out when the pointer leaves the row, and an armed four-second
+             confirm must not be one of the things that goes with them. */
+          className={`chip repo-remove danger${confirmRemove ? ' confirming' : ''}`}
           onClick={() => {
             if (!confirmRemove) {
               setConfirmRemove(true);
@@ -176,6 +176,28 @@ function RepoRow({
         >
           {confirmRemove ? 'remove — sure?' : 'remove'}
         </button>
+        {/* Only worth saying when nothing accounts for the branch it is on. A
+            stack layer's directory is named for its branch, so it is where it
+            says it is; drift is a branch the directory does not claim. */}
+        {hasDriftedOffBranch(repo.name, repo.branch, taskBranch) && (
+          <span className="off-branch" title="not the branch this worktree was made for">
+            {repo.branch}
+          </span>
+        )}
+        {/*
+         * Nothing is said about a clean worktree.
+         *
+         * `clean` was on nearly every row in the fleet, in the gutter the eye
+         * goes to for what needs doing, to report that nothing does. Silence is
+         * the honest rendering of that: a worktree with an empty right edge is
+         * clean, and the only rows that speak are the ones with something to
+         * say. The count is never unknown — an unreadable repo would say so.
+         */}
+        {repo.dirty > 0 && (
+          <span className="dirty" title={`${repo.dirty} uncommitted change(s)`}>
+            {repo.dirty} dirty
+          </span>
+        )}
       </div>
       {agents.map((agent) => (
         <AgentRow key={agent.key} agent={agent} onResult={onResult} />
@@ -203,12 +225,51 @@ const VIA_MARK: Record<TaskPr['via'], string> = { head: '', stack: '⇡', histor
  * Exported for `TaskPane`, which draws the same rows with more room around them:
  * a pull request has to read identically in both, down to the marks.
  */
+/**
+ * What a pull request's title says that its group's heading does not.
+ *
+ * Nothing, when the branch is the task's own — every character after the type
+ * prefix repeats the heading a row or two above. The prefix is the one fact
+ * added, so it is the one thing left. Any other branch is shown in full: a
+ * stack layer, or a pull request found on a branch this task did not make, is
+ * exactly the case where the whole name is the information.
+ */
+/**
+ * The dot, in words.
+ *
+ * Two channels on one glyph is only worth it if you can find out what they are,
+ * and a panel this quiet has nowhere to put a legend. So the mark carries its
+ * own: what the colour means, then what the shape means.
+ */
+export function dotNote(state: Severity, attached: boolean, hasSession: boolean): string {
+  const colour = {
+    danger: 'something here needs you',
+    warn: 'uncommitted work',
+    ok: 'approved and unmerged',
+    quiet: 'nothing waiting',
+  }[state];
+  const shape = hasSession ? (attached ? 'attached' : 'running, not attached') : 'no session yet';
+  return `${colour} · ${shape}`;
+}
+
+function prTitleShort(title: string, slug: string): string {
+  if (title === slug) return '';
+  const cut = title.length - slug.length - 1;
+  // The slash is kept: `feature/` reads as a prefix whose remainder is the
+  // heading above, where a bare `feature` read as a name that had been cut off.
+  if (cut > 0 && title.endsWith(`/${slug}`)) return title.slice(0, cut + 1);
+  return title;
+}
+
 export function PrRow({
   pr,
   repoTag,
+  slug,
   onResult,
 }: {
   pr: TaskPr;
+  /** The task's slug, to drop a title that only repeats it. */
+  slug: string;
   /**
    * The repo this pull request is on, when the list it sits in needs telling apart.
    *
@@ -247,22 +308,43 @@ export function PrRow({
           {repoTag}
         </span>
       )}
-      {/* The title, which under this repo's convention *is* the branch name — so
-          the branch is not repeated beside it, only in the tooltip. */}
-      <span className="task-pr-title">{pr.title}</span>
-      {pr.isDraft && <span className="task-pr-flag">draft</span>}
-      {pr.reviewDecision && (
-        <span className={`review-${pr.reviewDecision}`}>
-          {REVIEW_LABEL[pr.reviewDecision] ?? pr.reviewDecision}
-        </span>
+      {/*
+       * The title, which under this repo's convention *is* the branch name — so
+       * the branch is not repeated beside it, only in the tooltip.
+       *
+       * And when the branch is this task's own, the title is the group's heading
+       * spelled a second time with a type prefix on the front: the widest line
+       * in the panel, carrying only that prefix. So only the prefix is drawn.
+       */}
+      <span className="task-pr-title" title={pr.title}>
+        {prTitleShort(pr.title, slug)}
+      </span>
+      {/*
+       * One state, not two. `draft needs review` was rendering as a single
+       * broken string at the row's right edge, and it was never two facts: a
+       * draft has nobody asked yet, so GitHub's review decision on one is an
+       * artifact rather than something waiting on you. Draft wins for that
+       * reason, and nothing actionable is lost — `prSummary` above still counts
+       * the states that ask something.
+       */}
+      {pr.isDraft ? (
+        <span className="task-pr-flag">draft</span>
+      ) : (
+        pr.reviewDecision && (
+          <span className={`review-${pr.reviewDecision}`}>
+            {REVIEW_LABEL[pr.reviewDecision] ?? pr.reviewDecision}
+          </span>
+        )
       )}
-      {VIA_MARK[pr.via] && (
-        <span className="task-pr-via" title={VIA_LABEL[pr.via]}>
-          {VIA_MARK[pr.via]}
-        </span>
-      )}
-      {/* Not a button: the whole row is the target, and this only says so. */}
-      <span className="task-pr-open">↗</span>
+      <span className="row-act">
+        {VIA_MARK[pr.via] && (
+          <span className="task-pr-via" title={VIA_LABEL[pr.via]}>
+            {VIA_MARK[pr.via]}
+          </span>
+        )}
+        {/* Not a button: the whole row is the target, and this only says so. */}
+        <span className="task-pr-open">↗</span>
+      </span>
     </div>
   );
 }
@@ -335,27 +417,95 @@ export function TaskCard({
             ? () => void act({ kind: 'focusSession', session: task.session as string })
             : () => void act({ kind: 'startTaskSession', slug: task.slug })
         }
+        /* The branch rides along here now that it has no line of its own: the
+           slug beside it is that branch minus its type prefix, so `feature/` is
+           the only part a second row was spelling out. */
         title={
           task.session
-            ? `focus ${task.session} · ${task.dir}`
-            : `no session yet — open one on ${task.dir}`
+            ? `${task.branch} · focus ${task.session} · ${task.dir}`
+            : `${task.branch} · no session yet — open one on ${task.dir}`
         }
       >
-        <span className={`attached-dot${session && session.attached > 0 ? '' : ' detached'}`}>●</span>
-        <span className="session-name">{task.slug}</span>
+        {/* Colour is the state, shape is whether you are attached. */}
+        <span
+          className={`attached-dot sev-${worstState(task.repos, prs, needsAttention)}${
+            session && session.attached > 0 ? '' : ' detached'
+          }`}
+          title={dotNote(worstState(task.repos, prs, needsAttention), (session?.attached ?? 0) > 0, task.session !== undefined)}
+        />
+        <span className="session-name">
+          <Slug text={task.slug} />
+        </span>
         {/* As on a session card: the pin is the reason this one is up here. */}
         {task.session && isPinned(task.session) && (
           <span className="pin-mark" title="pinned above the unpinned sessions">
-            📌
+            <Icon name="pin" />
           </span>
         )}
-        <span className="badge kind">task</span>
         <span className="repo-summary">{repoSummary(task.repos, task.branch)}</span>
         {/* Two arrows out of a box: the same mark a window uses for "make this
             the whole of the view", which is exactly what it does. Drawn rather
             than typed, like the rail's controls and for the same reason — no
             codepoint means this and `⤢` renders as a different weight in every
             face. */}
+        {/* The group's own actions, over the metadata rather than under the rows.
+            A reserved footer row that was empty until you pointed at it cost a
+            row of height on every group in the fleet to show nothing; here they
+            sit in space the head already had, and the summary they cover is the
+            one thing you do not need while you are acting on the group. */}
+        {!addingRepo && (
+          <div
+            className="card-actions"
+            /* The head focuses the session; a chip in it must not also do that. */
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              className="chip"
+              onClick={() => setAddingRepo(true)}
+              title="add a repo — or another branch of one already here, for stacked work"
+            >
+              + repo
+            </button>
+            <button className="chip" onClick={() => startAgent('claude')} title="claude at the task root">
+              + claude
+            </button>
+            <button className="chip" onClick={() => startAgent('cursor')} title="cursor-agent at the task root">
+              + cursor
+            </button>
+            {/* Only offered while there is no session: it is the way to get a shell in
+                the task folder without starting an agent you didn't ask for. */}
+            {dormant && (
+              <button
+                className="chip"
+                onClick={() => void act({ kind: 'startTaskSession', slug: task.slug })}
+                title="tmux session at the task root, left at a shell"
+              >
+                + shell
+              </button>
+            )}
+            <button className="chip" onClick={openNotes} title="your own notes on this task, kept in NOTES.md">
+              {task.notes ? 'notes' : '+ note'}
+            </button>
+            <span style={{ marginLeft: 'auto' }} />
+            <button
+              className="chip danger"
+              onClick={() => {
+                if (!confirmArchive) {
+                  setConfirmArchive(true);
+                  // Two steps: this deletes every worktree in the task.
+                  setTimeout(() => setConfirmArchive(false), 4_000);
+                  return;
+                }
+                setConfirmArchive(false);
+                void act({ kind: 'archiveTask', slug: task.slug });
+              }}
+              title="remove every worktree in this task and kill its session"
+            >
+              {confirmArchive ? 'archive — sure?' : 'archive'}
+            </button>
+          </div>
+        )}
+        <span className="row-act">
         <button
           className="pane-open"
           title={`open ${task.slug} on its own`}
@@ -386,10 +536,7 @@ export function TaskCard({
         {task.session && order && (
           <Reorder session={task.session} order={order} onResult={onResult} />
         )}
-      </div>
-
-      <div className="branch-line" title={task.branch}>
-        {task.branch}
+        </span>
       </div>
 
       {taskLevel.map((agent) => (
@@ -427,6 +574,7 @@ export function TaskCard({
               key={`${pr.repo}#${pr.number}`}
               pr={pr}
               repoTag={repoTags[`${pr.repo}#${pr.number}`]}
+              slug={task.slug}
               onResult={onResult}
             />
           ))}
@@ -445,55 +593,8 @@ export function TaskCard({
         onSave={saveNotes}
       />
 
-      {addingRepo ? (
+      {addingRepo && (
         <AddRepo task={task} onClose={() => setAddingRepo(false)} onResult={onResult} />
-      ) : (
-        <div className="card-actions">
-          <button
-            className="chip"
-            onClick={() => setAddingRepo(true)}
-            title="add a repo — or another branch of one already here, for stacked work"
-          >
-            + repo
-          </button>
-          <button className="chip" onClick={() => startAgent('claude')} title="claude at the task root">
-            + claude
-          </button>
-          <button className="chip" onClick={() => startAgent('cursor')} title="cursor-agent at the task root">
-            + cursor
-          </button>
-          {/* Only offered while there is no session: it is the way to get a shell in
-              the task folder without starting an agent you didn't ask for. */}
-          {dormant && (
-            <button
-              className="chip"
-              onClick={() => void act({ kind: 'startTaskSession', slug: task.slug })}
-              title="tmux session at the task root, left at a shell"
-            >
-              + shell
-            </button>
-          )}
-          <button className="chip" onClick={openNotes} title="your own notes on this task, kept in NOTES.md">
-            {task.notes ? 'notes' : '+ note'}
-          </button>
-          <span style={{ marginLeft: 'auto' }} />
-          <button
-            className="chip danger"
-            onClick={() => {
-              if (!confirmArchive) {
-                setConfirmArchive(true);
-                // Two steps: this deletes every worktree in the task.
-                setTimeout(() => setConfirmArchive(false), 4_000);
-                return;
-              }
-              setConfirmArchive(false);
-              void act({ kind: 'archiveTask', slug: task.slug });
-            }}
-            title="remove every worktree in this task and kill its session"
-          >
-            {confirmArchive ? 'archive — sure?' : 'archive'}
-          </button>
-        </div>
       )}
     </div>
   );

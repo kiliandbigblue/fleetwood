@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hasDriftedOffBranch, worktreeDirName } from '../src/naming.ts';
+import { hasDriftedOffBranch, worktreeDirName, worktreeShortName } from '../src/naming.ts';
 import { repoSummary } from '../src/taskView.ts';
 import type { TaskRepo } from '../src/task.ts';
 
@@ -88,4 +88,40 @@ test('real drift is still called out', () => {
     repo('graphy-flow-labels', { repo: 'bigbluedisco/graphy', branch: 'fix/flow-labels' }),
   ];
   assert.equal(repoSummary(repos, 'fix/flow-labels'), '2 repos · 1 off-branch');
+});
+
+test('a worktree name drops the branch slug it was built from', () => {
+  assert.equal(
+    worktreeShortName(
+      'atlas-ui-receive-receive-item-into-rebin-or-mono-item',
+      'feature/receive-receive-item-into-rebin-or-mono-item',
+      'receive-receive-item-into-rebin-or-mono-item',
+    ),
+    'atlas-ui',
+  );
+});
+
+test("a stack layer drops its own branch's slug, not the task's", () => {
+  // The whole reason the branch is tried first: a layer's directory is named for
+  // the layer, so stripping the task slug would strip nothing from exactly the
+  // names that are longest.
+  assert.equal(
+    worktreeShortName('reflow-orders-drop-b2b-flag', 'feature/orders-drop-b2b-flag', 'orders-dual-write'),
+    'reflow',
+  );
+});
+
+test('the task slug is the fallback when the branch could not be read', () => {
+  assert.equal(worktreeShortName('fleetwood-ui-refonte', undefined, 'ui-refonte'), 'fleetwood');
+});
+
+test('a name that claims no slug is left whole', () => {
+  // A legacy worktree named after the repo alone, and a hand-renamed directory.
+  assert.equal(worktreeShortName('fleetwood', 'feature/ui-refonte', 'ui-refonte'), 'fleetwood');
+  assert.equal(worktreeShortName('scratch', 'feature/ui-refonte', 'ui-refonte'), 'scratch');
+});
+
+test('a name that is nothing but its slug keeps the name', () => {
+  // Stripping would leave the row with no identifier at all.
+  assert.equal(worktreeShortName('-ui-refonte', 'feature/ui-refonte', 'ui-refonte'), '-ui-refonte');
 });

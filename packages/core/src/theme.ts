@@ -47,7 +47,15 @@ export interface Palette {
   ok: string;
   /** Accents: the agent tool, selection, links, "to deploy". */
   accent: string;
-  /** Branch and repo names — neither a status nor an accent, so its own role. */
+  /**
+   * Branch and repo names — neither a status nor an accent, so its own role.
+   *
+   * The CLI's identifier colour. The panel deliberately no longer paints
+   * identifiers with it: rose is what a panel two feet from your face uses to
+   * mean something is wrong, and it cannot mean that and also mean "this is a
+   * name" a few pixels from a real `changes requested`. `fw status` prints a
+   * line at a time and has no such adjacency, so it keeps the colour.
+   */
   branch: string;
 }
 

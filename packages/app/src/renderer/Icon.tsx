@@ -9,9 +9,15 @@
  *
  * Sized in `em` so they follow the button's font-size, and stroked in
  * `currentColor` so hover and the `on` state are the button's business.
+ *
+ * `pin` is neither a control nor a status mark, and it is here for the reason
+ * the controls are: it was `📌`, the one raster object in a panel drawn entirely
+ * in hairlines and text, and the only thing on screen with colours of its own —
+ * so it pulled the eye to the least urgent fact on the card. Nothing shares it
+ * with the tray, so drawing it costs nothing.
  */
 interface Props {
-  name: 'above' | 'contrast' | 'refresh';
+  name: 'above' | 'contrast' | 'refresh' | 'pin';
 }
 
 export function Icon({ name }: Props): React.JSX.Element {
@@ -40,6 +46,16 @@ export function Icon({ name }: Props): React.JSX.Element {
           <circle cx="12" cy="12" r="8.5" />
           <path d="M12 3.5a8.5 8.5 0 0 1 0 17Z" fill="currentColor" stroke="none" />
         </>
+      )}
+      {/* Filled, not stroked. At 10px this file's 1.9 stroke in a 24-unit box
+          is under a pixel wide and reads as a smudge on a translucent panel, and
+          a pin that small has no interior worth outlining anyway. */}
+      {name === 'pin' && (
+        <path
+          d="M9 3h6a1 1 0 0 1 0 2h-.6l.8 5.2 2.3 2.6a1 1 0 0 1-.7 1.7H13v7.8a1 1 0 0 1-2 0V14.5H7.2a1 1 0 0 1-.7-1.7l2.3-2.6L9.6 5H9a1 1 0 0 1 0-2Z"
+          fill="currentColor"
+          stroke="none"
+        />
       )}
       {name === 'refresh' && (
         <>

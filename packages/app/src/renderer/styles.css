@@ -27,6 +27,98 @@
   --radius: 8px;
 
   /*
+   * One rhythm, five steps. Every gap and pad in the fleet list and the rails
+   * comes from here, so a row's height is arithmetic rather than a number that
+   * happened to look right — which is what the literals it replaced were.
+   *
+   * The list reads as three nested things: marks inside a row (`s1`/`s2`), rows
+   * inside a group (`s3`), and cards inside the list (`s5`). `s5` is larger than
+   * any gap inside a card on purpose: a card only reads as one unit while the
+   * space around it beats the space within it.
+   */
+  --s1: 2px;
+  --s2: 4px;
+  --s3: 8px;
+  --s4: 12px;
+  --s5: 16px;
+
+  /*
+   * Three sizes, because there are three things being said: what a card is
+   * (`head`), what it holds (`body`), and the labels over a group (`micro`).
+   * A fourth was what let the old scale drift across eight values.
+   */
+  --fs-micro: 10px;
+  --fs-body: 11px;
+  --fs-head: 13px;
+
+  /*
+   * Marks are shapes, and were the reason the type scale kept growing: `●` at
+   * 9px, `⋮` at 13, an icon at 12 are not four opinions about text, they are
+   * four glyphs sized to look right. Named separately so they stop being
+   * counted as type — and set to the same two values the type scale uses, so
+   * there are three sizes on screen and not five.
+   */
+  --mark-sm: 10px;
+  --mark-md: 13px;
+
+  /*
+   * The trailing column, outside the gutter every row's value ends on.
+   *
+   * A row says one thing about itself at its right edge — `clean`, `up 22h6m`,
+   * `changes requested`, `2 repos · 1 dirty` — and those four used to end at
+   * four different x, because each row let whatever affordances follow decide
+   * where its value stopped. The affordances live in a column of their own now
+   * and the values all end where it begins.
+   *
+   * Sized to the widest set it ever holds, which is the two controls on a title
+   * row, and not a round number picked for comfort: at 64px the 28px nobody
+   * used read as a wide empty margin down the right of the panel rather than as
+   * a gutter, and in 738px that is width the long branch names wanted.
+   */
+  --act: 40px;
+
+  /*
+   * The gutter every row inside a card lines up on, which is where the card's
+   * title starts: `--s4` of padding, `--dot`, `--s3` of gap. It has to
+   * be one name because it is derived — three rules used to hardcode 22px, a
+   * number that included the `●` glyph's own font-dependent width and so was
+   * only ever approximately true.
+   */
+  --indent: 32px;
+
+  /*
+   * The task mark's diameter.
+   *
+   * Measured off Linear's issue list, which is the reference: its status glyph
+   * is a shade larger than the ink height of the title beside it and about a
+   * third of the row's pitch — and it is the same size on a group heading as on
+   * a row. Ours was a `●` glyph at the small mark step, which renders a ring
+   * roughly half that, so the one mark carrying a task's whole state was the
+   * least visible thing on its row.
+   */
+  --dot: 12px;
+
+  /*
+   * The mark drawn inside that column, which is not the same number.
+   *
+   * `--dot` is the layout step `--indent` is built from, so it cannot be tuned
+   * by eye without moving every row's text rail with it. This is the ring's own
+   * diameter, free to be adjusted for how it looks beside 13px of mono.
+   */
+  --dot-mark: 11px;
+
+  /*
+   * The leading mark and the gap after it, as one step.
+   *
+   * Each kind of row starts with a different mark — a dot on a title, a status
+   * dot on an agent, a checks glyph on a pull request, nothing at all on a
+   * worktree — and each mark used to set where that row's text began, so one
+   * group had four left edges. The marks hang in the `--indent` gutter now and
+   * every row's first word starts on the same rail.
+   */
+  --mark-col: 14px;
+
+  /*
    * The two rails and the face they are set in. Named roles, not new colours.
    *
    * `--rail` is the window's own background, deliberately. A lifted fill was
@@ -43,8 +135,24 @@
   /* `edge` is what the panel already draws every seam with — the line between a
      surface and what sits on it. A rail is no exception. */
   --rail-line: var(--edge);
-  /* The terminal's face. `theme.ts` argues this panel has to be the same colours
-     as the editor beside it; the rails take the argument one step further. */
+  /*
+   * The terminal's face. `theme.ts` argues this panel has to be the same colours
+   * as the editor beside it; the rails take the argument one step further.
+   *
+   * Two faces, with a job each, and the split is the panel's one typographic
+   * rule: **mono is for machine strings, the body sans is for English.** A slug,
+   * a worktree name, a branch, a path, `#3782`, `claude`, a duration — anything
+   * you would type at a shell or compare character by character — is mono.
+   * Anything a person wrote to be read — `changes requested`, `4 dirty`,
+   * `no agents · 1 pane`, every control label — is sans.
+   *
+   * Before this the two were assigned by whatever each rule happened to
+   * declare: the group heading was the platform UI sans while the worktree name
+   * under it was mono, and `#3782` was sans beside a mono branch. Two faces
+   * mixed at random read as one of them being a mistake. Two faces that mean
+   * something are how you tell an identifier from a sentence without reading
+   * either.
+   */
   --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
@@ -185,15 +293,15 @@ button {
    * a renderer that never reported one looks exactly as it did before.
    */
   height: 40px;
-  padding: 0 8px 0 calc(78px / var(--zoom, 1));
-  gap: 8px;
+  padding: 0 var(--s3) 0 calc(78px / var(--zoom, 1));
+  gap: var(--s3);
   border-bottom: 1px solid var(--rail-line);
 }
 
 .rail-bottom {
-  min-height: 26px;
-  padding: 0 10px;
-  gap: 10px;
+  min-height: 28px;
+  padding: 0 var(--s4);
+  gap: var(--s4);
   border-top: 1px solid var(--rail-line);
 }
 
@@ -251,7 +359,7 @@ button {
   gap: 5px;
   padding: 0 9px;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-body);
   font-weight: 500;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -330,11 +438,25 @@ button {
   color: var(--accent);
 }
 
+/*
+ * The window's own controls, grouped away from the tabs.
+ *
+ * They act on the panel; the tabs act on what is in it. A hairline and real
+ * space is what says so — at `gap: 1px` they read as a fourth, fifth and sixth
+ * tab that had lost their labels.
+ *
+ * Short of the rail's full height on purpose: a full-bleed divider reads as a
+ * second rail edge against the one already under it.
+ */
 .rail-controls {
   display: flex;
   align-items: center;
-  gap: 1px;
+  gap: var(--s3);
   flex: none;
+  align-self: center;
+  height: 22px;
+  padding-left: var(--s4);
+  border-left: 1px solid var(--rail-line);
 }
 
 .icon-button {
@@ -343,7 +465,7 @@ button {
   width: 24px;
   height: 24px;
   border-radius: 5px;
-  font-size: 13px;
+  font-size: var(--mark-md);
   color: var(--dim);
   flex: none;
 }
@@ -399,10 +521,15 @@ button {
 .body {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: var(--s3);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  /*
+   * `--s3`, not `--s5`. The larger gap existed to beat a card's internal gaps so
+   * the card read as one unit; with the shell gone a hairline does that, and the
+   * list wants the width back for density.
+   */
+  gap: var(--s3);
 }
 
 /*
@@ -423,27 +550,73 @@ button {
   color: var(--dim);
   text-align: center;
   padding: 32px 16px;
-  font-size: 12px;
+  font-size: var(--fs-body);
 }
 
 /* --- session card -------------------------------------------------------- */
 
+/*
+ * A task is a group of rows, not a card.
+ *
+ * It was a filled, bordered, rounded panel, and six of them stacked up read as
+ * six identical blocks: an outer shell, a state rail, a repo band, a pull
+ * request band and a footer band, five surfaces a few percent apart, which the
+ * eye reads as banding rather than as hierarchy. The list is one sheet now, the
+ * groups are a hairline apart, and the only thing with a fill of its own is the
+ * one group that is asking for you.
+ *
+ * The state that used to be the rail moved onto the dot beside the title, where
+ * it is one mark in one column instead of a stripe down a shape that no longer
+ * exists. See `.attached-dot`.
+ */
 .card {
-  background: var(--panel);
-  border: 1px solid var(--edge);
-  border-radius: var(--radius);
-  overflow: hidden;
+  border-top: 1px solid var(--edge);
+  padding-top: var(--s3);
 }
 
+/* The rail already draws the line above the first group. */
+.body > .card:first-child,
+.hidden-group > .card:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+/*
+ * The one group with a fill: something here is waiting on you and getting
+ * nothing done meanwhile. Bled to the full width of the list rather than inset,
+ * so it reads as a band across the sheet and not as the card this stopped being.
+ */
 .card.attention {
-  border-color: color-mix(in srgb, var(--danger) 55%, var(--edge));
+  background: color-mix(in srgb, var(--danger) 7%, transparent);
+}
+
+/*
+ * A task with no tmux session.
+ *
+ * The hollow dot on the title row is the whole of it now. It used to be a dashed
+ * border, which needs a border — and a dashed rectangle was the loudest thing in
+ * a list this quiet, for the least urgent fact on it.
+ */
+.card.dormant .session-name {
+  color: var(--soft);
 }
 
 .card-head {
   display: flex;
   align-items: baseline;
-  gap: 6px;
-  padding: 8px 10px;
+  gap: var(--s3);
+  /*
+   * `--s2` vertically, with the height set by the floor below.
+   *
+   * At `--s3` the heading came out a third taller than the rows under it, where
+   * Linear's group header is if anything a shade shorter than its own rows — a
+   * heading earns its weight from type and a mark, not from being the tallest
+   * band on screen. 32 against the rows' 28 is one step of the scale, which is
+   * all the distinction it needs.
+   */
+  padding: var(--s2) var(--s4);
+  min-height: 32px;
+  position: relative;
   /* Without this, flex children refuse to shrink below their content width and
      long branch names push straight through the card's right edge. */
   min-width: 0;
@@ -457,8 +630,18 @@ button {
   cursor: pointer;
 }
 
+/*
+ * Mixed against `transparent`, never against `--panel`.
+ *
+ * `--panel` is opaque, so an `--edge`/`--panel` mix re-solidified the row: on a
+ * thinned panel the one line you were pointing at became a solid grey bar with
+ * the desktop showing through everything around it. A few percent of `--text`
+ * over whatever is behind the row lifts it by the same amount at any
+ * `bgOpacity`, which is what the agent-row fill and the window's own edge
+ * already do.
+ */
 .card-head:hover {
-  background: color-mix(in srgb, var(--edge) 45%, var(--panel));
+  background: color-mix(in srgb, var(--text) 5%, transparent);
 }
 
 .card-head:hover .session-name {
@@ -467,21 +650,39 @@ button {
   text-underline-offset: 2px;
 }
 
-/* Second line, so the longest string on the card stops competing for the first. */
+/*
+ * A session's branch, on its own line under the name.
+ *
+ * The session card only. A *task's* branch is not shown here at all: by this
+ * repo's convention the task's slug is its branch minus the type prefix, so the
+ * line repeated the title above it verbatim and spent a row doing it — the
+ * prefix now lives in the head's tooltip. A pull request's session name is
+ * unrelated to its branch, which is why this survives for that one.
+ *
+ * Secondary grey and not `--branch`: in this panel rose means something is
+ * wrong, and it cannot mean that and also mean "identifier" two pixels away
+ * from a real `changes requested`.
+ */
 .branch-line {
-  padding: 0 10px 6px 22px;
+  padding: 0 var(--s4) var(--s3) var(--indent);
   font-family: var(--mono);
-  font-size: 10.5px;
-  color: var(--branch);
+  font-size: var(--fs-micro);
+  color: var(--soft);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+/*
+ * Where a plain session is, beside its name rather than out in the gutter.
+ *
+ * The right edge of every row means one thing — what this row needs — and a
+ * path is not that; it is what the row *is*. Sat out there it put a sixth
+ * unrelated semantic on the one edge the eye is trying to learn.
+ */
 .head-path {
-  margin-left: auto;
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--fs-micro);
   color: var(--dim);
   white-space: nowrap;
   overflow: hidden;
@@ -496,12 +697,38 @@ button {
   }
 }
 
+/*
+ * The card's one primary-tier string; declared rather than inherited, so the
+ * three tiers are readable in the stylesheet and not just on screen.
+ *
+ * Mono, like every other identifier in the panel — see `Slug.tsx` for why the
+ * proportional face went. The separation it used to get from being a different
+ * family it now gets from size, weight, ink and the tracking below: mono sets
+ * loose at this size, and pulling it in is what stops a 43-character slug
+ * reading as a wall.
+ */
 .session-name {
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--fs-head);
   font-weight: 600;
+  letter-spacing: -0.02em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 0 1 auto;
+}
+
+/*
+ * The hyphens in a slug, a tier below the words they separate.
+ *
+ * Not decoration: it is what turns one 43-character token into the four or five
+ * words you are actually reading. `400` as well as dimmer, so the separator
+ * thins while the words stay at the title's weight.
+ */
+.slug-sep {
+  color: var(--dim);
+  font-weight: 400;
 }
 
 /*
@@ -514,10 +741,16 @@ button {
  */
 .pin-mark {
   flex: none;
-  font-size: 9px;
+  /* `.icon` draws at `1em`, so this is the pin's size. `--mark-md`, because at
+     the smaller step a 10px pin beside a 13px title read as a speck rather than
+     as a mark that means something. */
+  font-size: var(--mark-md);
   line-height: 1;
-  /* The emoji renders high in its box; nudge it onto the text's baseline. */
-  transform: translateY(1px);
+  /* Centred rather than nudged: `.card-head` aligns on the baseline and an SVG
+     has none of its own, so it would otherwise hang off its own bottom edge. The
+     `translateY` that used to be here existed only because the emoji it replaced
+     rendered high in its box. */
+  align-self: center;
   opacity: 0.8;
 }
 
@@ -542,25 +775,12 @@ button {
   position: relative;
   flex: none;
   align-self: center;
-  /*
-   * The trailing edge is this control's, and only one element in a flex row may
-   * claim the free space: with two `auto` margins the space is split between
-   * them and the path drifts into the middle. So the metadata keeps its `auto`
-   * when there is any (it is already right-aligned, and this then sits at the end
-   * of that group), and this takes the `auto` when the head has none.
-   */
-  margin-left: auto;
-}
-
-.card-head:has(.head-path) .reorder,
-.card-head:has(.repo-summary) .reorder {
-  margin-left: 2px;
 }
 
 .reorder-open {
   padding: 2px 5px;
   border-radius: 4px;
-  font-size: 13px;
+  font-size: var(--mark-md);
   line-height: 1;
   color: var(--dim);
 }
@@ -602,10 +822,6 @@ button {
   box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
 }
 
-.card:has(.reorder-menu) {
-  overflow: visible;
-}
-
 .reorder-slot {
   font-size: 10px;
   text-transform: uppercase;
@@ -639,30 +855,115 @@ button {
   border-top: 1px solid var(--edge);
 }
 
+/*
+ * One mark, two channels: what this task's state is, and whether you are in it.
+ *
+ * Colour is the state — the rank `worstState` decides, which used to be a stripe
+ * down the left of a card that no longer exists. Shape is attachment: `●` when a
+ * client is attached to the session, `○` when nothing is. Two facts on one glyph
+ * in one column, rather than a coloured dot beside a coloured rail saying
+ * overlapping things.
+ */
 .attached-dot {
-  color: var(--ok);
-  font-size: 9px;
+  /*
+   * A column of `--dot`, with the ring drawn inside it.
+   *
+   * Split in two because the column is structural — `--indent`, and therefore
+   * every row's text rail, is derived from it — while the ring is optical.
+   */
+  width: var(--dot);
+  height: var(--dot);
+  flex: none;
   align-self: center;
+  display: grid;
+  place-items: center;
+  color: var(--dim);
+  /*
+   * Centred on the line box and left there.
+   *
+   * A line box reserves room under the baseline for descenders that a row of
+   * lowercase kebab-case mostly never uses, so the arithmetic centre can read a
+   * shade low — but that is at 12px. At `--dot-mark`'s 11px the ring sits right
+   * where centring puts it, and a `translateY(-1px)` on top of it read as high.
+   * Left as a note rather than a nudge: if the mark's size changes again, check
+   * this before adding one back.
+   */
 }
-.attached-dot.detached {
+
+/*
+ * Drawn, not typed. A `○`/`●` pair rides the font's own metrics — the two
+ * glyphs are different sizes as well as different shapes, and neither is the
+ * size you asked for. A bordered box is exactly `--dot-mark` across in both
+ * states, and the ring holds its weight whatever the theme does to the ink.
+ *
+ * The fill is clipped to the content box, so attached reads as a ring with a
+ * dot inside it and detached as the ring alone. The same mark either way, which
+ * is the point: swapping one glyph for another read as two marks.
+ */
+.attached-dot::before {
+  content: '';
+  box-sizing: border-box;
+  width: var(--dot-mark);
+  height: var(--dot-mark);
+  border: 1.75px solid currentColor;
+  border-radius: 50%;
+  padding: 1.75px;
+  background-color: currentColor;
+  background-clip: content-box;
+}
+
+.attached-dot.detached::before {
+  background-color: transparent;
+}
+
+.attached-dot.sev-danger {
+  color: var(--danger);
+}
+.attached-dot.sev-warn {
+  color: var(--warn);
+}
+.attached-dot.sev-ok {
+  color: var(--ok);
+}
+/* Nothing to report: present, not highlighted. Dimmer again when detached, which
+   the hollow glyph is already saying — the two agree rather than compete. */
+.attached-dot.sev-quiet {
+  color: var(--soft);
+}
+.attached-dot.sev-quiet.detached {
   color: var(--dim);
 }
 
+/*
+ * A marker, not a chip.
+ *
+ * The filled, rounded patch made `tmux` — an inert label on the least urgent
+ * row in the fleet — the most solid object on screen, louder than the agent
+ * that was running. `.badge.pr` keeps the fill, because `#3788` is an
+ * identifier you click; the rest are words, and words can just be words.
+ */
 .badge {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--edge);
+  font-size: var(--fs-micro);
+  padding: 0;
   color: var(--soft);
   white-space: nowrap;
   flex: none;
 }
+/*
+ * Quiet, because a marker here only ever marks the exception.
+ *
+ * `task` used to be on every card in the fleet, in accent, labelling the rule
+ * rather than a departure from it — the cards that are *not* tasks are the ones
+ * worth a word, and they are the rare ones. What is left in this slot is that
+ * word, so it is set at the weight of resting furniture and not at the weight of
+ * a state. `.badge.pr` keeps its own treatment: `#3788` is an identifier.
+ */
 .badge.kind {
-  color: var(--accent);
+  color: var(--dim);
 }
 
 .badge.branch {
-  color: var(--branch);
+  color: var(--soft);
   font-family: var(--mono);
   /* Branch names are the longest thing in a card head; let this one shrink. */
   flex: 0 1 auto;
@@ -672,6 +973,9 @@ button {
   white-space: nowrap;
 }
 .badge.pr {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--edge);
   color: var(--warn);
 }
 
@@ -695,15 +999,66 @@ button {
   }
 }
 
+/*
+ * A group's actions, laid over its own metadata.
+ *
+ * They were a row of their own at the foot of every group, revealed on hover —
+ * which meant every group in the fleet reserved a row of height to show
+ * nothing, and six of those is most of a screenful of reserved emptiness. They
+ * are absolutely positioned in the head instead: the space is space the head
+ * already had, so revealing them moves nothing, and what they cover is the
+ * `2 repos · 1 dirty` summary — the one thing on the row you do not need while
+ * you are acting on the group.
+ *
+ * Stopping short of `--act` keeps them clear of the head's own two controls,
+ * which stay where they are on every other row.
+ */
 .card-actions {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: calc(var(--s4) + var(--act));
   display: flex;
-  gap: 2px;
-  padding: 0 6px 6px;
+  align-items: center;
+  gap: var(--s1);
+  opacity: 0;
+  transition: opacity 90ms ease-out;
+  /* Over the summary, so it is the thing that gives way. */
+  z-index: 1;
+}
+
+.card:hover .card-actions,
+.card:focus-within .card-actions,
+/* An armed `archive — sure?` must not fade out from under the pointer. */
+.card:has(.card-actions .chip.confirming) .card-actions {
+  opacity: 1;
+}
+
+/* The summary steps aside rather than moving: same row, same height, nothing
+   reflows on the way in or out. */
+.card:hover .repo-summary,
+.card:hover .head-path,
+.card:focus-within .repo-summary,
+.card:focus-within .head-path {
+  opacity: 0;
+}
+
+.repo-summary,
+.head-path {
+  transition: opacity 90ms ease-out;
+}
+
+/* The destructive one, set apart — the auto-margin that used to do it only
+   works in a row that spans the group. */
+.card-actions .chip.danger {
+  margin-left: var(--s3);
 }
 
 .chip {
-  font-size: 11px;
-  padding: 3px 8px;
+  font-size: var(--fs-body);
+  /* `--s1` vertical, so a row of chips is 28px like every other row rather than
+     the 30px its own padding used to make it. */
+  padding: var(--s1) var(--s3);
   border-radius: 5px;
   color: var(--dim);
   /* Squeezed chips were being drawn on top of the row's text. */
@@ -719,19 +1074,160 @@ button {
   color: var(--danger);
 }
 
+/*
+ * The trailing column: every affordance that follows a row's value.
+ *
+ * Fixed width and right-aligned inside it, so `×` on an agent row, `↗` on a
+ * pull request and the two header buttons all occupy the same strip — and the
+ * value in front of each therefore ends at the same x. Before this, each row's
+ * value stopped wherever that row's own controls happened to begin, which put
+ * `clean`, `up 22h6m`, `changes requested` and `2 repos · 1 dirty` on four
+ * different right edges down a panel 738px wide.
+ */
+/*
+ * At rest the affordance column is empty, and that is the point.
+ *
+ * Every row's *value* already ended on one gutter, but the controls after it —
+ * `↗` on a pull request, `×` on an agent, the two buttons on a title — sat
+ * further out, and only some rows have them. So the rightmost ink alternated
+ * between two edges down the list, which reads as a ragged right margin however
+ * well the values line up. Hidden until the row is pointed at or focused, the
+ * list has one right edge; pointed at, it has the controls exactly where they
+ * always were.
+ */
+.row-act > * {
+  opacity: 0;
+  transition: opacity 90ms ease-out;
+}
+.card-head:hover .row-act > *,
+.agent:hover .row-act > *,
+.task-pr:hover .row-act > *,
+.row-act:focus-within > *,
+/* An armed two-step confirm must not fade out from under the pointer. */
+.row-act > .confirming,
+/* The pull-request and history tabs use the same column — without this their
+   controls would be hidden with nothing able to reveal them. */
+.pr:hover .row-act > * {
+  opacity: 1;
+}
+
+/*
+ * In those two tabs the column sizes to its content instead.
+ *
+ * There the trailing controls are worded chips — `focus`, `mark deployed` — not
+ * the 14px glyphs a fleet row carries, so the fixed `--act` width would crush
+ * them. Nothing on those rows sits at a trailing value edge for the column to
+ * line up with, so there is nothing to hold it to a fixed width.
+ */
+.pr-top .row-act {
+  flex: 0 0 auto;
+}
+
+.row-act {
+  flex: 0 0 var(--act);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s1);
+  /*
+   * Only one element in a flex row may claim the free space: with two `auto`
+   * margins it is split between them and the value drifts into the middle. So
+   * the value keeps the `auto` wherever a row has one — that is what puts it on
+   * the gutter, with this sitting at the end of it — and this takes the `auto`
+   * only on a head that has no metadata to push.
+   */
+  margin-left: auto;
+}
+
+.card-head:has(.head-path) .row-act,
+.card-head:has(.repo-summary) .row-act,
+/* These rows are pushed by a `flex: 1` sibling instead, which is the same
+   arrangement by another route. */
+.agent .row-act,
+.task-pr .row-act {
+  margin-left: 0;
+}
+
 /* --- agent row ----------------------------------------------------------- */
 
 .agents {
-  border-top: 1px solid var(--edge);
+  /* The 8px inside the seam — a group of rows is spaced from the group above it,
+     not from the card's own edge. */
+  padding: var(--s3) 0;
 }
 
 .agent {
-  padding: 6px 10px;
+  /* Pulled back by the mark column, so `cursor`/`claude` starts on the same
+     rail as a worktree name rather than a mark's width to the right of it. */
+  padding: var(--s2) var(--s4) var(--s2) calc(var(--indent) - var(--mark-col));
   display: flex;
   align-items: center;
-  gap: 7px;
-  font-size: 12px;
+  gap: var(--s3);
+  font-size: var(--fs-body);
+  /*
+   * The row height, set rather than added up. `--fs-body` at the body's 1.45
+   * line-height is 15.95px, so padding alone lands on 24 and reaching 28 would
+   * mean going back to the odd literals this scale replaced. A floor plus the
+   * `center` above is exact and does not move when the face does.
+   *
+   * 28 and not 24: Linear's list runs at about a third more than its own ink
+   * height, and 24 was tighter than that. A panel you glance at fifty times a
+   * day still has to be legible at a glance.
+   */
+  min-height: 28px;
   min-width: 0;
+}
+
+/*
+ * The live rows, lifted off the card.
+ *
+ * An agent row is the only row on a card where something is actually happening,
+ * and it used to sit at the same value and the same indent as a static worktree
+ * path. A 3% lift is enough to read as a different kind of thing without
+ * becoming a second surface.
+ *
+ * Mixed against `transparent`, not against `--panel`: a `--panel`-based mix
+ * would re-solidify the row, so at `bgOpacity: 0.7` the one row on the card
+ * would be opaque while everything around it thinned. Same technique as the
+ * window's own edge on `.app`.
+ *
+ * Scoped to a card's groups rather than set on `.agent`, because in the pane and
+ * in App's orphan card these rows are the *only* content — a card whose entire
+ * interior is 3% lighter than itself reads as a rendering artifact, not as a
+ * distinction.
+ */
+/* `:has(.status-dot)` so the `no agents · 1 pane` empty state is left flat: the
+   lift means "there is an agent on this row", and that row is saying there is
+   not one. */
+.agents .agent:has(.status-dot),
+.task-repos .agent:has(.status-dot) {
+  background: color-mix(in srgb, var(--text) 3%, transparent);
+}
+
+/*
+ * An agent inside a worktree, indented under it.
+ *
+ * The group's row order is not fixed and must not be: an agent at the task root
+ * comes before the worktrees, an agent *in* a worktree comes after the row for
+ * that worktree, and which of the two it is is a real fact about where it is
+ * working. Unindented, the two cases looked like the same row appearing in two
+ * different places — an emergent layout rather than a designed one. One step in
+ * says whose it is.
+ */
+.task-repos .agent {
+  padding-left: calc(var(--indent) + var(--s3) - var(--mark-col));
+}
+
+/*
+ * A row with no mark still owes the mark column.
+ *
+ * `no agents · 1 pane` has no status dot to put in the gutter, so the pull-back
+ * that lands every other row's first word on the rail was landing this one a
+ * mark's width to the left of it — the only row in the panel starting at its
+ * own edge.
+ */
+.agent:not(:has(.status-dot)) {
+  padding-left: var(--indent);
 }
 
 .agent.clickable {
@@ -739,22 +1235,46 @@ button {
 }
 
 .agent.clickable:hover {
-  background: color-mix(in srgb, var(--edge) 45%, var(--panel));
+  background: color-mix(in srgb, var(--text) 5%, transparent);
 }
 
-.agent + .agent {
-  border-top: 1px solid color-mix(in srgb, var(--edge) 50%, var(--panel));
-}
-
+/*
+ * No line between rows inside a group.
+ *
+ * These were hairlines against a card fill, where they read as the divisions of
+ * one object. On the flat list they are the only lines left besides the one
+ * separating the groups, so they compete with it — a rule under a single repo
+ * row reads as a group boundary that isn't there. The rows are 24px apart on a
+ * grid and that is enough to tell them apart; the one line that means something
+ * is the one between tasks.
+ */
 .status-dot {
-  width: 7px;
-  height: 7px;
+  /* 6px and not 7, so the mark plus the row's `--s3` gap is exactly
+     `--mark-col` and the text after it lands on the rail. */
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   flex: none;
 }
 .status-working {
   background: var(--ok);
   animation: pulse 1.6s ease-in-out infinite;
+}
+
+/*
+ * The one row where something is happening, given the weight to match.
+ *
+ * A 3% lift and a dot the same size as five idle ones was the quietest
+ * treatment in the panel for the only fact on it that is changing. The fill is
+ * the accent at low alpha and the tool name takes the accent outright, so the
+ * live row is what the eye lands on first.
+ */
+.agents .agent:has(.status-working),
+.task-repos .agent:has(.status-working) {
+  background: color-mix(in srgb, var(--ok) 9%, transparent);
+}
+.agent:has(.status-working) .tool {
+  color: var(--ok);
 }
 .status-blocked_permission {
   background: var(--danger);
@@ -807,11 +1327,22 @@ button {
   .icon-button.spinning .icon {
     animation: none;
   }
+  /* The reveals themselves stay — they are what make the actions reachable.
+     Only the 90ms they fade over goes. */
+  .task-repo .chip,
+  .card-actions,
+  .repo-summary,
+  .head-path,
+  .row-act > * {
+    transition: none;
+  }
 }
 
 .tool {
+  /* The name of a binary you launch, so mono. */
+  font-family: var(--mono);
   font-weight: 600;
-  font-size: 11px;
+  font-size: var(--fs-body);
   flex: none;
 }
 .tool-claude {
@@ -829,7 +1360,7 @@ button {
 
 .activity {
   color: var(--soft);
-  font-size: 11px;
+  font-size: var(--fs-body);
   font-family: var(--mono);
   white-space: nowrap;
   overflow: hidden;
@@ -840,14 +1371,28 @@ button {
 
 .since {
   color: var(--dim);
-  font-size: 11px;
+  /* Measured machine data, and mono is what makes a column of durations stack
+     under each other rather than merely end together. */
+  font-family: var(--mono);
+  /* `--fs-micro`, like `clean` and the repo summary: everything in the trailing
+     gutter is metadata about its row, so it is all one step below the row. */
+  font-size: var(--fs-micro);
   font-variant-numeric: tabular-nums;
   flex: none;
+  /*
+   * One column, right-aligned, so the ages down a card line up as a column
+   * instead of ending wherever the activity text left off. Sized for the
+   * `up 22h30m` form rather than for `4m` — `ageIsUptime` is what makes this
+   * wide, and `.activity` beside it is `flex: 1 1 auto`, so it absorbs whatever
+   * is reserved here.
+   */
+  min-width: 58px;
+  text-align: right;
 }
 
 .nested {
   color: var(--dim);
-  font-size: 10px;
+  font-size: var(--fs-micro);
   flex: none;
 }
 
@@ -860,7 +1405,7 @@ button {
  */
 .agent-where {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--fs-micro);
   color: var(--dim);
   white-space: nowrap;
   overflow: hidden;
@@ -877,15 +1422,10 @@ button {
 .agent-kill {
   flex: none;
   padding: 0 3px;
-  font-size: 13px;
+  font-size: var(--mark-md);
   line-height: 1;
   border-radius: 4px;
   color: var(--dim);
-  opacity: 0.45;
-}
-.agent:hover .agent-kill,
-.agent-kill:focus-visible {
-  opacity: 1;
 }
 .agent-kill:hover {
   background: color-mix(in srgb, var(--danger) 25%, var(--panel));
@@ -894,7 +1434,7 @@ button {
 .agent-kill.confirming {
   opacity: 1;
   /* Now a word, not a glyph — a second click must be a deliberate one. */
-  font-size: 10px;
+  font-size: var(--fs-micro);
   padding: 2px 6px;
   background: color-mix(in srgb, var(--danger) 22%, var(--panel));
   color: var(--danger);
@@ -907,7 +1447,7 @@ button {
 
 .subagents {
   color: var(--accent);
-  font-size: 10px;
+  font-size: var(--fs-micro);
   flex: none;
 }
 
@@ -919,7 +1459,7 @@ button {
   gap: 9px;
   min-width: 0;
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.03em;
   color: var(--dim);
 }
@@ -1167,45 +1707,92 @@ button {
 /* --- PR list ------------------------------------------------------------ */
 
 .section-title {
-  font-size: 11px;
+  font-size: var(--fs-body);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--dim);
-  margin: 4px 2px 0;
+  /* No vertical margin: `.body`'s own gap already spaces this from the group
+     above, and 4px on top of it put one hole in an otherwise even list.
+     Horizontally it sits on `--indent`, the rail every row's first word starts
+     on — at a group's outer edge instead, these list-level labels were the only
+     text in the panel hanging left of everything else. */
+  margin: 0 var(--indent);
 }
 
+/*
+ * A pull request, or an archived task, as a group of rows.
+ *
+ * The same object the fleet list is built from — see `.card`. These two tabs
+ * were still the bordered, filled, rounded cards the fleet list stopped being,
+ * so switching tabs switched design language: same app, same kind of list, two
+ * different ideas about what a row is. One sheet, hairline-separated groups, and
+ * the tabs now differ only in what they hold.
+ */
 .pr {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 7px 10px;
-  background: var(--panel);
-  border: 1px solid var(--edge);
-  border-radius: var(--radius);
+  gap: var(--s1);
+  padding: var(--s3) 0;
+  border-top: 1px solid var(--edge);
   min-width: 0;
+}
+
+.body > .pr:first-child {
+  border-top: none;
+  padding-top: 0;
 }
 
 .pr-top {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--s3);
+  /* The mark column hangs in the gutter, so `#3788` starts on the same rail as
+     every other row's first word — see `.task-pr`, which does this identically. */
+  padding: 0 var(--s4) 0 calc(var(--indent) - var(--mark-col));
+  min-height: 28px;
   min-width: 0;
+}
+
+/*
+ * An archived task has no mark to put in that column, so it owes the column.
+ *
+ * Without this the history tab's titles were the only rows in the app starting
+ * a mark's width left of the rail — the same slip the `no agents · 1 pane` row
+ * made, and worth a rule of its own because the next row type without a leading
+ * glyph will make it again.
+ */
+.pr-top:not(:has([class^='checks-'], [class^='deploy-'])) {
+  padding-left: var(--indent);
 }
 
 .pr-top > .checks-passing,
 .pr-top > .checks-failing,
 .pr-top > .checks-pending,
-.pr-top > .checks-none {
+.pr-top > .checks-none,
+.pr-top > [class^='deploy-'] {
   flex: none;
+  width: calc(var(--mark-col) - var(--s3));
+  text-align: center;
 }
 
+/* A passing check is the quiet default here too — see `.task-pr .checks-passing`. */
+.pr .checks-passing {
+  color: var(--dim);
+}
+
+/* Translucent, like every other row hover: an `--edge`/`--panel` mix turned the
+   row you were pointing at into a solid slab on a thinned panel. */
 .pr:hover {
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--edge));
+  background: color-mix(in srgb, var(--text) 5%, transparent);
 }
 
 .pr-number {
-  color: var(--dim);
-  font-size: 11px;
+  /* Secondary, like the branch beside it: `#3788` is what identifies the row
+     and what you say out loud, and it was set a tier below its own prefix. */
+  color: var(--soft);
+  /* An identifier, so mono — see the note on `--mono`. */
+  font-family: var(--mono);
+  font-size: var(--fs-body);
   font-variant-numeric: tabular-nums;
   flex: none;
 }
@@ -1215,8 +1802,13 @@ button {
   min-width: 0;
 }
 
+/*
+ * The row's primary string. Sans, because in the history tab it is a summary
+ * somebody wrote — `.ident` switches it to mono where it is a branch name
+ * instead, per the rule on `--mono`.
+ */
 .pr-title {
-  font-size: 12px;
+  font-size: var(--fs-body);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1224,12 +1816,19 @@ button {
   min-width: 0;
 }
 
+.pr-title.ident {
+  font-family: var(--mono);
+  color: var(--soft);
+}
+
 .pr-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px 8px;
+  gap: var(--s1) var(--s3);
   align-items: center;
-  font-size: 10px;
+  /* On the text rail, like the row above it. */
+  padding: 0 var(--s4) 0 var(--indent);
+  font-size: var(--fs-micro);
   color: var(--dim);
   min-width: 0;
 }
@@ -1364,8 +1963,11 @@ button {
 /*
  * A task with no tmux session.
  *
- * Dashed like the `+ new task` button it came from, which is the whole message:
- * the worktrees are real and on disk, but nothing is running in them yet. Not
+ * Dashed, this panel's mark for "real, but nothing running in it": the
+ * worktrees are on disk and no session is open on them. It used to be described
+ * as borrowed from the `+ new task` button, which is no longer a dashed
+ * anything — the mark now means only this, in the pane's empty sections and
+ * here, which is one meaning fewer than it had. Not
  * dimmed further than that — it is still a card you act on, and the actions on it
  * are the ones that make the session.
  */
@@ -1386,7 +1988,7 @@ button {
 .repo-summary {
   margin-left: auto;
   font-family: ui-monospace, SFMono-Regular, monospace;
-  font-size: 10.5px;
+  font-size: var(--fs-micro);
   color: var(--dim);
   white-space: nowrap;
   overflow: hidden;
@@ -1405,11 +2007,16 @@ button {
  * looked different would read as a different kind of thing.
  */
 .hidden-toggle {
-  /* `.section-title` gives it the type, the colour and the top margin; the base
-     `button` reset gives it the rest. Only the caret's row is new. */
+  /* `.section-title` gives it the type and the top margin; the base `button`
+     reset gives it the rest. Only the caret's row and the colour are new — a
+     live control, like `+ new task` beside it, is not set at hairline value. */
+  color: var(--soft);
   display: flex;
   align-items: center;
-  gap: 5px;
+  /* The caret takes the mark column and hangs in the gutter, so the label lands
+     on the same rail as every other row's first word. */
+  gap: var(--s2);
+  margin-left: calc(var(--indent) - var(--mark-col));
   text-align: left;
 }
 .hidden-toggle:hover {
@@ -1417,7 +2024,9 @@ button {
 }
 
 .hidden-caret {
-  font-size: 9px;
+  font-size: var(--mark-sm);
+  width: calc(var(--mark-col) - var(--s2));
+  text-align: center;
   /* Its own width, so the label does not shift when the caret turns. */
   width: 7px;
 }
@@ -1440,7 +2049,9 @@ button {
 .hidden-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  /* The list's own group gap: a hidden group is the same component, so the space
+     around it is the same too. */
+  gap: var(--s3);
   opacity: 0.66;
 }
 .hidden-group:hover {
@@ -1450,39 +2061,70 @@ button {
   flex-shrink: 0;
 }
 
+/*
+ * A control in the list, not a surface in it.
+ *
+ * It was a full-bleed dashed rectangle — the only dashed thing out here, and a
+ * border the width of the panel around the least urgent affordance on screen.
+ * `.chip`'s treatment instead, which is the right family: every other quiet
+ * action in a card is one of those, and this is the same kind of thing one level
+ * up. Auto-width from `flex-start`, so it takes the room its label needs.
+ */
+/*
+ * `--soft`, not `--dim`: this and the hidden disclosure are the only two
+ * navigation controls out here, and at the dim tier they were set to the same
+ * value as the hairlines between groups. A rule and a live control must not
+ * share a colour.
+ */
 .new-task {
-  padding: 7px 10px;
-  border-radius: var(--radius);
-  border: 1px dashed var(--edge);
-  color: var(--dim);
-  font-size: 12px;
+  align-self: flex-start;
+  padding: var(--s2) var(--s3);
+  /* On the text rail, like `.section-title` beside it — less the padding the
+     chip treatment carries, so the label lands on `--indent` and not the box. */
+  margin-left: calc(var(--indent) - var(--s3));
+  border-radius: 5px;
+  color: var(--soft);
+  font-size: var(--fs-body);
   text-align: left;
 }
 .new-task:hover {
-  border-color: var(--accent);
+  background: var(--edge);
   color: var(--text);
 }
 
 .task-repos {
-  border-top: 1px solid var(--edge);
+  padding: var(--s3) 0;
 }
 
 .task-repo {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 10px 5px 22px;
-  font-size: 11.5px;
+  gap: var(--s3);
+  /*
+   * The trailing column, held open by padding rather than by a `.row-act`: the
+   * three revealed chips are twice its width, so they stay in the flow and sit
+   * *before* the state token instead. That ordering is what puts `clean` on the
+   * same gutter as every other row's value, and it means the chips appear in
+   * space that was already empty — no overlap, and nothing moves.
+   */
+  /* `--s3` as well as the column: the rows with a `.row-act` also have the
+     row's own gap between their value and that column, so the reserve here has
+     to account for it or the state token lands 8px right of every other value. */
+  /* `--s1` vertically, not `--s2`: the mono name's own line box is a shade over
+     16px, so 4px of padding pushed the row to 24.5 and off the grid. At 2px the
+     `min-height` below is what sets the height, exactly. */
+  padding: var(--s1) calc(var(--s4) + var(--act) + var(--s3)) var(--s1) var(--indent);
+  font-size: var(--fs-body);
+  /* The 28px row floor — see `.agent`, which sets it for the same reason. */
+  min-height: 28px;
   min-width: 0;
-}
-
-.task-repo + .task-repo {
-  border-top: 1px solid color-mix(in srgb, var(--edge) 45%, var(--panel));
 }
 
 .task-repo-name {
   font-family: var(--mono);
-  color: var(--text);
+  /* Secondary: a worktree name is what the card holds, not what it is. The
+     title is the card's primary string and this was near-white beside it. */
+  color: var(--soft);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1492,19 +2134,19 @@ button {
 
 .clean {
   color: var(--dim);
-  font-size: 10.5px;
+  font-size: var(--fs-micro);
   flex: none;
 }
 .dirty {
   color: var(--warn);
-  font-size: 10.5px;
+  font-size: var(--fs-micro);
   flex: none;
 }
 
 /* Only shown when a repo has drifted off the task's branch, which is worth a warning. */
 .off-branch {
   color: var(--danger);
-  font-size: 10px;
+  font-size: var(--fs-micro);
   font-family: var(--mono);
   white-space: nowrap;
   overflow: hidden;
@@ -1520,9 +2162,37 @@ button {
  * dirty count, and must never be the thing your eye lands on first.
  */
 .task-repo .chip {
-  font-size: 10px;
+  font-size: var(--fs-micro);
   padding: 1px 5px;
   color: var(--dim);
+  /*
+   * Absent until you point at the row.
+   *
+   * Three of these on every worktree row was the heaviest thing in the list —
+   * a dozen identical action clusters carrying none of the information, all at
+   * the weight of the content beside them. They are still there, still in the
+   * tab order, and still exactly where they were; they just no longer compete
+   * with the state token for your eye.
+   *
+   * `opacity: 0` and not `.45`: the note on `.reorder-open` above is right that
+   * a half-transparent `--dim` glyph composites against the *desktop* here,
+   * because the card fill is a thinned `--panel`. Its other reason does not
+   * apply — this is a row, so the row is the hover target. And not
+   * `visibility: hidden`, which preserves the layout just as well but takes the
+   * chips out of the tab order, which is the one thing that must not happen.
+   */
+  opacity: 0;
+  transition: opacity 90ms ease-out;
+}
+.task-repo:hover .chip,
+.task-repo .chip:focus-visible,
+/* The whole set on any one of them, so tabbing along a row does not make the
+   chips wink in and out one at a time. */
+.task-repo:focus-within .chip,
+/* A `remove — sure?` is a live four-second window: it must not fade out from
+   under the pointer, and the two chips beside it must not collapse around it. */
+.task-repo:has(.chip.confirming) .chip {
+  opacity: 1;
 }
 .task-repo .chip:hover {
   color: var(--ok);
@@ -1544,13 +2214,12 @@ button {
  * object rather than as part of this one.
  */
 .task-prs {
-  border-top: 1px solid var(--edge);
-  padding: 4px 0 2px;
+  padding: var(--s3) 0;
 }
 
 .task-prs-head {
-  padding: 2px 10px 3px 22px;
-  font-size: 10px;
+  padding: 0 var(--s4) var(--s2) var(--indent);
+  font-size: var(--fs-micro);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--dim);
@@ -1559,15 +2228,30 @@ button {
 .task-pr {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 4px 10px 4px 22px;
-  font-size: 11.5px;
+  gap: var(--s3);
+  padding: var(--s2) var(--s4) var(--s2) calc(var(--indent) - var(--mark-col));
+  font-size: var(--fs-body);
+  /* The 28px row floor — see `.agent`, which sets it for the same reason. */
+  min-height: 28px;
   min-width: 0;
   cursor: pointer;
 }
 
 .task-pr:hover {
-  background: color-mix(in srgb, var(--edge) 35%, transparent);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+/*
+ * A passing check is the quiet default, so it is drawn as furniture.
+ *
+ * It was `--ok`, which put a teal tick an inch from `changes requested` on the
+ * same row — the data is right (checks passed; the review did not) but a green
+ * tick beside a rejection reads as a verdict, and two readers in a row took it
+ * for one. Failing and pending keep their colour, because those are the ones
+ * saying something.
+ */
+.task-pr .checks-passing {
+  color: var(--dim);
 }
 
 .task-pr > .checks-passing,
@@ -1575,6 +2259,10 @@ button {
 .task-pr > .checks-pending,
 .task-pr > .checks-none {
   flex: none;
+  /* The mark column, so `#3788` starts on the rail and the `N OPEN` label above
+     it lines up with the numbers it counts rather than with the row's edge. */
+  width: calc(var(--mark-col) - var(--s3));
+  text-align: center;
 }
 
 /*
@@ -1587,7 +2275,7 @@ button {
  */
 .task-pr-repo {
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: var(--fs-micro);
   padding: 0 4px;
   border: 1px solid var(--edge);
   border-radius: 3px;
@@ -1598,8 +2286,8 @@ button {
 
 .task-pr-title {
   font-family: var(--mono);
-  font-size: 10.5px;
-  color: var(--branch);
+  font-size: var(--fs-micro);
+  color: var(--soft);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1611,7 +2299,7 @@ button {
 .task-pr .review-CHANGES_REQUESTED,
 .task-pr .review-REVIEW_REQUIRED,
 .task-pr-flag {
-  font-size: 10px;
+  font-size: var(--fs-micro);
   white-space: nowrap;
   flex: none;
 }
@@ -1628,14 +2316,16 @@ button {
  */
 .task-pr-via {
   color: var(--dim);
-  font-size: 10px;
+  font-size: var(--fs-micro);
   flex: none;
 }
 
 /* Says the row opens GitHub. Not a button — the row itself is the target. */
+/* `--dim`, not `--edge`: a border colour used as ink is a fourth text tier by
+   the back door, and this row already reads as clickable from its hover. */
 .task-pr-open {
-  color: var(--edge);
-  font-size: 10px;
+  color: var(--dim);
+  font-size: var(--mark-sm);
   flex: none;
 }
 .task-pr:hover .task-pr-open {
@@ -1650,8 +2340,8 @@ button {
  */
 .task-notes {
   border-top: 1px solid var(--edge);
-  padding: 6px 10px 7px;
-  font-size: 11.5px;
+  padding: var(--s3) var(--s4);
+  font-size: var(--fs-body);
   line-height: 1.5;
   color: var(--soft);
   white-space: pre-wrap;
@@ -1696,7 +2386,7 @@ button {
 .task-notes-hint {
   margin-right: auto;
   color: var(--dim);
-  font-size: 10px;
+  font-size: var(--fs-micro);
 }
 
 /*
@@ -1782,7 +2472,7 @@ button {
   height: 19px;
   margin-left: 2px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: var(--mark-md);
   color: var(--dim);
 }
 
@@ -1873,6 +2563,7 @@ button {
 }
 
 .pane-slug {
+  font-family: var(--mono);
   font-size: 19px;
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -1900,7 +2591,7 @@ button {
 
 .pane-branch {
   font-size: 11.5px;
-  color: var(--branch);
+  color: var(--soft);
 }
 
 /*
@@ -1994,8 +2685,8 @@ button {
 /*
  * A section with nothing in it yet.
  *
- * Dashed, like the dormant card and the new-task strip — this panel's mark for
- * "real, not running". Kept rather than hidden: a section that vanished when
+ * Dashed, like the dormant card — this panel's mark for "real, not running".
+ * Kept rather than hidden: a section that vanished when
  * empty would make a page about one task change shape as the task progressed, and
  * the empty state is usually the one carrying the next thing to do.
  */
@@ -2177,8 +2868,8 @@ button {
   border-radius: 5px;
   color: var(--text);
   font: inherit;
-  font-size: 12px;
-  padding: 5px 8px;
+  font-size: var(--fs-body);
+  padding: var(--s2) var(--s3);
   outline: none;
   resize: vertical;
 }

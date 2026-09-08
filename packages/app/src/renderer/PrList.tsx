@@ -98,24 +98,33 @@ function PrRow({
           {CHECK_GLYPH[pr.checks ?? 'none']}
         </span>
         <span className="pr-number">#{pr.number}</span>
-        <div className="pr-title" title={pr.branch ? `${pr.title} · ${pr.branch}` : pr.title}>
+        {/* `ident`: under this repo's convention a pull request's title *is* its
+            branch, so it is set as the identifier it is. */}
+        <div className="pr-title ident" title={pr.branch ? `${pr.title} · ${pr.branch}` : pr.title}>
           {pr.title}
         </div>
-        <button className="chip" onClick={open} title={session ? 'focus its session' : 'create a worktree and session'}>
-          {session ? 'focus' : 'open'}
-        </button>
-        <button className="chip" onClick={() => void act({ kind: 'openExternal', url: pr.url })} title="open on GitHub">
-          ↗
-        </button>
+        <span className="row-act">
+          <button className="chip" onClick={open} title={session ? 'focus its session' : 'create a worktree and session'}>
+            {session ? 'focus' : 'open'}
+          </button>
+          <button className="chip" onClick={() => void act({ kind: 'openExternal', url: pr.url })} title="open on GitHub">
+            ↗
+          </button>
+        </span>
       </div>
       <div className="pr-meta">
         <span>{pr.repo}</span>
-        {pr.reviewDecision && (
-          <span className={`review-${pr.reviewDecision}`}>
-            {REVIEW_LABEL[pr.reviewDecision] ?? pr.reviewDecision}
-          </span>
+        {/* One state, not two — a draft has nobody asked yet, so GitHub's review
+            decision on one is an artifact. Same rule as `PrRow`. */}
+        {pr.isDraft ? (
+          <span>draft</span>
+        ) : (
+          pr.reviewDecision && (
+            <span className={`review-${pr.reviewDecision}`}>
+              {REVIEW_LABEL[pr.reviewDecision] ?? pr.reviewDecision}
+            </span>
+          )
         )}
-        {pr.isDraft && <span>draft</span>}
         <span>{relativeIso(pr.updatedAt)}</span>
         {/* A task's PRs share one head branch, so this recognises the whole set. */}
         {task && (
@@ -177,9 +186,10 @@ function MergedRow({
           {badge.glyph}
         </span>
         <span className="pr-number">#{pr.number}</span>
-        <div className="pr-title" title={pr.branch ? `${pr.title} · ${pr.branch}` : pr.title}>
+        <div className="pr-title ident" title={pr.branch ? `${pr.title} · ${pr.branch}` : pr.title}>
           {pr.title}
         </div>
+        <span className="row-act">
         <button
           className="chip"
           onClick={() => void act({ kind: 'openExternal', url: target })}
@@ -205,6 +215,7 @@ function MergedRow({
         >
           {done ? '↺' : 'mark deployed'}
         </button>
+        </span>
       </div>
       <div className="pr-meta">
         <span>{pr.repo}</span>

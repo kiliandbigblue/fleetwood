@@ -7,6 +7,7 @@ import { hasDriftedOffBranch } from '@fleetwood/core/naming';
 import { AddRepo } from './AddRepo.tsx';
 import { AgentRow } from './AgentRow.tsx';
 import { editorLabel, PrRow } from './TaskCard.tsx';
+import { Slug } from './Slug.tsx';
 import { TaskNotes } from './TaskNotes.tsx';
 import { send, tildify } from './api.ts';
 
@@ -243,9 +244,10 @@ export function TaskPane({
     <div className="pane">
       <div className="pane-head">
         <div className="pane-title">
-          <span className={`attached-dot${session && session.attached > 0 ? '' : ' detached'}`}>●</span>
-          <span className={`pane-slug${dormant ? ' dormant' : ''}`}>{task.slug}</span>
-          <span className="badge kind">task</span>
+          <span className={`attached-dot${session && session.attached > 0 ? '' : ' detached'}`} />
+          <span className={`pane-slug${dormant ? ' dormant' : ''}`}>
+            <Slug text={task.slug} />
+          </span>
         </div>
         <div className="pane-branch" title={task.branch}>
           {task.branch}
@@ -363,6 +365,7 @@ export function TaskPane({
                 key={`${pr.repo}#${pr.number}`}
                 pr={pr}
                 repoTag={repoTags[`${pr.repo}#${pr.number}`]}
+                slug={task.slug}
                 onResult={onResult}
               />
             ))}

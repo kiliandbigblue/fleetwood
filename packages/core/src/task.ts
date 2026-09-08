@@ -95,7 +95,7 @@ const SKILL_TREES = ['.agents/skills', '.claude/skills'] as const;
 
 // The naming rules live in a leaf module so the renderer can use the real ones
 // rather than a copy. Re-exported here because this is where callers look.
-export { branchToSlug, buildBranch, slugify, worktreeDirName } from './naming.ts';
+export { branchToSlug, buildBranch, slugify, worktreeDirName, worktreeShortName } from './naming.ts';
 
 export async function taskRoot(): Promise<string> {
   return (await loadConfig()).taskRoot;

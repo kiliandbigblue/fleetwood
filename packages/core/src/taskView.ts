@@ -149,3 +149,45 @@ export function prRepoTags(prs: TaskPr[]): Record<string, string> {
   }
   return tags;
 }
+
+/** How loudly a card has to ask for you, worst state first. */
+export type Severity = 'danger' | 'warn' | 'ok' | 'quiet';
+
+/**
+ * The one state a card is in, out of everything on it.
+ *
+ * The card already said all of this — `4 dirty` on one row, `changes requested`
+ * on another, `approved` on a third — each in its own words, at the far right of
+ * the row it belonged to. Which is fine once you are reading a card and useless
+ * for finding out which card to read: five of them stacked up read as five
+ * identical blocks. So this folds the lot into one rank, which the panel draws as
+ * a stripe down the card's left edge, and the words stay where they were for once
+ * you have arrived.
+ *
+ * The order is what you would do about it, not how bad it sounds. A blocked agent
+ * is first because it is the only thing here that is *waiting* on you and getting
+ * nothing done meanwhile. Failing checks and a rejected review come next: work
+ * has come back. Uncommitted changes are yours to lose, so they outrank an
+ * approval, which is merely a merge you have not got round to.
+ *
+ * `needsAttention` is a parameter because it is a fact about the session, not
+ * about the task — no arrangement of repos and pull requests can tell you an
+ * agent is stuck on a permission prompt.
+ */
+export function worstState(
+  repos: TaskRepo[],
+  prs: TaskPr[] | undefined,
+  needsAttention: boolean,
+): Severity {
+  if (needsAttention) return 'danger';
+  // `undefined` is the first `gh` search still being out, which is not the same
+  // claim as "this task has no pull requests" — an absent answer contributes
+  // nothing rather than confirming quiet.
+  const open = prs ?? [];
+  if (open.some((pr) => pr.reviewDecision === 'CHANGES_REQUESTED' || pr.checks === 'failing')) {
+    return 'danger';
+  }
+  if (repos.some((r) => r.dirty > 0)) return 'warn';
+  if (open.some((pr) => pr.reviewDecision === 'APPROVED')) return 'ok';
+  return 'quiet';
+}

@@ -121,6 +121,7 @@ function ArchivedRow({
           {entry.summary || entry.slug}
         </div>
         {entry.prs.length > 0 && (
+          <span className="row-act">
           <button
             className="chip"
             onClick={() => open(entry.prs[0]?.url as string)}
@@ -132,6 +133,7 @@ function ArchivedRow({
           >
             ↗ pr
           </button>
+          </span>
         )}
       </div>
 

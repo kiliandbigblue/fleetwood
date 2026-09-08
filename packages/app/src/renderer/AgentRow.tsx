@@ -119,6 +119,7 @@ export function AgentRow({ agent, where, onResult }: Props): React.JSX.Element {
             than one agent is in it. Two-step for the same reason `archive` is: an
             agent's context dies with it and there is no undo. Nothing to close on
             an agent that is already gone, so the control isn't there. */}
+        <span className="row-act">
         {agent.status !== 'gone' && (
           <button
             className={`agent-kill${confirmingKill ? ' confirming' : ''}`}
@@ -139,6 +140,7 @@ export function AgentRow({ agent, where, onResult }: Props): React.JSX.Element {
             {confirmingKill ? 'close — sure?' : '×'}
           </button>
         )}
+        </span>
       </div>
 
       {prompt && agent.pane && (

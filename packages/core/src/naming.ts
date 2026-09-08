@@ -74,3 +74,40 @@ export function hasDriftedOffBranch(dirName: string, branch: string | undefined,
   const slug = branchToSlug(branch);
   return !(dirName === slug || dirName.endsWith(`-${slug}`));
 }
+
+/**
+ * A worktree's name with the branch slug it was built from taken off it.
+ *
+ * The inverse of `worktreeDirName`, and only for display. That name is a repo
+ * and a branch together for good reasons, but on a task card the branch half is
+ * already the card's title, so every row reads the same words back:
+ * `atlas-ui-receive-receive-item-into-rebin-or-mono-item` under a card headed
+ * `receive-receive-item-into-rebin-or-mono-item`. What distinguishes one row
+ * from the next is the repo, and in a panel this narrow the distinguishing part
+ * was the part that ran out of room.
+ *
+ * The branch slug is tried before the task's, and that order is the whole
+ * subtlety: `worktreeDirName` names a directory after *its own* branch, which is
+ * the task's branch only until the work is stacked. On a stack the two diverge,
+ * and stripping the task slug would quietly strip nothing from exactly the names
+ * that are longest.
+ *
+ * Anything else is returned whole — a legacy worktree named after the repo
+ * alone, or a directory somebody renamed by hand. Never returns the empty
+ * string: a name is the only thing identifying the row.
+ */
+export function worktreeShortName(
+  dirName: string,
+  branch: string | undefined,
+  taskSlug: string,
+): string {
+  const candidates = [branch === undefined ? undefined : branchToSlug(branch), taskSlug];
+  for (const slug of candidates) {
+    if (slug === undefined || slug.length === 0) continue;
+    const suffix = `-${slug}`;
+    if (dirName.endsWith(suffix) && dirName.length > suffix.length) {
+      return dirName.slice(0, -suffix.length);
+    }
+  }
+  return dirName;
+}
