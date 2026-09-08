@@ -1981,24 +1981,6 @@ button {
 /* --- tasks --------------------------------------------------------------- */
 
 /*
- * A task with no tmux session.
- *
- * Dashed, this panel's mark for "real, but nothing running in it": the
- * worktrees are on disk and no session is open on them. It used to be described
- * as borrowed from the `+ new task` button, which is no longer a dashed
- * anything — the mark now means only this, in the pane's empty sections and
- * here, which is one meaning fewer than it had. Not
- * dimmed further than that — it is still a card you act on, and the actions on it
- * are the ones that make the session.
- */
-.card.dormant {
-  border-style: dashed;
-}
-.card.dormant .session-name {
-  color: var(--soft);
-}
-
-/*
  * The repo count in a task's header. The rows below it are always shown now —
  * this is a label, not a disclosure.
  *
@@ -2769,7 +2751,7 @@ button {
 /*
  * A section with nothing in it yet.
  *
- * Dashed, like the dormant card — this panel's mark for "real, not running".
+ * Dashed — this pane's mark for "real, not filled in yet".
  * Kept rather than hidden: a section that vanished when
  * empty would make a page about one task change shape as the task progressed, and
  * the empty state is usually the one carrying the next thing to do.
