@@ -118,7 +118,7 @@ function RepoRow({
             held by — a local holding the short form would eventually reach one
             of them, and the drift check would then never match anything. */}
         <span className="task-repo-name" title={repo.name}>
-          {worktreeShortName(repo.name, repo.branch, slug)}
+          {worktreeShortName(repo.name, slug)}
         </span>
         {/* Before the state token, not after it: the token is what has to land
             on the row gutter, and these are what used to push it off. */}

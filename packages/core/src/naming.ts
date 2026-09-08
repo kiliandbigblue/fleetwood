@@ -76,38 +76,27 @@ export function hasDriftedOffBranch(dirName: string, branch: string | undefined,
 }
 
 /**
- * A worktree's name with the branch slug it was built from taken off it.
+ * A worktree's name with the task's own slug taken off it, when it carries one.
  *
- * The inverse of `worktreeDirName`, and only for display. That name is a repo
- * and a branch together for good reasons, but on a task card the branch half is
- * already the card's title, so every row reads the same words back:
+ * On a plain task the directory is the repo and the task's branch together —
  * `atlas-ui-receive-receive-item-into-rebin-or-mono-item` under a card headed
- * `receive-receive-item-into-rebin-or-mono-item`. What distinguishes one row
- * from the next is the repo, and in a panel this narrow the distinguishing part
- * was the part that ran out of room.
+ * `receive-receive-item-into-rebin-or-mono-item` — so every row reads the same
+ * words back, and in a panel this narrow the distinguishing part is the part
+ * that runs out of room. The task slug is what the heading already says, so the
+ * task slug is what comes off.
  *
- * The branch slug is tried before the task's, and that order is the whole
- * subtlety: `worktreeDirName` names a directory after *its own* branch, which is
- * the task's branch only until the work is stacked. On a stack the two diverge,
- * and stripping the task slug would quietly strip nothing from exactly the names
- * that are longest.
+ * **Only** the task slug. A stack is several worktrees of one repo, each named
+ * for its *own* branch, and there the suffix is the entire distinction: strip it
+ * and a seven-worktree task reads `reflow`, `reflow`, `reflow`, `reflow`,
+ * `reflow` — five rows that are visibly the same and actually five different
+ * branches. That is worse than the repetition this function exists to remove,
+ * so a name that does not end in the task's slug is returned whole.
  *
- * Anything else is returned whole — a legacy worktree named after the repo
- * alone, or a directory somebody renamed by hand. Never returns the empty
- * string: a name is the only thing identifying the row.
+ * Never returns the empty string: a name is the only thing identifying the row.
  */
-export function worktreeShortName(
-  dirName: string,
-  branch: string | undefined,
-  taskSlug: string,
-): string {
-  const candidates = [branch === undefined ? undefined : branchToSlug(branch), taskSlug];
-  for (const slug of candidates) {
-    if (slug === undefined || slug.length === 0) continue;
-    const suffix = `-${slug}`;
-    if (dirName.endsWith(suffix) && dirName.length > suffix.length) {
-      return dirName.slice(0, -suffix.length);
-    }
-  }
-  return dirName;
+export function worktreeShortName(dirName: string, taskSlug: string): string {
+  if (taskSlug.length === 0) return dirName;
+  const suffix = `-${taskSlug}`;
+  if (!dirName.endsWith(suffix) || dirName.length === suffix.length) return dirName;
+  return dirName.slice(0, -suffix.length);
 }

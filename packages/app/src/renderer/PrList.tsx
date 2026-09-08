@@ -33,13 +33,13 @@ export const CHECK_GLYPH: Record<string, string> = {
  */
 const DEPLOY_BADGE: Record<DeployState, { glyph: string; label: string; hint: string }> = {
   built: {
-    glyph: '\u2b06',
+    glyph: '\u2191',
     label: 'image built \u00b7 deploy it',
     hint: 'the image is pushed and nothing deployed it \u2014 this one is on you',
   },
   building: { glyph: '\u25cd', label: 'building\u2026', hint: 'the image is still being built' },
   deploying: { glyph: '\u25cd', label: 'deploying\u2026', hint: 'a deploy is running' },
-  deployed: { glyph: '\u2714', label: 'deployed', hint: 'a deploy run succeeded \u2014 it is live' },
+  deployed: { glyph: '\u2713', label: 'deployed', hint: 'a deploy run succeeded \u2014 it is live' },
   checking: { glyph: '\u25cd', label: 'checks running', hint: 'tests and lint on the base branch' },
   waiting: {
     glyph: '\u25cc',
@@ -165,7 +165,7 @@ function MergedRow({
    */
   const badge = byHand
     ? {
-        glyph: '\u2714',
+        glyph: '\u2713',
         label: 'deployed by hand',
         hint: `you marked this deployed \u2014 CI reported: ${DEPLOY_BADGE[pr.deploy.state].label}`,
       }

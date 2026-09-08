@@ -1139,7 +1139,16 @@ button {
   margin-left: auto;
 }
 
-.card-head:has(.head-path) .row-act,
+/*
+ * `.repo-summary` only, not `.head-path`.
+ *
+ * The list here is the set of heads whose metadata claims the free space, so
+ * this control does not have to. `.head-path` used to be one of them, back when
+ * a plain session's path sat out in the trailing gutter; it moved beside the
+ * title (a path is what a row *is*, not what it needs) and gave up its `auto`
+ * margin doing so — which left a tmux row with nothing pushing anything, and
+ * the `⋮` parked mid-row wherever the path happened to end.
+ */
 .card-head:has(.repo-summary) .row-act,
 /* These rows are pushed by a `flex: 1` sibling instead, which is the same
    arrangement by another route. */
@@ -1749,6 +1758,10 @@ button {
   /* The mark column hangs in the gutter, so `#3788` starts on the same rail as
      every other row's first word — see `.task-pr`, which does this identically. */
   padding: 0 var(--s4) 0 calc(var(--indent) - var(--mark-col));
+  /* The row's own size, so the leading glyph is not a size larger than the text
+     it introduces — these inherited the 13px body face while their title sat at
+     `--fs-body`, which is what made the mark column look off. */
+  font-size: var(--fs-body);
   min-height: 28px;
   min-width: 0;
 }

@@ -90,38 +90,36 @@ test('real drift is still called out', () => {
   assert.equal(repoSummary(repos, 'fix/flow-labels'), '2 repos · 1 off-branch');
 });
 
-test('a worktree name drops the branch slug it was built from', () => {
+test('a worktree name drops the task slug the card heading already carries', () => {
   assert.equal(
     worktreeShortName(
       'atlas-ui-receive-receive-item-into-rebin-or-mono-item',
-      'feature/receive-receive-item-into-rebin-or-mono-item',
       'receive-receive-item-into-rebin-or-mono-item',
     ),
     'atlas-ui',
   );
 });
 
-test("a stack layer drops its own branch's slug, not the task's", () => {
-  // The whole reason the branch is tried first: a layer's directory is named for
-  // the layer, so stripping the task slug would strip nothing from exactly the
-  // names that are longest.
-  assert.equal(
-    worktreeShortName('reflow-orders-drop-b2b-flag', 'feature/orders-drop-b2b-flag', 'orders-dual-write'),
-    'reflow',
-  );
-});
-
-test('the task slug is the fallback when the branch could not be read', () => {
-  assert.equal(worktreeShortName('fleetwood-ui-refonte', undefined, 'ui-refonte'), 'fleetwood');
+test('a stack layer keeps the branch that tells it apart from its siblings', () => {
+  // Seven worktrees of `reflow` in one task, each on its own layer. Stripping
+  // the layer would render five rows that read identically and are not.
+  const layers = [
+    'reflow-orders-drop-b2b-flag',
+    'reflow-orders-backfill-order-type',
+    'reflow-orders-dual-write-order-type',
+  ];
+  const shown = layers.map((dir) => worktreeShortName(dir, 'orders-b2b-flag-migration'));
+  assert.deepEqual(shown, layers);
+  assert.equal(new Set(shown).size, layers.length, 'each layer stays distinguishable');
 });
 
 test('a name that claims no slug is left whole', () => {
   // A legacy worktree named after the repo alone, and a hand-renamed directory.
-  assert.equal(worktreeShortName('fleetwood', 'feature/ui-refonte', 'ui-refonte'), 'fleetwood');
-  assert.equal(worktreeShortName('scratch', 'feature/ui-refonte', 'ui-refonte'), 'scratch');
+  assert.equal(worktreeShortName('fleetwood', 'ui-refonte'), 'fleetwood');
+  assert.equal(worktreeShortName('scratch', 'ui-refonte'), 'scratch');
 });
 
 test('a name that is nothing but its slug keeps the name', () => {
   // Stripping would leave the row with no identifier at all.
-  assert.equal(worktreeShortName('-ui-refonte', 'feature/ui-refonte', 'ui-refonte'), '-ui-refonte');
+  assert.equal(worktreeShortName('-ui-refonte', 'ui-refonte'), '-ui-refonte');
 });
