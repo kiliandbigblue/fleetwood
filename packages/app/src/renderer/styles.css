@@ -2314,6 +2314,43 @@ button {
   flex: none;
 }
 
+/*
+ * The rung column: one fixed cell, held open on every row of a list that has a
+ * stack in it — including the rows that are not in the stack.
+ *
+ * Fixed, because a stack is a line: an indent that grows with depth staggers the
+ * repo tag and the branch name by a step per layer, and the branch names are the
+ * column you actually read down. Depth is already carried by the order, and the
+ * exact rung is in the row's tooltip.
+ *
+ * Held open on every row, because a cell that appears only on the layers is a
+ * ragged left edge everywhere else — the standalone rows sit a column to the left
+ * and the list reads as two lists.
+ *
+ * A cell rather than left padding on `.task-pr`: the pane sets its own padding
+ * below, and a rail built out of padding would have to be undone there.
+ */
+/*
+ * The number column, padded to the widest number in the list.
+ *
+ * `#3004` and `#10427` are a character apart, which puts every repo tag and branch
+ * name after them on a different left edge. The CLI has always padded this for the
+ * same reason; the panel got away with it until the rail gave the eye a column to
+ * follow. `ch` on a tabular-figure font is exactly one digit wide.
+ */
+.task-pr .pr-number {
+  min-width: var(--num-col, auto);
+  text-align: right;
+}
+
+.task-pr-rung {
+  flex: none;
+  width: var(--s3);
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  color: var(--dim);
+}
+
 .task-pr-title {
   font-family: var(--mono);
   font-size: var(--fs-micro);

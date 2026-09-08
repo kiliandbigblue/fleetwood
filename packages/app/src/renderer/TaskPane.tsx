@@ -2,11 +2,18 @@ import { useState } from 'react';
 import type { FleetSession, Task, TaskPr, TaskRepo } from '@fleetwood/core';
 // The leaf module: the barrel re-exports tmux and process scanning, which fail the
 // renderer bundle on `node:child_process`.
-import { baseFor, partitionAgents, prRepoTags, prSummary, repoSummary } from '@fleetwood/core/taskView';
+import {
+  baseFor,
+  groupPrStacks,
+  partitionAgents,
+  prRepoTags,
+  prSummary,
+  repoSummary,
+} from '@fleetwood/core/taskView';
 import { hasDriftedOffBranch } from '@fleetwood/core/naming';
 import { AddRepo } from './AddRepo.tsx';
 import { AgentRow } from './AgentRow.tsx';
-import { editorLabel, PrRow } from './TaskCard.tsx';
+import { editorLabel, numColStyle, PrRow } from './TaskCard.tsx';
 import { Slug } from './Slug.tsx';
 import { TaskNotes } from './TaskNotes.tsx';
 import { send, tildify } from './api.ts';
@@ -358,16 +365,23 @@ export function TaskPane({
         ) : prs.length > 0 ? (
           <div
             className="pane-block"
+            style={numColStyle(prs)}
             title={prsStale ? 'gh returned nothing on the last search — this is the previous answer' : undefined}
           >
-            {prs.map((pr) => (
-              <PrRow
-                key={`${pr.repo}#${pr.number}`}
-                pr={pr}
-                repoTag={repoTags[`${pr.repo}#${pr.number}`]}
-                onResult={onResult}
-              />
-            ))}
+            {(() => {
+              const rows = groupPrStacks(prs);
+              const railed = rows.some((row) => row.of > 1);
+              return rows.map((row) => (
+                <PrRow
+                  key={`${row.pr.repo}#${row.pr.number}`}
+                  pr={row.pr}
+                  repoTag={repoTags[`${row.pr.repo}#${row.pr.number}`]}
+                  stack={row}
+                  railed={railed}
+                  onResult={onResult}
+                />
+              ));
+            })()}
           </div>
         ) : (
           <Nothing>Nothing open on GitHub for these branches.</Nothing>

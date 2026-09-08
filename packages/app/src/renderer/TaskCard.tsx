@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import type { FleetSession, Severity, Task, TaskPr, TaskRepo } from '@fleetwood/core';
+import type { FleetSession, Severity, StackRow, Task, TaskPr, TaskRepo } from '@fleetwood/core';
 // The leaf module: the barrel re-exports tmux and process scanning, which fail the
 // renderer bundle on `node:child_process`.
 import {
   baseFor,
+  groupPrStacks,
   partitionAgents,
   prRepoTags,
   prSummary,
@@ -239,6 +240,8 @@ export function dotNote(state: Severity, attached: boolean, hasSession: boolean)
 export function PrRow({
   pr,
   repoTag,
+  stack,
+  railed,
   onResult,
 }: {
   pr: TaskPr;
@@ -248,8 +251,23 @@ export function PrRow({
    * Absent for a task whose pull requests all sit in one repo — see `prRepoTags`.
    */
   repoTag?: string;
+  /** Where this pull request sits in its stack, when it is in one. */
+  stack?: StackRow<TaskPr>;
+  /**
+   * Whether the list this row is in holds a stack at all.
+   *
+   * Held open on every row of such a list, layer or not, so one column of branch
+   * names runs down the card instead of two ragged ones.
+   */
+  railed?: boolean;
   onResult: Props['onResult'];
 }): React.JSX.Element {
+  // A layer above the bottom is explained by its rung, so the `via` mark would be
+  // saying the same thing twice. It stays for a `stack` row the grouper could not
+  // place — a base that has already merged — where it is the only thing here that
+  // says why the row belongs to this task at all.
+  const inStack = stack !== undefined && stack.of > 1;
+  const viaMark = inStack && stack.rung > 1 ? '' : VIA_MARK[pr.via];
   const where = pr.repoName ?? pr.repo;
   const open = (): void => {
     void send({ kind: 'openExternal', url: pr.url }).then((r) => onResult(r.detail, r.ok));
@@ -272,6 +290,17 @@ export function PrRow({
         {CHECK_GLYPH[pr.checks ?? 'none']}
       </span>
       <span className="pr-number">#{pr.number}</span>
+      {/* One column, held open even for a row that is in no stack — see
+          `.task-pr-rung`. The glyph marks a layer sitting on the one above it;
+          which layer exactly is in the tooltip, where it does not cost a column. */}
+      {railed && (
+        <span
+          className="task-pr-rung"
+          title={inStack ? `rung ${stack.rung} of ${stack.of}` : undefined}
+        >
+          {stack !== undefined && stack.depth > 0 ? '└' : ''}
+        </span>
+      )}
       {/* Beside the number rather than out among the flags: it says which thing
           this row is, so it belongs with the identifier and not with the states
           the row reports about it. */}
@@ -306,10 +335,20 @@ export function PrRow({
           </span>
         )
       )}
+      {/* The one thing a stack view says that the rows alone do not: this cannot be
+          merged yet, whatever its own checks and reviews look like. */}
+      {stack?.waitingOn !== undefined && (
+        <span
+          className="task-pr-flag"
+          title={`its base #${stack.waitingOn} is still open — this merges into that branch, not the trunk`}
+        >
+          waiting on #{stack.waitingOn}
+        </span>
+      )}
       <span className="row-act">
-        {VIA_MARK[pr.via] && (
+        {viaMark && (
           <span className="task-pr-via" title={VIA_LABEL[pr.via]}>
-            {VIA_MARK[pr.via]}
+            {viaMark}
           </span>
         )}
         {/* Not a button: the whole row is the target, and this only says so. */}
@@ -317,6 +356,18 @@ export function PrRow({
       </span>
     </div>
   );
+}
+
+/**
+ * The number column's width, as a style for the block the rows sit in.
+ *
+ * Measured over the whole list rather than per row — padding is only padding if
+ * every row agrees on it. `ch` is one digit on the tabular figures `.pr-number`
+ * already asks for.
+ */
+export function numColStyle(prs: TaskPr[]): React.CSSProperties {
+  const widest = Math.max(0, ...prs.map((pr) => `#${pr.number}`.length));
+  return { '--num-col': `${widest}ch` } as React.CSSProperties;
 }
 
 /**
@@ -557,7 +608,7 @@ export function TaskCard({
 
       {/* Above the notes, which is where these links were being kept by hand. */}
       {prs && prs.length > 0 && (
-        <div className="task-prs">
+        <div className="task-prs" style={numColStyle(prs)}>
           <div
             className="task-prs-head"
             title={prsStale ? 'gh returned nothing on the last search — this is the previous answer' : undefined}
@@ -565,14 +616,20 @@ export function TaskCard({
             {prSummary(prs)}
             {prsStale && <span className="task-pr-via"> · stale</span>}
           </div>
-          {prs.map((pr) => (
-            <PrRow
-              key={`${pr.repo}#${pr.number}`}
-              pr={pr}
-              repoTag={repoTags[`${pr.repo}#${pr.number}`]}
-              onResult={onResult}
-            />
-          ))}
+          {(() => {
+            const rows = groupPrStacks(prs);
+            const railed = rows.some((row) => row.of > 1);
+            return rows.map((row) => (
+              <PrRow
+                key={`${row.pr.repo}#${row.pr.number}`}
+                pr={row.pr}
+                repoTag={repoTags[`${row.pr.repo}#${row.pr.number}`]}
+                stack={row}
+                railed={railed}
+                onResult={onResult}
+              />
+            ));
+          })()}
         </div>
       )}
 

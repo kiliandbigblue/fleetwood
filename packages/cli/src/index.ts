@@ -8,6 +8,7 @@ import {
   hooks,
   limits as limitsApi,
   deployMarks,
+  groupPrStacks,
   prSession,
   proc,
   prRepoTags,
@@ -1013,8 +1014,14 @@ async function cmdTaskStart(argv: string[], json: boolean): Promise<void> {
   if (!result.ok) process.exitCode = 1;
 }
 
-/** The mark for how a branch was found, matching the panel's. `head` needs none. */
-function viaMark(pr: TaskPr): string {
+/**
+ * The mark for how a branch was found, matching the panel's. `head` needs none.
+ *
+ * Nor does a layer above the bottom of a stack: its rail already says why it is
+ * here, and the panel drops the `⇡` there for the same reason.
+ */
+function viaMark(pr: TaskPr, rung: number): string {
+  if (rung > 1) return ' ';
   switch (pr.via) {
     case 'stack':
       return c.dim('⇡');
@@ -1055,6 +1062,11 @@ async function cmdTaskList(argv: string[], json: boolean): Promise<void> {
     }
     const open = prs?.byTask[t.slug] ?? [];
     if (open.length === 0) continue;
+    // Bottom of each stack first, its layers kept together — the panel's order.
+    const rows = groupPrStacks(open);
+    // One fixed column, held open on every row once anything here is stacked, for
+    // the reason `.task-pr-rung` gives: a growing indent staggers the branch names.
+    const railed = rows.some((row) => row.of > 1);
     process.stdout.write(`    ${c.muted(prSummary(open))}\n`);
     // Empty unless this task's pull requests span repos, which is the only case
     // where naming one tells you anything — see `prRepoTags`.
@@ -1065,12 +1077,18 @@ async function cmdTaskList(argv: string[], json: boolean): Promise<void> {
     // Numbers differ in width across repos — `#3004` beside `#10427` — so both
     // this and the tag are padded, or the branch names step in and out.
     const numWidth = Math.max(...open.map((pr) => `#${pr.number}`.length));
-    for (const pr of open) {
+    for (const row of rows) {
+      const pr = row.pr;
       const tag = repoTags[`${pr.repo}#${pr.number}`];
+      // The rail eats into the branch column rather than being added beside it, so
+      // the review marks down the right stay in one line whatever the stack does.
+      const rail = railed ? (row.depth > 0 ? '└ ' : '  ') : '';
+      const waiting = row.waitingOn === undefined ? '' : c.dim(` waiting on #${row.waitingOn}`);
       process.stdout.write(
-        `    ${viaMark(pr)} ${checksMark(pr)} ${c.dim(pad(`#${pr.number}`, numWidth))}` +
+        `    ${viaMark(pr, row.of > 1 ? row.rung : 1)} ${checksMark(pr)} ${c.dim(pad(`#${pr.number}`, numWidth))}` +
           `${tagWidth > 0 ? ` ${c.muted(pad(tag ?? '', tagWidth))}` : ''}` +
-          ` ${pad(pr.branch, 46)} ${reviewMark(pr)}${pr.isDraft ? c.dim(' draft') : ''}\n`,
+          ` ${c.dim(rail)}${pad(pr.branch, Math.max(0, 46 - rail.length))} ` +
+          `${reviewMark(pr)}${pr.isDraft ? c.dim(' draft') : ''}${waiting}\n`,
       );
     }
   }

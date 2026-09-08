@@ -1,9 +1,18 @@
 import { useState } from 'react';
-import type { DeployState, MergedPr, MergedPrs, PrLists, PullRequest, Task } from '@fleetwood/core';
+import type {
+  DeployState,
+  MergedPr,
+  MergedPrs,
+  PrLists,
+  PullRequest,
+  StackRow,
+  Task,
+} from '@fleetwood/core';
 // The leaf module, not the barrel or `github.ts`: both reach
 // `node:child_process` and would fail the bundle.
 import { doneBefore, needsDeploy, startOfDay } from '@fleetwood/core/deployState';
 import { sessionLabel } from '@fleetwood/core/sessionOrder';
+import { groupPrStacks } from '@fleetwood/core/taskView';
 import { relativeIso, send } from './api.ts';
 
 interface Props {
@@ -64,13 +73,20 @@ function PrRow({
   pr,
   session,
   task,
+  stack,
+  railed,
   onResult,
 }: {
   pr: PullRequest;
   session: string | undefined;
   task: Task | undefined;
+  /** Where this pull request sits in its stack, when it is in one. */
+  stack?: StackRow<PullRequest>;
+  /** Whether this section holds a stack at all, so the rail column is held open. */
+  railed?: boolean;
   onResult: Props['onResult'];
 }): React.JSX.Element {
+  const inStack = stack !== undefined && stack.of > 1;
   const act = async (request: Parameters<typeof send>[0]): Promise<void> => {
     const result = await send(request);
     onResult(result.detail, result.ok);
@@ -98,6 +114,15 @@ function PrRow({
           {CHECK_GLYPH[pr.checks ?? 'none']}
         </span>
         <span className="pr-number">#{pr.number}</span>
+        {/* One column, held open across the whole section — see `.task-pr-rung`. */}
+        {railed && (
+          <span
+            className="task-pr-rung"
+            title={inStack ? `rung ${stack.rung} of ${stack.of}` : undefined}
+          >
+            {stack !== undefined && stack.depth > 0 ? '└' : ''}
+          </span>
+        )}
         {/* `ident`: under this repo's convention a pull request's title *is* its
             branch, so it is set as the identifier it is. */}
         <div className="pr-title ident" title={pr.branch ? `${pr.title} · ${pr.branch}` : pr.title}>
@@ -124,6 +149,15 @@ function PrRow({
               {REVIEW_LABEL[pr.reviewDecision] ?? pr.reviewDecision}
             </span>
           )
+        )}
+        {/* Counted against both sections, so a stack split between "mine" and
+            "needs my review" still names the layer this one is waiting on. */}
+        {stack?.waitingOn !== undefined && (
+          <span
+            title={`its base #${stack.waitingOn} is still open — this merges into that branch, not the trunk`}
+          >
+            waiting on #{stack.waitingOn}
+          </span>
         )}
         <span>{relativeIso(pr.updatedAt)}</span>
         {/* A task's PRs share one head branch, so this recognises the whole set. */}
@@ -338,6 +372,7 @@ export function PrList({ prs, merged, tasks, prSessions, onResult }: Props): Rea
     );
   }
 
+  const everyPr = [...prs.reviewRequested, ...prs.mine];
   const section = (title: string, list: PullRequest[]): React.JSX.Element => (
     <>
       <div className="section-title">
@@ -348,15 +383,23 @@ export function PrList({ prs, merged, tasks, prSessions, onResult }: Props): Rea
           nothing here
         </div>
       ) : (
-        list.map((pr) => (
-          <PrRow
-            key={`${pr.repo}#${pr.number}`}
-            pr={pr}
-            session={prSessions[`${pr.repo}#${pr.number}`]}
-            task={pr.branch ? taskByBranch.get(pr.branch) : undefined}
-            onResult={onResult}
-          />
-        ))
+        // Both sections are handed as `known`, so a stack spanning the two is
+        // still counted whole — a layer in `mine` says `2 of 3`, not `1 of 1`.
+        (() => {
+          const rows = groupPrStacks(list, everyPr);
+          const railed = rows.some((row) => row.of > 1);
+          return rows.map((row) => (
+            <PrRow
+              key={`${row.pr.repo}#${row.pr.number}`}
+              pr={row.pr}
+              session={prSessions[`${row.pr.repo}#${row.pr.number}`]}
+              task={row.pr.branch ? taskByBranch.get(row.pr.branch) : undefined}
+              stack={row}
+              railed={railed}
+              onResult={onResult}
+            />
+          ));
+        })()
       )}
     </>
   );

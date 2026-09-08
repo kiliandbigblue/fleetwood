@@ -1,5 +1,6 @@
 import { hasDriftedOffBranch } from './naming.ts';
 import type { FleetAgent } from './fleet.ts';
+import type { PullRequest } from './github.ts';
 import type { Task, TaskRepo } from './task.ts';
 import type { BranchVia, TaskPr } from './taskPrs.ts';
 
@@ -75,13 +76,20 @@ export function repoSummary(repos: TaskRepo[], taskBranch: string): string {
  * front ends. Only the two states that ask something of you get counted: a red
  * check is work, an approval is a merge you have not done yet. Everything else
  * is a pull request quietly waiting for a reviewer, which the count already says.
+ *
+ * The shape comes last, after both of those: a stack asks nothing of you, it only
+ * says that `4 open` is four rungs rather than four errands.
  */
 export function prSummary(prs: TaskPr[]): string {
   const failing = prs.filter((pr) => pr.checks === 'failing').length;
   const approved = prs.filter((pr) => pr.reviewDecision === 'APPROVED').length;
+  const stacks = stackSizes(prs);
   const parts = [`${prs.length} open`];
   if (failing > 0) parts.push(`${failing} failing`);
   if (approved > 0) parts.push(`${approved} approved`);
+  if (stacks.length > 0) {
+    parts.push(`stack${stacks.length === 1 ? '' : 's'} of ${stacks.join(', ')}`);
+  }
   return parts.join(' · ');
 }
 
@@ -133,7 +141,8 @@ export const VIA_LABEL: Record<BranchVia, string> = {
  * that otherwise differ only in a number, and "which one is the API change" is
  * then a tooltip away rather than in front of you. A stack is several pull
  * requests in *one* repo, so it gets no tags at all — the same word four times
- * says nothing, and `⇡` already explains how those rows relate.
+ * says nothing, and the rung column from `groupPrStacks` already says how those
+ * rows relate.
  *
  * The bare name rather than `owner/name`: the owner is the same for every repo
  * you would be telling apart, so it is the half carrying no information.
@@ -199,4 +208,211 @@ export function worstState(
   if (open.some((pr) => pr.reviewDecision === 'APPROVED')) return 'ok';
   if (agents?.some((a) => a.status === 'working' || a.status === 'compacting')) return 'ok';
   return 'quiet';
+}
+/**
+ * Branch names a pull request may merge into without that meaning "stacked".
+ *
+ * Only ever consulted as a veto, and only in one situation: a trunk is nobody's
+ * head branch, so it never appears in the index below and normally cannot start
+ * a chain at all. The exception is the release pull request — `dev` open against
+ * `main` — which *is* a pull request whose head is a trunk, and which would
+ * otherwise adopt every branch cut from `dev` as a layer sitting on it.
+ */
+const TRUNK_NAMES = new Set([
+  'main',
+  'master',
+  'dev',
+  'develop',
+  'trunk',
+  'production',
+  'staging',
+  'release',
+]);
+
+/** How far a parent walk goes before it is treated as a cycle. */
+const WALK_CAP = 32;
+
+/** The fields the stack grouper reads. `ahead` is present on a `TaskPr` only. */
+type Stackable = PullRequest & { ahead?: number };
+
+/** One pull request, and where it sits in the stack it belongs to. */
+export interface StackRow<T> {
+  pr: T;
+  /** Distance from the bottom of its stack. 0 for a standalone or a bottom layer. */
+  depth: number;
+  /**
+   * 1-based position in its stack's printed order.
+   *
+   * Position, not graph depth — the two coincide for a line, which is the shape a
+   * stack actually takes, and differ only when two layers share one base.
+   */
+  rung: number;
+  /** How many pull requests the stack holds — 1 when it is not one. */
+  of: number;
+  /** The still-open pull request this one merges into, when it is in view. */
+  waitingOn?: number;
+}
+
+const prId = (pr: Stackable): string => `${pr.repo}#${pr.number}`;
+const headKey = (repo: string, branch: string): string => `${repo} ${branch}`;
+
+/** A stack is ordered bottom first — the same tie-break `matchPrsToTasks` uses. */
+const byRung = (a: Stackable, b: Stackable): number =>
+  (a.ahead ?? Number.MAX_SAFE_INTEGER) - (b.ahead ?? Number.MAX_SAFE_INTEGER) || a.number - b.number;
+
+/**
+ * Pull requests in render order, each told which stack it is in and where.
+ *
+ * A layer's parent is recorded in exactly one place — its base branch. The commit
+ * graph cannot supply it, because a layer cut from its parent's *first* commit is
+ * not a descendant of the parent's tip and neither branch contains the other; see
+ * `PullRequest.base` in `github.ts`. So the whole of the linking is one rule: a
+ * pull request sits on another when its base is that one's head branch, in the
+ * same repo.
+ *
+ * That rule needs no notion of what the trunk is. `dev` and `main` are nobody's
+ * head branch, so a pull request based on one links to nothing and stands alone —
+ * no default-branch field, and no git call from a module the renderer imports.
+ *
+ * Flat rather than nested, and the same length as the input: every call site
+ * renders the list it already rendered, one prop richer. Nesting would also have
+ * to lie about a partial view — the PR tab splits one stack across two sections —
+ * whereas `rung` and `of`, counted over `known`, stay honest under any filter.
+ *
+ * `waitingOn` is a pull request that is *open*, and that is sound rather than
+ * checked: every list this runs on is built from an `--state=open` search, so a
+ * layer whose parent has merged finds no parent and becomes a bottom layer.
+ *
+ * @param prs   the list to render, in the order it should render in.
+ * @param known every pull request in view, when `prs` is a filtered part of one —
+ *              what `rung`, `of` and `waitingOn` are counted against.
+ */
+export function groupPrStacks<T extends Stackable>(
+  prs: T[],
+  known?: Stackable[],
+): Array<StackRow<T>> {
+  const universe: Stackable[] = known ?? prs;
+
+  // Which pull request each branch is the head of. Repo-scoped, so a namesake
+  // branch in another repo cannot be adopted as a layer.
+  const heads = new Map<string, Stackable>();
+  for (const pr of universe) {
+    if (pr.branch === undefined) continue;
+    const key = headKey(pr.repo, pr.branch);
+    const existing = heads.get(key);
+    // Two open pull requests from one branch should not happen; pick one anyway.
+    if (!existing || pr.number < existing.number) heads.set(key, pr);
+  }
+
+  const parentOf = (pr: Stackable): Stackable | undefined => {
+    if (pr.base === undefined || pr.base === pr.branch || TRUNK_NAMES.has(pr.base)) return undefined;
+    const parent = heads.get(headKey(pr.repo, pr.base));
+    if (!parent || prId(parent) === prId(pr)) return undefined;
+    // A layer holds every commit below it and then some, so one no further from
+    // the trunk than its base is not sitting on it, whatever the base says.
+    // Insurance rather than mechanism: `ahead` is a task's field, absent in the PR tab.
+    if (parent.ahead !== undefined && pr.ahead !== undefined && parent.ahead >= pr.ahead) {
+      return undefined;
+    }
+    return parent;
+  };
+
+  const parent = new Map<string, Stackable>();
+  for (const pr of universe) {
+    const found = parentOf(pr);
+    if (found) parent.set(prId(pr), found);
+  }
+
+  // GitHub cannot serve a cycle, but a stale cache plus a retargeted base could.
+  // The edge that closes the loop is cut, which makes that layer a bottom one.
+  for (const pr of universe) {
+    const seen = new Set([prId(pr)]);
+    let cursor = pr;
+    for (let hops = 0; hops < WALK_CAP; hops++) {
+      const next = parent.get(prId(cursor));
+      if (!next) break;
+      if (seen.has(prId(next))) {
+        parent.delete(prId(cursor));
+        break;
+      }
+      seen.add(prId(next));
+      cursor = next;
+    }
+  }
+
+  const children = new Map<string, Stackable[]>();
+  const roots: Stackable[] = [];
+  for (const pr of universe) {
+    const below = parent.get(prId(pr));
+    if (!below) {
+      roots.push(pr);
+      continue;
+    }
+    const list = children.get(prId(below));
+    if (list) list.push(pr);
+    else children.set(prId(below), [pr]);
+  }
+
+  // Each stack in printed order, bottom first, with every layer's depth.
+  const componentOf = new Map<string, string>();
+  const order = new Map<string, Stackable[]>();
+  const depths = new Map<string, number>();
+  for (const root of roots) {
+    const members: Stackable[] = [];
+    const walk = (node: Stackable, depth: number): void => {
+      members.push(node);
+      depths.set(prId(node), depth);
+      componentOf.set(prId(node), prId(root));
+      for (const kid of [...(children.get(prId(node)) ?? [])].sort(byRung)) walk(kid, depth + 1);
+    };
+    walk(root, 0);
+    order.set(prId(root), members);
+  }
+
+  // A stack is emitted where its earliest member sat — the bottom layer in a task
+  // card, whose list is already bottom-first, and the most recently updated one in
+  // the PR tab, so a stack keeps its recency slot rather than being hoisted out of it.
+  const mine = new Map(prs.map((pr) => [prId(pr), pr]));
+  const rows: Array<StackRow<T>> = [];
+  const emitted = new Set<string>();
+  for (const pr of prs) {
+    if (emitted.has(prId(pr))) continue;
+    const root = componentOf.get(prId(pr));
+    const members = root === undefined ? undefined : order.get(root);
+    if (!members) {
+      // Only reachable when `known` omits something `prs` holds. Standing alone is
+      // the honest answer: nothing was said about what this one sits on.
+      emitted.add(prId(pr));
+      rows.push({ pr, depth: 0, rung: 1, of: 1 });
+      continue;
+    }
+    let rung = 0;
+    for (const member of members) {
+      // Counted over the whole stack, so a filtered view still says `2 of 3`.
+      rung += 1;
+      const own = mine.get(prId(member));
+      if (!own || emitted.has(prId(member))) continue;
+      emitted.add(prId(member));
+      rows.push({
+        pr: own,
+        depth: depths.get(prId(member)) ?? 0,
+        rung,
+        of: members.length,
+        waitingOn: parent.get(prId(member))?.number,
+      });
+    }
+  }
+  return rows;
+}
+
+/**
+ * The size of each stack in a list, largest first — nothing at all for a list with none.
+ *
+ * A stack of one is not a stack, so only the components holding two or more count.
+ */
+export function stackSizes(prs: Stackable[]): number[] {
+  return groupPrStacks(prs)
+    .filter((row) => row.rung === 1 && row.of > 1)
+    .map((row) => row.of)
+    .sort((a, b) => b - a);
 }

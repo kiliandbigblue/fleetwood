@@ -1,6 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { baseFor, partitionAgents, prRepoTags, repoSummary, worstState } from '../src/taskView.ts';
+import {
+  baseFor,
+  groupPrStacks,
+  partitionAgents,
+  prRepoTags,
+  prSummary,
+  repoSummary,
+  worstState,
+} from '../src/taskView.ts';
 import type { FleetAgent } from '../src/fleet.ts';
 import type { Task, TaskRepo } from '../src/task.ts';
 import type { TaskPr } from '../src/taskPrs.ts';
@@ -257,4 +265,152 @@ test('pull requests still being searched for contribute nothing either way', () 
 test('a draft under review is not treated as reviewed', () => {
   // The row shows `draft` alone for the same reason: nobody has been asked yet.
   assert.equal(worstState([repo(0)], [pr({ isDraft: true, reviewDecision: 'REVIEW_REQUIRED' })], false), 'quiet');
+});
+/*
+ * The three-layer stack, as the panel receives it: bottom first, each layer based
+ * on the branch of the one below, and each holding more commits than that one.
+ */
+const bottom = pr({ number: 10410, branch: 'feature/orders-dual-write', base: 'dev', ahead: 6 });
+const middle = pr({
+  number: 10420,
+  branch: 'feature/orders-use-order-type',
+  base: 'feature/orders-dual-write',
+  ahead: 9,
+  via: 'stack',
+});
+const top = pr({
+  number: 10430,
+  branch: 'feature/orders-b2b-flag',
+  base: 'feature/orders-use-order-type',
+  ahead: 14,
+  via: 'stack',
+});
+
+/** `#number` per row, so a layout assertion reads like the list it describes. */
+function shape(rows: ReturnType<typeof groupPrStacks<TaskPr>>): string[] {
+  return rows.map(
+    (row) => `${'  '.repeat(row.depth)}#${row.pr.number} ${row.rung}/${row.of}` +
+      (row.waitingOn === undefined ? '' : ` waiting on #${row.waitingOn}`),
+  );
+}
+
+test('a pull request whose base is another one\'s branch sits on top of it', () => {
+  const rows = groupPrStacks([bottom, middle, top]);
+  assert.deepEqual(rows.map((row) => row.depth), [0, 1, 2]);
+  assert.deepEqual(rows.map((row) => row.rung), [1, 2, 3]);
+  assert.deepEqual(rows.map((row) => row.of), [3, 3, 3]);
+});
+
+test('a base that is the trunk starts no stack, because no pull request is on it', () => {
+  const rows = groupPrStacks([
+    pr({ number: 1, branch: 'fix/one', base: 'dev' }),
+    pr({ number: 2, branch: 'fix/two', base: 'dev' }),
+  ]);
+  assert.deepEqual(rows.map((row) => row.of), [1, 1]);
+  assert.deepEqual(rows.map((row) => row.waitingOn), [undefined, undefined]);
+});
+
+test('a release pull request from dev does not adopt every branch cut from dev', () => {
+  // `dev` open against `main` is the one case where a trunk is a head branch, and
+  // without the veto every branch based on `dev` would be read as sitting on it.
+  const release = pr({ number: 99, branch: 'dev', base: 'main' });
+  const rows = groupPrStacks([release, pr({ number: 1, branch: 'fix/one', base: 'dev' })]);
+  assert.deepEqual(rows.map((row) => row.of), [1, 1]);
+});
+
+test('a base naming a branch in another repo links to nothing', () => {
+  const rows = groupPrStacks([
+    pr({ repo: 'bigbluedisco/reflow', number: 1, branch: 'feature/shared-name' }),
+    pr({ repo: 'bigbluedisco/proto', number: 2, branch: 'feature/other', base: 'feature/shared-name' }),
+  ]);
+  assert.deepEqual(rows.map((row) => row.of), [1, 1]);
+});
+
+test('a layer whose parent has already merged is a bottom layer rather than an orphan', () => {
+  // The search only returns open pull requests, so a merged base is simply absent —
+  // and the layer above it is now the bottom of what is left.
+  const rows = groupPrStacks([middle, top]);
+  assert.deepEqual(shape(rows), ['#10420 1/2', '  #10430 2/2 waiting on #10420']);
+});
+
+test('two pull requests on one base fork the stack instead of forming a line', () => {
+  const forkA = pr({ number: 10421, branch: 'feature/a', base: bottom.branch, ahead: 8 });
+  const forkB = pr({ number: 10422, branch: 'feature/b', base: bottom.branch, ahead: 9 });
+  const rows = groupPrStacks([bottom, forkA, forkB]);
+  assert.deepEqual(rows.map((row) => row.depth), [0, 1, 1]);
+  // Rung is position in the printed order, which is why both siblings are not `2`.
+  assert.deepEqual(rows.map((row) => row.rung), [1, 2, 3]);
+});
+
+test('a base pointing back into the stack is cut rather than walked forever', () => {
+  const a = pr({ number: 1, branch: 'feature/a', base: 'feature/b' });
+  const b = pr({ number: 2, branch: 'feature/b', base: 'feature/a' });
+  const rows = groupPrStacks([a, b]);
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows.map((row) => row.of), [2, 2]);
+});
+
+test('a pull request with no base stands alone, and one with no branch holds nothing up', () => {
+  // The two gaps are not symmetric. No base means nothing was said about what this
+  // one sits on; no branch means nothing can sit on *it*, since a layer is found by
+  // the branch its base names.
+  const noBase = groupPrStacks([
+    pr({ number: 1, branch: 'feature/a', base: undefined }),
+    pr({ number: 2, branch: 'feature/b', base: undefined }),
+  ]);
+  assert.deepEqual(noBase.map((row) => row.of), [1, 1]);
+
+  const noBranch = groupPrStacks([
+    pr({ number: 1, branch: undefined, base: 'dev' }),
+    pr({ number: 2, branch: 'feature/b', base: 'feature/a' }),
+  ]);
+  assert.deepEqual(noBranch.map((row) => row.of), [1, 1]);
+});
+
+test('a stack is emitted where its earliest member sat, and nothing comes between its layers', () => {
+  // The PR tab orders by recency, so a stack's layers arrive scattered. The stack
+  // keeps the slot of whichever of them came first rather than being hoisted.
+  const loose = pr({ number: 500, branch: 'fix/unrelated', base: 'dev' });
+  const other = pr({ number: 600, branch: 'fix/also-unrelated', base: 'dev' });
+  const rows = groupPrStacks([loose, middle, other, top, bottom]);
+  assert.deepEqual(
+    rows.map((row) => row.pr.number),
+    [500, 10410, 10420, 10430, 600],
+  );
+});
+
+test('a layer counted against the whole search still says which rung it is when the list around it is filtered', () => {
+  // The PR tab splits one stack across `mine` and `needs my review`; each section
+  // has to describe the stack it is a part of, not the fragment it can see.
+  const rows = groupPrStacks([top], [bottom, middle, top]);
+  assert.deepEqual(shape(rows), ['    #10430 3/3 waiting on #10420']);
+});
+
+test('a layer holding fewer commits than its base is not believed to sit on it', () => {
+  const shallow = pr({ number: 10431, branch: 'feature/shallow', base: bottom.branch, ahead: 3 });
+  const rows = groupPrStacks([bottom, shallow]);
+  assert.deepEqual(rows.map((row) => row.of), [1, 1]);
+});
+
+test('a layer waiting on an open pull request names it, and a bottom layer names nothing', () => {
+  const rows = groupPrStacks([bottom, middle, top]);
+  assert.deepEqual(rows.map((row) => row.waitingOn), [undefined, 10410, 10420]);
+});
+
+test('every pull request handed in comes back exactly once', () => {
+  const all = [bottom, middle, top, pr({ number: 1, branch: 'fix/loose', base: 'dev' })];
+  const rows = groupPrStacks(all);
+  assert.equal(rows.length, all.length);
+  assert.equal(new Set(rows.map((row) => row.pr.number)).size, all.length);
+});
+
+test('the summary names the stack, and both of them when a task has two', () => {
+  assert.equal(prSummary([bottom, middle, top]), '3 open · stack of 3');
+  const pair = [
+    pr({ number: 20, branch: 'fix/lower', base: 'dev', ahead: 2 }),
+    pr({ number: 21, branch: 'fix/upper', base: 'fix/lower', ahead: 4 }),
+  ];
+  assert.equal(prSummary([bottom, middle, top, ...pair]), '5 open · stacks of 3, 2');
+  // A lone pull request is not a stack, so nothing is said about the shape.
+  assert.equal(prSummary([pr({ number: 1, base: 'dev' })]), '1 open');
 });
