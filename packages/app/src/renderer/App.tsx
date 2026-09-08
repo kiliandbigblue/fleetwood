@@ -4,6 +4,7 @@ import type { Snapshot } from '../shared/ipc.ts';
 import { SessionCard } from './SessionCard.tsx';
 import { AgentRow } from './AgentRow.tsx';
 import { PrList } from './PrList.tsx';
+import { Icon } from './Icon.tsx';
 import { HistoryList } from './HistoryList.tsx';
 import { TaskCard } from './TaskCard.tsx';
 import { TaskPane } from './TaskPane.tsx';
@@ -254,6 +255,10 @@ export function App(): React.JSX.Element {
         refreshing={refreshing}
         focusedTask={focused?.task.slug}
         onBack={() => setFocusedSlug(undefined)}
+        onNewTask={() => {
+          setNewTaskSummary('');
+          setNewTaskOpen(true);
+        }}
         themePicker={
           snapshot && (
             <ThemePicker
@@ -302,9 +307,20 @@ export function App(): React.JSX.Element {
           <>
             {sessions.length === 0 && dormantTasks.length === 0 && (
               // "No tmux sessions" over a drawer saying there are three would read
-              // as fleetwood having lost them.
+              // as fleetwood having lost them. And with nothing on screen to
+              // point at, the one thing you can do comes to the middle of the
+              // panel rather than staying a 24px glyph up in the rail.
               <div className="empty">
-                {hidden.length > 0 ? 'every session is hidden' : 'no tmux sessions'}
+                <span>{hidden.length > 0 ? 'every session is hidden' : 'no tmux sessions'}</span>
+                <button
+                  className="button"
+                  onClick={() => {
+                    setNewTaskSummary('');
+                    setNewTaskOpen(true);
+                  }}
+                >
+                  new task <span className="key">⌘T</span>
+                </button>
               </div>
             )}
             {sessions.map((session) => sessionRow(session, order))}
@@ -351,22 +367,6 @@ export function App(): React.JSX.Element {
                 </div>
               );
             })}
-            {/* Above the hidden drawer, which is the one section deliberately
-                out of the way — nothing should sit under it. It no longer costs
-                the width it was being pushed down for either: it is a quiet
-                control at the gutter now rather than a dashed strip across the
-                list. ⌘T is still the fast path. */}
-            <button
-              className="new-task"
-              onClick={() => {
-                setNewTaskSummary('');
-                setNewTaskOpen(true);
-              }}
-              title="new task (⌘T)"
-            >
-              + new task
-            </button>
-
             {/* Below everything, including the two orphan groups: this is the one
                 section that is here because you asked for it to be out of the
                 way. The count of what needs you rides on the heading rather than
@@ -376,21 +376,30 @@ export function App(): React.JSX.Element {
             {hidden.length > 0 && (
               <>
                 <button
-                  className="section-title hidden-toggle"
+                  className="hidden-toggle"
                   aria-expanded={hiddenOpen}
                   title={
                     hiddenOpen
                       ? 'fold the hidden sessions away'
-                      : 'sessions marked hidden — a dash on the front of the tmux name'
+                      : 'sessions marked hidden — a dash on the front of the tmux name. Unhide one from its own ⋮ menu.'
                   }
                   onClick={() => setHiddenOpen((open) => !open)}
                 >
-                  <span className="hidden-caret">{hiddenOpen ? '▾' : '▸'}</span>
-                  hidden ({hidden.length}
+                  <span className="hidden-caret" aria-hidden="true">
+                    <Icon name="chevron" />
+                  </span>
+                  hidden
+                  <span className="hidden-count">{hidden.length}</span>
+                  {/* The rail's own alert, not a sentence: a dot and a number is
+                      how this panel says "some of these want you" everywhere
+                      else, and the drawer is the one place it had been spelling
+                      it out in words instead. */}
                   {hiddenAttention > 0 && (
-                    <span className="hidden-attention"> · {hiddenAttention} needs you</span>
+                    <span className="hidden-attention" title={`${hiddenAttention} of them is waiting on you`}>
+                      <span className="dot" />
+                      {hiddenAttention}
+                    </span>
                   )}
-                  )
                 </button>
                 {hiddenOpen && (
                   <div className="hidden-group">

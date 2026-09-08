@@ -18,7 +18,8 @@ import { AddRepo } from './AddRepo.tsx';
 import { AgentRow } from './AgentRow.tsx';
 import { Icon } from './Icon.tsx';
 import { CHECK_GLYPH, REVIEW_LABEL } from './PrList.tsx';
-import { Reorder } from './Reorder.tsx';
+import { CardMenu } from './CardMenu.tsx';
+import type { MenuItem } from './CardMenu.tsx';
 import { Slug } from './Slug.tsx';
 import { TaskNotes } from './TaskNotes.tsx';
 import { send } from './api.ts';
@@ -388,7 +389,6 @@ export function TaskCard({
   onResult,
   onFocus,
 }: Props): React.JSX.Element {
-  const [confirmArchive, setConfirmArchive] = useState(false);
   const [addingRepo, setAddingRepo] = useState(false);
   const [editingNotes, setEditingNotes] = useState(false);
   /**
@@ -452,6 +452,46 @@ export function TaskCard({
     }
   };
 
+  /*
+   * Everything the group can do, in one list behind the header's dot column.
+   *
+   * Making things first, because that is what you come to a task for; the
+   * destructive one last and marked, where the menu puts it behind a second
+   * click. `+ shell` is only here while there is no session — it is the way to
+   * get a prompt in the task folder without starting an agent you did not ask
+   * for, and once a session exists tmux is one keystroke away.
+   */
+  const actions: MenuItem[] = [
+    {
+      label: 'add repo',
+      title: 'add a repo — or another branch of one already here, for stacked work',
+      onClick: () => setAddingRepo(true),
+    },
+    { label: 'start claude', title: 'claude at the task root', onClick: () => startAgent('claude') },
+    { label: 'start cursor', title: 'cursor-agent at the task root', onClick: () => startAgent('cursor') },
+    ...(dormant
+      ? [
+          {
+            label: 'start shell',
+            title: 'tmux session at the task root, left at a shell',
+            onClick: () => void act({ kind: 'startTaskSession', slug: task.slug }),
+          },
+        ]
+      : []),
+    {
+      label: task.notes ? 'notes' : 'add a note',
+      title: 'your own notes on this task, kept in NOTES.md',
+      onClick: openNotes,
+    },
+    {
+      label: 'archive',
+      title: 'remove every worktree in this task and kill its session',
+      danger: true,
+      confirm: true,
+      onClick: () => void act({ kind: 'archiveTask', slug: task.slug }),
+    },
+  ];
+
   return (
     <div className={`card${needsAttention ? ' attention' : ''}${dormant ? ' dormant' : ''}`}>
       <div
@@ -492,63 +532,6 @@ export function TaskCard({
             than typed, like the rail's controls and for the same reason — no
             codepoint means this and `⤢` renders as a different weight in every
             face. */}
-        {/* The group's own actions, over the metadata rather than under the rows.
-            A reserved footer row that was empty until you pointed at it cost a
-            row of height on every group in the fleet to show nothing; here they
-            sit in space the head already had, and the summary they cover is the
-            one thing you do not need while you are acting on the group. */}
-        {!addingRepo && (
-          <div
-            className="card-actions"
-            /* The head focuses the session; a chip in it must not also do that. */
-            onClick={(event) => event.stopPropagation()}
-          >
-            <button
-              className="chip"
-              onClick={() => setAddingRepo(true)}
-              title="add a repo — or another branch of one already here, for stacked work"
-            >
-              + repo
-            </button>
-            <button className="chip" onClick={() => startAgent('claude')} title="claude at the task root">
-              + claude
-            </button>
-            <button className="chip" onClick={() => startAgent('cursor')} title="cursor-agent at the task root">
-              + cursor
-            </button>
-            {/* Only offered while there is no session: it is the way to get a shell in
-                the task folder without starting an agent you didn't ask for. */}
-            {dormant && (
-              <button
-                className="chip"
-                onClick={() => void act({ kind: 'startTaskSession', slug: task.slug })}
-                title="tmux session at the task root, left at a shell"
-              >
-                + shell
-              </button>
-            )}
-            <button className="chip" onClick={openNotes} title="your own notes on this task, kept in NOTES.md">
-              {task.notes ? 'notes' : '+ note'}
-            </button>
-            <span style={{ marginLeft: 'auto' }} />
-            <button
-              className="chip danger"
-              onClick={() => {
-                if (!confirmArchive) {
-                  setConfirmArchive(true);
-                  // Two steps: this deletes every worktree in the task.
-                  setTimeout(() => setConfirmArchive(false), 4_000);
-                  return;
-                }
-                setConfirmArchive(false);
-                void act({ kind: 'archiveTask', slug: task.slug });
-              }}
-              title="remove every worktree in this task and kill its session"
-            >
-              {confirmArchive ? 'archive — sure?' : 'archive'}
-            </button>
-          </div>
-        )}
         <span className="row-act">
         <button
           className="pane-open"
@@ -577,9 +560,7 @@ export function TaskCard({
         {/* Last, on the trailing edge, as on a session card. The slug is already
             the session's name minus its slot, so nothing here needs relabelling —
             only moving. */}
-        {task.session && order && (
-          <Reorder session={task.session} order={order} onResult={onResult} />
-        )}
+        <CardMenu session={task.session} order={order} actions={actions} onResult={onResult} />
         </span>
       </div>
 

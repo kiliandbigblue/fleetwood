@@ -459,6 +459,40 @@ button {
   border-left: 1px solid var(--rail-line);
 }
 
+/*
+ * Make a task. The only thing in this rail that adds to the list below it.
+ *
+ * Next to the tabs, not next to the window controls: against the hairline it
+ * read as a fourth icon on the side of the rail that acts on the window. It was
+ * a strip at the foot of the list before that — the last row of a list sorted
+ * by how much things need you, holding the one action that needs you never.
+ */
+.rail-new {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  align-self: center;
+  margin-left: var(--s4);
+  border-radius: 5px;
+  /* The tabs' value, because it now sits among them: brighter, it outranked the
+     navigation it stands next to. */
+  color: var(--dim);
+  flex: none;
+}
+
+.rail-new:hover {
+  background: var(--edge);
+  color: var(--text);
+}
+
+/* The pane's left group. `.nav`'s 1px is a seam between tabs; these are three
+   separate things. */
+.nav-focused {
+  align-items: center;
+  gap: var(--s3);
+}
+
 .icon-button {
   display: grid;
   place-items: center;
@@ -547,6 +581,10 @@ button {
 }
 
 .empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s4);
   color: var(--dim);
   text-align: center;
   padding: 32px 16px;
@@ -755,10 +793,12 @@ button {
 }
 
 /*
- * Where a card sits in the fleet: one dot column, four moves behind it.
+ * Everything a card can do, behind one dot column.
  *
- * A row of four arrows was the shape before this one, and four glyphs on every
- * card is four glyphs however faded they are. One is furniture; four are chrome.
+ * It carried four moves; it now carries the header's whole chip row as well —
+ * see `CardMenu`. That is a change of weight, not of treatment: one glyph in a
+ * header is furniture, and the alternative was six words of chrome fading in
+ * over the title on every card in the fleet.
  *
  * So it is dim rather than faded — `--dim` at full strength, the weight this
  * panel already gives resting furniture like `.head-path` and `.repo-summary`,
@@ -771,28 +811,32 @@ button {
  * The popover itself is the theme picker's, value for value — same surface,
  * same rows, same shadow. There is one kind of menu in this panel.
  */
-.reorder {
+.card-menu {
   position: relative;
   flex: none;
   align-self: center;
 }
 
-.reorder-open {
-  padding: 2px 5px;
-  border-radius: 4px;
+.menu-open {
+  /* The way into every action a card has, so it is a real target and not the
+     glyph's own bounding box — 24px, like the rail's buttons. */
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
   font-size: var(--mark-md);
-  line-height: 1;
   color: var(--dim);
 }
 
 /* Brighter on the card you are pointing at, so it reads as this card's control
    and not as a mark in the header. */
-.card-head:hover .reorder-open {
+.card-head:hover .menu-open {
   color: var(--soft);
 }
 
-.reorder-open:hover,
-.reorder-open.showing {
+.menu-open:hover,
+.menu-open.showing {
   background: var(--edge);
   color: var(--text);
 }
@@ -800,17 +844,14 @@ button {
 /*
  * Right-aligned under the button: the card is 8px from the window's right edge,
  * so a left-aligned menu would hang off it.
- *
- * The card clips its own children (`overflow: hidden`, for the rounded corners),
- * which would cut this off at the header — hence the `:has` below, which lets
- * the card overflow for exactly as long as a menu is inside it.
  */
-.reorder-menu {
+.menu-sheet {
   position: absolute;
-  top: 22px;
+  /* Off the trigger, not off a number that was measured against an older one. */
+  top: calc(100% + 2px);
   right: 0;
   z-index: 20;
-  min-width: 148px;
+  min-width: 168px;
   padding: 4px;
   display: flex;
   flex-direction: column;
@@ -822,35 +863,49 @@ button {
   box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
 }
 
-.reorder-slot {
-  font-size: 10px;
+/*
+ * A group heading, and the seam the actions above it needed anyway: a rule
+ * between the two would say only that they are different, and this says how.
+ */
+.menu-label {
+  font-size: var(--fs-micro);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--dim);
-  padding: 5px 6px 3px;
+  padding: 7px 6px 3px;
+  margin-top: 3px;
+  border-top: 1px solid var(--edge);
 }
 
-.reorder-item {
+.menu-item {
   padding: 4px 6px;
   border-radius: 5px;
-  font-size: 11.5px;
+  font-size: var(--fs-body);
   color: var(--soft);
   text-align: left;
 }
 
-.reorder-item:hover:enabled {
+.menu-item:hover:enabled {
   background: var(--edge);
   color: var(--text);
 }
 
 /* Already at that end, or no slot to clear: shown, so the menu keeps its shape
    and says what the card's position is, but plainly inert. */
-.reorder-item:disabled {
+.menu-item:disabled {
   color: var(--edge);
   cursor: default;
 }
 
-.reorder-divider {
+.menu-item.danger {
+  color: var(--danger);
+}
+.menu-item.danger:hover:enabled {
+  background: color-mix(in srgb, var(--danger) 22%, var(--panel-solid));
+  color: var(--danger);
+}
+
+.menu-divider {
   margin: 3px 4px;
   border-top: 1px solid var(--edge);
 }
@@ -999,72 +1054,6 @@ button {
   }
 }
 
-/*
- * A group's actions, laid over its own metadata.
- *
- * They were a row of their own at the foot of every group, revealed on hover —
- * which meant every group in the fleet reserved a row of height to show
- * nothing, and six of those is most of a screenful of reserved emptiness. They
- * are absolutely positioned in the head instead: the space is space the head
- * already had, so revealing them moves nothing, and what they cover is the
- * `2 repos · 1 dirty` summary — the one thing on the row you do not need while
- * you are acting on the group.
- *
- * Stopping short of `--act` keeps them clear of the head's own two controls,
- * which stay where they are on every other row.
- */
-.card-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--s1);
-  /* Takes the row's free space, so it and `.row-act` sit at the trailing edge. */
-  margin-left: auto;
-  flex: none;
-  /*
-   * In the flow, but zero-width until pointed at.
-   *
-   * Absolutely positioned it reserved nothing — but it was also invisible to the
-   * layout, so a long title had no reason to yield and simply ran underneath the
-   * chips. At zero width it still reserves nothing, and because it is a real
-   * flex item the title's `flex: 0 1 auto` and `min-width: 0` do the rest: on
-   * hover the chips claim their width and the title ellipsises to fit. Nothing
-   * moves vertically and no other row is touched.
-   */
-  width: 0;
-  overflow: hidden;
-  opacity: 0;
-  transition: opacity 90ms ease-out;
-}
-
-.card:hover .card-actions,
-.card:focus-within .card-actions,
-/* An armed `archive — sure?` must not fade out from under the pointer. */
-.card:has(.card-actions .chip.confirming) .card-actions {
-  width: auto;
-  overflow: visible;
-  opacity: 1;
-}
-
-/* The summary steps aside rather than moving: same row, same height, nothing
-   reflows on the way in or out. */
-.card:hover .repo-summary,
-.card:hover .head-path,
-.card:focus-within .repo-summary,
-.card:focus-within .head-path {
-  opacity: 0;
-}
-
-.repo-summary,
-.head-path {
-  transition: opacity 90ms ease-out;
-}
-
-/* The destructive one, set apart — the auto-margin that used to do it only
-   works in a row that spans the group. */
-.card-actions .chip.danger {
-  margin-left: var(--s3);
-}
-
 .chip {
   font-size: var(--fs-body);
   /* `--s1` vertical, so a row of chips is 28px like every other row rather than
@@ -1116,6 +1105,10 @@ button {
 .row-act:focus-within > *,
 /* An armed two-step confirm must not fade out from under the pointer. */
 .row-act > .confirming,
+/* An open menu is not furniture any more: it stays lit while it is open, and
+   the popover hanging off it would otherwise inherit this rule's `opacity: 0`
+   and vanish the moment the pointer left the header it is anchored to. */
+.row-act > .card-menu:has(.menu-open.showing),
 /* The pull-request and history tabs use the same column — without this their
    controls would be hidden with nothing able to reveal them. */
 .pr:hover .row-act > * {
@@ -1151,8 +1144,9 @@ button {
 }
 
 /*
- * On a head it is `.card-actions` that claims the free space, so this must not
- * also try — two `auto` margins split it and the controls drift inward.
+ * On a head it is the metadata — `.repo-summary`, `.head-path` — that claims the
+ * free space, so this must not also try: two `auto` margins split it and the
+ * controls drift inward.
  */
 .card-head .row-act,
 /* These rows are pushed by a `flex: 1` sibling instead, which is the same
@@ -1344,9 +1338,8 @@ button {
   /* The reveals themselves stay — they are what make the actions reachable.
      Only the 90ms they fade over goes. */
   .task-repo .chip,
-  .card-actions,
-  .repo-summary,
-  .head-path,
+  .hidden-caret,
+  .hidden-group > *,
   .row-act > * {
     transition: none;
   }
@@ -1694,6 +1687,15 @@ button {
   gap: 6px;
 }
 
+/* The shortcut on a worded button — the empty state is the one screen where
+   someone is learning this, so it is the one place the key belongs. */
+.key {
+  margin-left: var(--s2);
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  color: var(--dim);
+}
+
 .button {
   padding: 4px 12px;
   border-radius: 5px;
@@ -1956,7 +1958,7 @@ button {
   border-radius: 6px;
   background: var(--edge);
   color: var(--text);
-  font-size: 11.5px;
+  font-size: var(--fs-body);
   box-shadow: 0 6px 20px rgb(0 0 0 / 45%);
 }
 .toast.error {
@@ -1970,7 +1972,7 @@ button {
   border-radius: var(--radius);
   background: color-mix(in srgb, var(--warn) 15%, var(--panel));
   border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--edge));
-  font-size: 11.5px;
+  font-size: var(--fs-body);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2000,23 +2002,15 @@ button {
  * The repo count in a task's header. The rows below it are always shown now —
  * this is a label, not a disclosure.
  *
- * Deliberately not `.head-path`, which it otherwise looks exactly like: that one
- * is dropped below 400px, where this stays put.
- */
-/*
- * Out of the flow, at the trailing edge.
- *
- * It and the actions occupy the same space and are never both shown, so keeping
- * it out of the flow is what lets the actions be a flex item that the title can
- * yield to — with both in the flow the row would have to fit the two of them.
+ * An ordinary flex item on the trailing edge, like `.head-path` on a bare
+ * session: it used to be positioned out of the flow so that the chip row could
+ * fade in over the top of it, and with the chips gone into the card's menu
+ * there is nothing left to share the space with. Deliberately not `.head-path`
+ * itself, which it otherwise looks exactly like: that one is dropped below
+ * 400px, where this stays put.
  */
 .repo-summary {
-  position: absolute;
-  right: calc(var(--s4) + var(--act));
-  top: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
+  margin-left: auto;
   font-family: ui-monospace, SFMono-Regular, monospace;
   font-size: var(--fs-micro);
   color: var(--dim);
@@ -2031,50 +2025,98 @@ button {
 /* --- hidden sessions ----------------------------------------------------- */
 
 /*
- * The drawer's heading. A `section-title` that happens to be a button: the other
- * headings in this list are labels and this one is a control, so it gets the
- * caret and the hover, and nothing else about the type changes — a section that
- * looked different would read as a different kind of thing.
+ * The drawer's door.
+ *
+ * It was a `.section-title` — micro caps at hairline value, the same type as
+ * `3 OPEN · STACK OF 2` — so the one heading in this list you are meant to
+ * press looked exactly like the ones you cannot, and the target was the width
+ * of its own words. It is a row now, at the list's pitch and full width.
  */
 .hidden-toggle {
-  /* `.section-title` gives it the type and the top margin; the base `button`
-     reset gives it the rest. Only the caret's row and the colour are new — a
-     live control, like `+ new task` beside it, is not set at hairline value. */
-  color: var(--soft);
   display: flex;
   align-items: center;
-  /* The caret takes the mark column and hangs in the gutter, so the label lands
-     on the same rail as every other row's first word. */
-  gap: var(--s2);
-  margin-left: calc(var(--indent) - var(--mark-col));
+  gap: var(--s3);
+  width: 100%;
+  min-height: 28px;
+  /* The caret hangs in the mark column, so `hidden` starts on `--indent` — the
+     rail every other row's first word starts on, which is most of why this now
+     reads as one of them. Same arrangement as `.pr-top`. */
+  padding: 0 var(--s4) 0 calc(var(--indent) - var(--mark-col));
+  /* The seam every other group in this list is separated by. */
+  border-top: 1px solid var(--edge);
+  color: var(--soft);
+  font-size: var(--fs-body);
   text-align: left;
 }
 .hidden-toggle:hover {
+  /* The row hover this list already uses — see `.pr:hover`. */
+  background: color-mix(in srgb, var(--text) 5%, transparent);
   color: var(--text);
 }
 
+/* Its own fixed width, so the label does not shift when the caret turns. */
 .hidden-caret {
+  flex: none;
+  width: calc(var(--mark-col) - var(--s3));
+  display: grid;
+  place-items: center;
+  /* The chevron draws at `1em`. The small mark step, like every other glyph in
+     a leading column — it is a drawn shape now, so it is legible at that size in
+     a way the `▸` it replaces was not. */
   font-size: var(--mark-sm);
-  width: calc(var(--mark-col) - var(--s2));
-  text-align: center;
-  /* Its own width, so the label does not shift when the caret turns. */
-  width: 7px;
+  color: var(--dim);
+  transition: transform 120ms ease-out;
 }
 
-/* The one number in the heading worth reading: not `danger`, because the point
-   of this section is that it is not shouting. */
+.hidden-toggle:hover .hidden-caret {
+  color: inherit;
+}
+
+/* A quarter turn, which is the disclosure saying which way it goes rather than
+   swapping one character for another. */
+.hidden-toggle[aria-expanded='true'] .hidden-caret {
+  transform: rotate(90deg);
+}
+
+/*
+ * The count, and then how many of them want you.
+ *
+ * Two different questions — how much is in the drawer, and whether opening it
+ * is urgent — so two marks rather than one sentence. The second is the rail's
+ * own alert, dot and number, because that is how this panel says "these are
+ * waiting on you" in the tab bar directly above.
+ */
+.hidden-count {
+  font-family: var(--mono);
+  font-size: var(--fs-body);
+  color: var(--dim);
+}
+.hidden-toggle:hover .hidden-count {
+  color: var(--soft);
+}
+
 .hidden-attention {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
   color: var(--warn);
 }
 
 /*
- * The cards themselves, one step back.
+ * The cards themselves, well back.
  *
- * Dimmed as a group rather than per card so a hidden card is the same component
- * with the same controls — it is where it sits that changed, not what it is. The
- * `flex-shrink` is the rule `.body > *` already sets on every other row, which
- * this wrapper would otherwise take away from the cards inside it: see the note
- * on `.body > *`.
+ * One signal, not three: a wash and a rule both had to be drawn at a strength
+ * that reads over a translucent panel composited against a wallpaper, and at
+ * that strength they are louder than the drawer deserves. Value does it alone —
+ * a hidden card is the same component with the same controls, so what changes
+ * is how much of the page it is holding, and the card you point at comes back
+ * to full so you can act on it.
+ *
+ * The `flex-shrink` is the rule `.body > *` already sets on every other row,
+ * which this wrapper would otherwise take away from the cards inside it: see
+ * the note on `.body > *`.
  */
 .hidden-group {
   display: flex;
@@ -2082,44 +2124,19 @@ button {
   /* The list's own group gap: a hidden group is the same component, so the space
      around it is the same too. */
   gap: var(--s3);
-  opacity: 0.66;
-}
-.hidden-group:hover {
-  opacity: 1;
-}
-.hidden-group > * {
-  flex-shrink: 0;
 }
 
-/*
- * A control in the list, not a surface in it.
- *
- * It was a full-bleed dashed rectangle — the only dashed thing out here, and a
- * border the width of the panel around the least urgent affordance on screen.
- * `.chip`'s treatment instead, which is the right family: every other quiet
- * action in a card is one of those, and this is the same kind of thing one level
- * up. Auto-width from `flex-start`, so it takes the room its label needs.
- */
-/*
- * `--soft`, not `--dim`: this and the hidden disclosure are the only two
- * navigation controls out here, and at the dim tier they were set to the same
- * value as the hairlines between groups. A rule and a live control must not
- * share a colour.
- */
-.new-task {
-  align-self: flex-start;
-  padding: var(--s2) var(--s3);
-  /* On the text rail, like `.section-title` beside it — less the padding the
-     chip treatment carries, so the label lands on `--indent` and not the box. */
-  margin-left: calc(var(--indent) - var(--s3));
-  border-radius: 5px;
-  color: var(--soft);
-  font-size: var(--fs-body);
-  text-align: left;
+.hidden-group > * {
+  flex-shrink: 0;
+  /* Per card and not on the wrapper: a child cannot be more opaque than its
+     parent, so dimming the group is the one arrangement in which pointing at
+     one card cannot bring that card back. */
+  opacity: 0.55;
+  transition: opacity 90ms ease-out;
 }
-.new-task:hover {
-  background: var(--edge);
-  color: var(--text);
+
+.hidden-group > *:hover {
+  opacity: 1;
 }
 
 .task-repos {
@@ -2204,7 +2221,7 @@ button {
    * tab order, and still exactly where they were; they just no longer compete
    * with the state token for your eye.
    *
-   * `opacity: 0` and not `.45`: the note on `.reorder-open` above is right that
+   * `opacity: 0` and not `.45`: the note on `.menu-open` above is right that
    * a half-transparent `--dim` glyph composites against the *desktop* here,
    * because the card fill is a thinned `--panel`. Its other reason does not
    * apply — this is a row, so the row is the hover target. And not
@@ -2433,7 +2450,7 @@ button {
   border-radius: 5px;
   color: var(--text);
   font: inherit;
-  font-size: 11.5px;
+  font-size: var(--fs-body);
   line-height: 1.5;
   padding: 5px 7px;
   outline: none;
@@ -2482,7 +2499,7 @@ button {
 .add-repo-picked {
   flex: none;
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: var(--fs-body);
   color: var(--accent);
 }
 
@@ -2509,7 +2526,7 @@ button {
   border-radius: 5px;
   color: var(--text);
   font: inherit;
-  font-size: 11.5px;
+  font-size: var(--fs-body);
   padding: 3px 7px;
   outline: none;
 }
@@ -2522,9 +2539,9 @@ button {
 /*
  * Open this task on its own.
  *
- * Sits between the repo count and the reorder menu, dim like every other piece of
+ * Sits between the repo count and the card's menu, dim like every other piece of
  * resting furniture in a card head and brightening with the card — the same rule
- * `.reorder-open` follows, because they are the same kind of thing: a control that
+ * `.menu-open` follows, because they are the same kind of thing: a control that
  * belongs to this card and must not compete with what the card says.
  *
  * No `margin-left: auto`: `.repo-summary` already claims the free space, so this
@@ -2657,7 +2674,7 @@ button {
 }
 
 .pane-branch {
-  font-size: 11.5px;
+  font-size: var(--fs-body);
   color: var(--soft);
 }
 
@@ -2761,7 +2778,7 @@ button {
   padding: 14px 12px;
   border: 1px dashed var(--edge);
   border-radius: var(--radius);
-  font-size: 11.5px;
+  font-size: var(--fs-body);
   line-height: 1.5;
   color: var(--dim);
 }
@@ -2955,7 +2972,7 @@ button {
   align-items: baseline;
   gap: 8px;
   padding: 2px 8px;
-  font-size: 11.5px;
+  font-size: var(--fs-body);
   color: var(--dim);
   text-align: left;
   min-width: 0;
@@ -3001,7 +3018,7 @@ button {
   align-items: center;
   gap: 7px;
   padding: 4px 8px;
-  font-size: 11.5px;
+  font-size: var(--fs-body);
   cursor: pointer;
   min-width: 0;
 }
@@ -3037,7 +3054,7 @@ button {
  */
 .branch-preview {
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: var(--fs-body);
   color: var(--warn);
   background: var(--bg);
   border-radius: 5px;
@@ -3116,7 +3133,7 @@ button {
   width: 100%;
   padding: 4px 6px;
   border-radius: 5px;
-  font-size: 11.5px;
+  font-size: var(--fs-body);
   color: var(--soft);
   text-align: left;
 }

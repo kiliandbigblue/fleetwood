@@ -17,7 +17,7 @@
  * with the tray, so drawing it costs nothing.
  */
 interface Props {
-  name: 'above' | 'contrast' | 'refresh' | 'pin';
+  name: 'above' | 'contrast' | 'refresh' | 'pin' | 'plus' | 'chevron' | 'dots';
 }
 
 export function Icon({ name }: Props): React.JSX.Element {
@@ -56,6 +56,25 @@ export function Icon({ name }: Props): React.JSX.Element {
           fill="currentColor"
           stroke="none"
         />
+      )}
+      {/* Points right; the drawer that owns it turns it a quarter when it opens.
+          A `▸` was here first and is three pixels of ink in this face — the same
+          reason `⇧` and `⤢` are drawn rather than typed. */}
+      {name === 'chevron' && <path d="m9.5 5.5 6.5 6.5-6.5 6.5" />}
+      {/* A card's menu. Three discs rather than `⋮`, which is thin in most UI
+          faces and sits off the row's optical centre. */}
+      {name === 'dots' && (
+        <>
+          <circle cx="12" cy="6" r="1.5" fill="currentColor" stroke="none" />
+          <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+          <circle cx="12" cy="18" r="1.5" fill="currentColor" stroke="none" />
+        </>
+      )}
+      {name === 'plus' && (
+        <>
+          <path d="M12 5v14" />
+          <path d="M5 12h14" />
+        </>
       )}
       {name === 'refresh' && (
         <>

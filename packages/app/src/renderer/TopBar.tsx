@@ -44,6 +44,8 @@ interface Props {
    */
   focusedTask?: string;
   onBack: () => void;
+  /** Start a task. Lives in the rail because it belongs to no row in the list. */
+  onNewTask: () => void;
 }
 
 /**
@@ -80,7 +82,21 @@ export function TopBar({
   themePicker,
   focusedTask,
   onBack,
+  onNewTask,
 }: Props): React.JSX.Element {
+  /*
+   * Beside the tabs, not beside the window controls.
+   *
+   * The rail's hairline splits what acts on the fleet from what acts on the
+   * window, and against that divider a `+` reads as the first of four icons on
+   * the wrong side of it. Next to `history` it reads as what it is.
+   */
+  const newTask = (
+    <button className="rail-new" onClick={onNewTask} title="new task (⌘T)">
+      <Icon name="plus" />
+    </button>
+  );
+
   const permission = counts?.blocked_permission ?? 0;
   const input = counts?.blocked_input ?? 0;
   const blocked = permission + input;
@@ -137,27 +153,32 @@ export function TopBar({
   if (focusedTask) {
     return (
       <header className="rail rail-top">
-        {/* One way back, in the place the tabs were, so the eye does not have to
-            go looking for it. Escape does the same thing. */}
-        <button className="nav-back" onClick={onBack} title="back to the fleet (esc)">
-          <svg
-            className="icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.9}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M20 12H5" />
-            <path d="m11.5 5.5-6.5 6.5 6.5 6.5" />
-          </svg>
-          <span>fleet</span>
-        </button>
-        {/* Not a control: it says which task you are in, and the pane below is
-            already all about it. */}
-        <span className="nav-here">{focusedTask}</span>
+        {/* The fleet's side of the rail, as on the lists: the way back, where
+            you are, and the one control that adds to the list you came from. */}
+        <div className="nav nav-focused">
+          {/* One way back, in the place the tabs were, so the eye does not have to
+              go looking for it. Escape does the same thing. */}
+          <button className="nav-back" onClick={onBack} title="back to the fleet (esc)">
+            <svg
+              className="icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.9}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M20 12H5" />
+              <path d="m11.5 5.5-6.5 6.5 6.5 6.5" />
+            </svg>
+            <span>fleet</span>
+          </button>
+          {/* Not a control: it says which task you are in, and the pane below is
+              already all about it. */}
+          <span className="nav-here">{focusedTask}</span>
+          {newTask}
+        </div>
 
         <div className="rail-controls">
           {themePicker}
@@ -203,6 +224,7 @@ export function TopBar({
             )}
           </button>
         ))}
+        {newTask}
       </nav>
 
       <div className="rail-controls">

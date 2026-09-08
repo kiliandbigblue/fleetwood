@@ -1,11 +1,11 @@
-import { useState } from 'react';
 import type { FleetSession } from '@fleetwood/core';
 import { isPinned, sessionLabel } from '@fleetwood/core/sessionOrder';
 import { worstState } from '@fleetwood/core/taskView';
 import { AgentRow } from './AgentRow.tsx';
 import { Icon } from './Icon.tsx';
 import { dotNote } from './TaskCard.tsx';
-import { Reorder } from './Reorder.tsx';
+import { CardMenu } from './CardMenu.tsx';
+import type { MenuItem } from './CardMenu.tsx';
 import { Slug } from './Slug.tsx';
 import { send, shortenPath, tildify } from './api.ts';
 
@@ -29,8 +29,6 @@ const RANK: Record<string, number> = {
 };
 
 export function SessionCard({ session, order, onResult }: Props): React.JSX.Element {
-  const [confirmingArchive, setConfirmingArchive] = useState(false);
-
   const act = async (request: Parameters<typeof send>[0]): Promise<void> => {
     const result = await send(request);
     onResult(result.detail, result.ok);
@@ -45,6 +43,42 @@ export function SessionCard({ session, order, onResult }: Props): React.JSX.Elem
   // No repos or pull requests to weigh — a bare session's mark is agents only.
   // `prs` stays `undefined` so we do not pretend to have searched GitHub.
   const state = worstState([], undefined, session.needsAttention, session.agents);
+
+  /*
+   * What this card can do, behind the header's dot column — as on a task group.
+   *
+   * A bare session has less to offer than a task does: two agents and the one
+   * way to end it. Which way that is depends on what made the session — a pull
+   * request checkout has a worktree to take with it, and everything else is
+   * just a tmux session to kill.
+   */
+  const actions: MenuItem[] = [
+    {
+      label: 'start claude',
+      title: 'new window running claude',
+      onClick: () => void act({ kind: 'spawnAgent', session: session.name, cwd, tool: 'claude' }),
+    },
+    {
+      label: 'start cursor',
+      title: 'new window running cursor-agent',
+      onClick: () => void act({ kind: 'spawnAgent', session: session.name, cwd, tool: 'cursor' }),
+    },
+    isPr
+      ? {
+          label: 'archive',
+          title: 'kill the session and remove its worktree',
+          danger: true,
+          confirm: true,
+          onClick: () => void act({ kind: 'archiveSession', session: session.name }),
+        }
+      : {
+          label: 'kill',
+          title: 'kill this tmux session',
+          danger: true,
+          confirm: true,
+          onClick: () => void act({ kind: 'killSession', session: session.name }),
+        },
+  ];
 
   return (
     <div className={`card${session.needsAttention ? ' attention' : ''}`}>
@@ -95,58 +129,8 @@ export function SessionCard({ session, order, onResult }: Props): React.JSX.Elem
         {!session.meta.branch && (
           <span className="head-path">{shortenPath(session.path, 22)}</span>
         )}
-        {/* Last, on the trailing edge: it is this card's menu, and a menu lives at
-            the end of the row it belongs to rather than beside the title. */}
-        {/* Over the head's metadata, as on a task group — see the note there. */}
-        <div
-            className="card-actions"
-            /* The head focuses the session; a chip in it must not also do that. */
-            onClick={(event) => event.stopPropagation()}
-          >
-          <button
-            className="chip"
-            onClick={() => void act({ kind: 'spawnAgent', session: session.name, cwd, tool: 'claude' })}
-            title="new window running claude"
-          >
-            + claude
-          </button>
-          <button
-            className="chip"
-            onClick={() => void act({ kind: 'spawnAgent', session: session.name, cwd, tool: 'cursor' })}
-            title="new window running cursor-agent"
-          >
-            + cursor
-          </button>
-          <span style={{ marginLeft: 'auto' }} />
-          {isPr ? (
-            <button
-              className="chip danger"
-              onClick={() => {
-                if (!confirmingArchive) {
-                  setConfirmingArchive(true);
-                  // Two-step because this also deletes a worktree.
-                  setTimeout(() => setConfirmingArchive(false), 4_000);
-                  return;
-                }
-                setConfirmingArchive(false);
-                void act({ kind: 'archiveSession', session: session.name });
-              }}
-              title="kill the session and remove its worktree"
-            >
-              {confirmingArchive ? 'archive — sure?' : 'archive'}
-            </button>
-          ) : (
-            <button
-              className="chip danger"
-              onClick={() => void act({ kind: 'killSession', session: session.name })}
-              title="kill this tmux session"
-            >
-              kill
-            </button>
-          )}
-        </div>
         <span className="row-act">
-          <Reorder session={session.name} order={order} onResult={onResult} />
+          <CardMenu session={session.name} order={order} actions={actions} onResult={onResult} />
         </span>
       </div>
 
