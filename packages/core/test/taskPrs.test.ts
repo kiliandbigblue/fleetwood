@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { matchPrsToTasks, parseAheadBehind, parseCheckoutBranches, prCacheKey } from '../src/taskPrs.ts';
+import { matchPrsToTasks, parseAheadBehind, parseCheckoutBranches, prCacheKey, trunkBranchName } from '../src/taskPrs.ts';
 import type { TaskBranches } from '../src/taskPrs.ts';
 import { batchHeadQualifiers } from '../src/github.ts';
 import type { PullRequest } from '../src/github.ts';
@@ -74,6 +74,28 @@ test('one branch longer than the budget still gets searched for', () => {
 
 test('nothing to search for is one empty batch list, not one empty query', () => {
   assert.deepEqual(batchHeadQualifiers([]), []);
+});
+
+test('a batch is capped by branch count as well as by length', () => {
+  // `head:` terms are OR-ed, so a batch's result set is every branch's matches
+  // added together against one `--limit`. Eighteen short branches fitted the
+  // character budget in a single query and came back truncated, which reads as
+  // three tasks having no pull requests at all.
+  const branches = Array.from({ length: 18 }, (_, i) => `feature/b-${i}`);
+  const batches = batchHeadQualifiers(branches);
+  assert.ok(batches.length >= 3, `expected several batches, got ${batches.length}`);
+  for (const batch of batches) assert.ok(batch.length <= 6, `batch of ${batch.length} is too wide`);
+  assert.deepEqual(batches.flat(), branches, 'no branch is dropped');
+});
+
+test('the trunk name compared to candidates is bare, not origin-prefixed', () => {
+  // discoverTaskBranches used to skip `origin/main` and let bare `main` through
+  // (from `git branch --contains` after a land). Searching `head:main` then
+  // returned hundreds of org-wide hits and starved every other branch in the batch.
+  assert.equal(trunkBranchName('origin/main'), 'main');
+  assert.equal(trunkBranchName('origin/dev'), 'dev');
+  assert.equal(trunkBranchName('main'), 'main');
+  assert.equal(trunkBranchName(undefined), undefined);
 });
 
 const stacked: TaskBranches = {

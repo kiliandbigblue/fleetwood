@@ -90,6 +90,23 @@ export function parseAheadBehind(stdout: string): Map<string, { ahead: number; b
 }
 
 /**
+ * Bare trunk name for comparing against local branch names.
+ *
+ * `localDefaultBranch` returns the remote-tracking ref (`origin/main`) on purpose —
+ * a task worktree often has no local copy of the trunk. Candidates from
+ * `git branch` and the reflog are bare (`main`), so a straight `===` against
+ * `origin/main` lets the trunk through. Searching `head:main` org-wide then
+ * returns hundreds of unrelated pull requests and starves every other branch in
+ * the batch.
+ */
+export function trunkBranchName(defaultBranchRef: string | undefined): string | undefined {
+  if (!defaultBranchRef) return undefined;
+  return defaultBranchRef.startsWith('origin/')
+    ? defaultBranchRef.slice('origin/'.length)
+    : defaultBranchRef;
+}
+
+/**
  * Every branch a task might have a pull request on, across all its worktrees.
  *
  * Four sources, listed in the order of how strongly each claims the branch is
@@ -131,6 +148,7 @@ export async function discoverTaskBranches(task: Task): Promise<TaskBranches> {
       // owner here would file another repo's namesake branch under this task.
       repo.repo ? Promise.resolve(repo.repo) : remoteNameWithOwner(repo.path),
     ]);
+    const trunk = trunkBranchName(defaultBranch);
 
     // One read doing both jobs: which branches hold work of their own, and how much.
     const distance = defaultBranch
@@ -192,7 +210,8 @@ export async function discoverTaskBranches(task: Task): Promise<TaskBranches> {
     }
 
     for (const candidate of candidates) {
-      if (candidate.branch === defaultBranch) continue;
+      // Bare name, not `origin/main` — see `trunkBranchName`.
+      if (trunk && candidate.branch === trunk) continue;
       if (!hasOwnWork(candidate.branch)) continue;
       add({
         ...candidate,

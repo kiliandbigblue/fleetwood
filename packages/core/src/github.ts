@@ -331,11 +331,19 @@ export async function fetchPrs(options: { limit?: number; enrich?: boolean } = {
  * Split branch names into queries short enough for GitHub search to take.
  *
  * There is no documented ceiling on a search query, and 700-odd characters go
- * through fine, so this is a conservative bound rather than a discovered one —
- * a fleet of stacked tasks could otherwise build a query of any length at all.
- * Pure, and exported for its test.
+ * through fine, so `maxChars` is a conservative bound rather than a discovered
+ * one — a fleet of stacked tasks could otherwise build a query of any length at
+ * all. Pure, and exported for its test.
+ *
+ * `maxBranches` is the other bound, and it is the one that bites. `head:` terms
+ * are OR-ed, so a batch's result set is the sum of every branch's matches
+ * org-wide, against one `--limit` — and a truncated search is indistinguishable
+ * from a branch having no pull request. Eighteen branches of a real fleet came
+ * back capped, silently dropping three tasks' pull requests. Keeping a batch
+ * small keeps its result set well under the cap; the caller also refuses an
+ * answer that arrives at the limit, because no bound here can be certain.
  */
-export function batchHeadQualifiers(branches: string[], maxChars = 600): string[][] {
+export function batchHeadQualifiers(branches: string[], maxChars = 600, maxBranches = 6): string[][] {
   const batches: string[][] = [];
   let current: string[] = [];
   let length = 0;
@@ -343,7 +351,7 @@ export function batchHeadQualifiers(branches: string[], maxChars = 600): string[
     const cost = branch.length + 6; // `head:` plus the separating space.
     // A single branch longer than the budget still gets its own query: dropping
     // it would silently lose a pull request.
-    if (current.length > 0 && length + cost > maxChars) {
+    if (current.length > 0 && (length + cost > maxChars || current.length >= maxBranches)) {
       batches.push(current);
       current = [];
       length = 0;
@@ -371,33 +379,50 @@ export function batchHeadQualifiers(branches: string[], maxChars = 600): string[
  */
 export async function fetchPrsForBranches(
   branches: string[],
-  limit = 60,
+  limit = 200,
 ): Promise<{ ok: boolean; prs: PullRequest[] }> {
   if (branches.length === 0) return { ok: true, prs: [] };
   const config = await loadConfig();
   const extra = config.github.extraQualifiers.trim();
 
-  const results = await Promise.all(
-    batchHeadQualifiers(branches).map(async (batch) => {
-      const args = [
-        'search',
-        'prs',
-        ...batch.map((branch) => `head:${branch}`),
-        '--state=open',
-        `--limit=${limit}`,
-        '--json',
-        SEARCH_FIELDS,
-      ];
-      if (extra.length > 0) args.push(...extra.split(/\s+/));
-      const { code, stdout } = await run('gh', args, { timeoutMs: 20_000 });
-      if (code !== 0) return undefined;
-      try {
-        return JSON.parse(stdout) as SearchRow[];
-      } catch {
-        return undefined;
-      }
-    }),
-  );
+  const searchBatch = async (batch: string[]): Promise<SearchRow[] | undefined> => {
+    const args = [
+      'search',
+      'prs',
+      ...batch.map((branch) => `head:${branch}`),
+      '--state=open',
+      `--limit=${limit}`,
+      '--json',
+      SEARCH_FIELDS,
+    ];
+    if (extra.length > 0) args.push(...extra.split(/\s+/));
+    const { code, stdout } = await run('gh', args, { timeoutMs: 20_000 });
+    if (code !== 0) return undefined;
+    let rows: SearchRow[];
+    try {
+      rows = JSON.parse(stdout) as SearchRow[];
+    } catch {
+      return undefined;
+    }
+    // A search that comes back full was cut off, and GitHub keeps whichever
+    // rows it liked — so the branches that fell off look like branches with
+    // no pull request. Split and retry when there is more than one branch; a
+    // single branch that alone fills the limit is the one case we cannot
+    // answer honestly, and that batch fails.
+    if (rows.length >= limit) {
+      if (batch.length <= 1) return undefined;
+      const mid = Math.ceil(batch.length / 2);
+      const [left, right] = await Promise.all([
+        searchBatch(batch.slice(0, mid)),
+        searchBatch(batch.slice(mid)),
+      ]);
+      if (left === undefined || right === undefined) return undefined;
+      return [...left, ...right];
+    }
+    return rows;
+  };
+
+  const results = await Promise.all(batchHeadQualifiers(branches).map(searchBatch));
 
   // One failed batch means an incomplete answer, and an incomplete answer here
   // reads as "that PR was closed". Say degraded instead.
