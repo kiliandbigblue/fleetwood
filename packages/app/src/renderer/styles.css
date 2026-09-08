@@ -1014,23 +1014,34 @@ button {
  * which stay where they are on every other row.
  */
 .card-actions {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  right: calc(var(--s4) + var(--act));
   display: flex;
   align-items: center;
   gap: var(--s1);
+  /* Takes the row's free space, so it and `.row-act` sit at the trailing edge. */
+  margin-left: auto;
+  flex: none;
+  /*
+   * In the flow, but zero-width until pointed at.
+   *
+   * Absolutely positioned it reserved nothing — but it was also invisible to the
+   * layout, so a long title had no reason to yield and simply ran underneath the
+   * chips. At zero width it still reserves nothing, and because it is a real
+   * flex item the title's `flex: 0 1 auto` and `min-width: 0` do the rest: on
+   * hover the chips claim their width and the title ellipsises to fit. Nothing
+   * moves vertically and no other row is touched.
+   */
+  width: 0;
+  overflow: hidden;
   opacity: 0;
   transition: opacity 90ms ease-out;
-  /* Over the summary, so it is the thing that gives way. */
-  z-index: 1;
 }
 
 .card:hover .card-actions,
 .card:focus-within .card-actions,
 /* An armed `archive — sure?` must not fade out from under the pointer. */
 .card:has(.card-actions .chip.confirming) .card-actions {
+  width: auto;
+  overflow: visible;
   opacity: 1;
 }
 
@@ -1140,16 +1151,10 @@ button {
 }
 
 /*
- * `.repo-summary` only, not `.head-path`.
- *
- * The list here is the set of heads whose metadata claims the free space, so
- * this control does not have to. `.head-path` used to be one of them, back when
- * a plain session's path sat out in the trailing gutter; it moved beside the
- * title (a path is what a row *is*, not what it needs) and gave up its `auto`
- * margin doing so — which left a tmux row with nothing pushing anything, and
- * the `⋮` parked mid-row wherever the path happened to end.
+ * On a head it is `.card-actions` that claims the free space, so this must not
+ * also try — two `auto` margins split it and the controls drift inward.
  */
-.card-head:has(.repo-summary) .row-act,
+.card-head .row-act,
 /* These rows are pushed by a `flex: 1` sibling instead, which is the same
    arrangement by another route. */
 .agent .row-act,
@@ -1998,8 +2003,20 @@ button {
  * Deliberately not `.head-path`, which it otherwise looks exactly like: that one
  * is dropped below 400px, where this stays put.
  */
+/*
+ * Out of the flow, at the trailing edge.
+ *
+ * It and the actions occupy the same space and are never both shown, so keeping
+ * it out of the flow is what lets the actions be a flex item that the title can
+ * yield to — with both in the flow the row would have to fit the two of them.
+ */
 .repo-summary {
-  margin-left: auto;
+  position: absolute;
+  right: calc(var(--s4) + var(--act));
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
   font-family: ui-monospace, SFMono-Regular, monospace;
   font-size: var(--fs-micro);
   color: var(--dim);
