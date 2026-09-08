@@ -229,6 +229,18 @@ test('an approval is the quietest thing worth a stripe', () => {
   assert.equal(worstState([repo(0)], [pr({ reviewDecision: 'APPROVED' })], false), 'ok');
 });
 
+test('a working agent lifts a quiet card to the same accent its row already wears', () => {
+  // Without this, the title mark stayed `quiet` while the agent row alone was live.
+  assert.equal(worstState([repo(0)], [], false, [{ status: 'working' }]), 'ok');
+  assert.equal(worstState([repo(0)], [], false, [{ status: 'compacting' }]), 'ok');
+  assert.equal(worstState([repo(0)], [], false, [{ status: 'idle' }]), 'quiet');
+});
+
+test('a live agent does not outrank dirty work or a blocked session', () => {
+  assert.equal(worstState([repo(2)], [], false, [{ status: 'working' }]), 'warn');
+  assert.equal(worstState([repo(0)], [], true, [{ status: 'working' }]), 'danger');
+});
+
 test('a task with nothing to say gets no stripe', () => {
   assert.equal(worstState([repo(0)], [], false), 'quiet');
   assert.equal(worstState([], [], false), 'quiet');

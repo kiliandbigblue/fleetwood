@@ -365,7 +365,6 @@ export function TaskPane({
                 key={`${pr.repo}#${pr.number}`}
                 pr={pr}
                 repoTag={repoTags[`${pr.repo}#${pr.number}`]}
-                slug={task.slug}
                 onResult={onResult}
               />
             ))}

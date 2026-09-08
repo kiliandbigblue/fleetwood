@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { FleetSession } from '@fleetwood/core';
 import { isPinned, sessionLabel } from '@fleetwood/core/sessionOrder';
+import { worstState } from '@fleetwood/core/taskView';
 import { AgentRow } from './AgentRow.tsx';
 import { Icon } from './Icon.tsx';
 import { dotNote } from './TaskCard.tsx';
@@ -41,6 +42,9 @@ export function SessionCard({ session, order, onResult }: Props): React.JSX.Elem
   const paneCount = session.windows.reduce((n, w) => n + w.panes.length, 0);
   const cwd = session.windows[0]?.panes[0]?.cwd ?? session.path;
   const isPr = session.meta.kind === 'pr';
+  // No repos or pull requests to weigh — a bare session's mark is agents only.
+  // `prs` stays `undefined` so we do not pretend to have searched GitHub.
+  const state = worstState([], undefined, session.needsAttention, session.agents);
 
   return (
     <div className={`card${session.needsAttention ? ' attention' : ''}`}>
@@ -51,15 +55,10 @@ export function SessionCard({ session, order, onResult }: Props): React.JSX.Elem
         onClick={() => void act({ kind: 'focusSession', session: session.name })}
         title={`focus ${session.name} · ${tildify(session.path)}`}
       >
-        {/* Colour is the state, shape is attachment — as on a task group. The
-            state is spelled out rather than asked of `worstState`: a session has
-            no worktrees and no pull requests, and passing it two empty arrays
-            would read as having checked them. */}
+        {/* Colour is the state, shape is attachment — as on a task group. */}
         <span
-          className={`attached-dot sev-${session.needsAttention ? 'danger' : 'quiet'}${
-            session.attached > 0 ? '' : ' detached'
-          }`}
-          title={dotNote(session.needsAttention ? 'danger' : 'quiet', session.attached > 0, true)}
+          className={`attached-dot sev-${state}${session.attached > 0 ? '' : ' detached'}`}
+          title={dotNote(state, session.attached > 0, true)}
         />
         {/* The label, not the name: an order prefix is fleetwood's own bookkeeping
             and reading `20-atlas` on the card would be noise. The tooltip above

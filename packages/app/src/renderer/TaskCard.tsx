@@ -216,25 +216,6 @@ function RepoRow({
 const VIA_MARK: Record<TaskPr['via'], string> = { head: '', stack: '⇡', history: '~', task: '⇄' };
 
 /**
- * One pull request a task has open.
- *
- * Flatter than the PR tab's row on purpose — it sits inside a card, and a second
- * bordered surface nested in the first reads as a different kind of object. The
- * facts are the same ones, in the same colours.
- *
- * Exported for `TaskPane`, which draws the same rows with more room around them:
- * a pull request has to read identically in both, down to the marks.
- */
-/**
- * What a pull request's title says that its group's heading does not.
- *
- * Nothing, when the branch is the task's own — every character after the type
- * prefix repeats the heading a row or two above. The prefix is the one fact
- * added, so it is the one thing left. Any other branch is shown in full: a
- * stack layer, or a pull request found on a branch this task did not make, is
- * exactly the case where the whole name is the information.
- */
-/**
  * The dot, in words.
  *
  * Two channels on one glyph is only worth it if you can find out what they are,
@@ -245,31 +226,29 @@ export function dotNote(state: Severity, attached: boolean, hasSession: boolean)
   const colour = {
     danger: 'something here needs you',
     warn: 'uncommitted work',
-    ok: 'approved and unmerged',
+    ok: 'live, or approved and waiting',
     quiet: 'nothing waiting',
   }[state];
   const shape = hasSession ? (attached ? 'attached' : 'running, not attached') : 'no session yet';
   return `${colour} · ${shape}`;
 }
 
-function prTitleShort(title: string, slug: string): string {
-  if (title === slug) return '';
-  const cut = title.length - slug.length - 1;
-  // The slash is kept: `feature/` reads as a prefix whose remainder is the
-  // heading above, where a bare `feature` read as a name that had been cut off.
-  if (cut > 0 && title.endsWith(`/${slug}`)) return title.slice(0, cut + 1);
-  return title;
-}
-
+/**
+ * One pull request a task has open.
+ *
+ * Flatter than the PR tab's row on purpose — it sits inside a card, and a second
+ * bordered surface nested in the first reads as a different kind of object. The
+ * facts are the same ones, in the same colours.
+ *
+ * Exported for `TaskPane`, which draws the same rows with more room around them:
+ * a pull request has to read identically in both, down to the marks.
+ */
 export function PrRow({
   pr,
   repoTag,
-  slug,
   onResult,
 }: {
   pr: TaskPr;
-  /** The task's slug, to drop a title that only repeats it. */
-  slug: string;
   /**
    * The repo this pull request is on, when the list it sits in needs telling apart.
    *
@@ -310,14 +289,12 @@ export function PrRow({
       )}
       {/*
        * The title, which under this repo's convention *is* the branch name — so
-       * the branch is not repeated beside it, only in the tooltip.
-       *
-       * And when the branch is this task's own, the title is the group's heading
-       * spelled a second time with a type prefix on the front: the widest line
-       * in the panel, carrying only that prefix. So only the prefix is drawn.
+       * the branch is not repeated beside it, only in the tooltip. Shown in full
+       * even when it restates the heading: shortening to `feature/` or to nothing
+       * both looked broken next to the number.
        */}
       <span className="task-pr-title" title={pr.title}>
-        {prTitleShort(pr.title, slug)}
+        {pr.title}
       </span>
       {/*
        * One state, not two. `draft needs review` was rendering as a single
@@ -388,6 +365,7 @@ export function TaskCard({
   // where the tag tells you anything — see `prRepoTags`.
   const repoTags = prRepoTags(prs ?? []);
   const needsAttention = session?.needsAttention ?? false;
+  const state = worstState(task.repos, prs, needsAttention, session?.agents);
   const dormant = !task.session;
 
   const openNotes = (): void => {
@@ -428,10 +406,10 @@ export function TaskCard({
       >
         {/* Colour is the state, shape is whether you are attached. */}
         <span
-          className={`attached-dot sev-${worstState(task.repos, prs, needsAttention)}${
+          className={`attached-dot sev-${state}${
             session && session.attached > 0 ? '' : ' detached'
           }`}
-          title={dotNote(worstState(task.repos, prs, needsAttention), (session?.attached ?? 0) > 0, task.session !== undefined)}
+          title={dotNote(state, (session?.attached ?? 0) > 0, task.session !== undefined)}
         />
         <span className="session-name">
           <Slug text={task.slug} />
@@ -574,7 +552,6 @@ export function TaskCard({
               key={`${pr.repo}#${pr.number}`}
               pr={pr}
               repoTag={repoTags[`${pr.repo}#${pr.number}`]}
-              slug={task.slug}
               onResult={onResult}
             />
           ))}

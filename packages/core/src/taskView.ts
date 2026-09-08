@@ -161,23 +161,31 @@ export type Severity = 'danger' | 'warn' | 'ok' | 'quiet';
  * the row it belonged to. Which is fine once you are reading a card and useless
  * for finding out which card to read: five of them stacked up read as five
  * identical blocks. So this folds the lot into one rank, which the panel draws as
- * a stripe down the card's left edge, and the words stay where they were for once
- * you have arrived.
+ * a mark beside the title, and the words stay where they were for once you have
+ * arrived.
  *
  * The order is what you would do about it, not how bad it sounds. A blocked agent
  * is first because it is the only thing here that is *waiting* on you and getting
  * nothing done meanwhile. Failing checks and a rejected review come next: work
  * has come back. Uncommitted changes are yours to lose, so they outrank an
- * approval, which is merely a merge you have not got round to.
+ * approval or a live agent, which are merely things still moving.
+ *
+ * A working (or compacting) agent is `ok` for the same reason an approval is:
+ * something is happening that is not asking you for anything. Without that rung,
+ * a card with a live cursor sat at `quiet` — the same mark as a dormant folder —
+ * while its agent row alone carried the accent. The title mark has to agree.
  *
  * `needsAttention` is a parameter because it is a fact about the session, not
  * about the task — no arrangement of repos and pull requests can tell you an
- * agent is stuck on a permission prompt.
+ * agent is stuck on a permission prompt. Agents are optional for the same
+ * reason: a caller that has none (or has not looked) must not invent quiet by
+ * passing an empty list when the honest answer is "I did not check".
  */
 export function worstState(
   repos: TaskRepo[],
   prs: TaskPr[] | undefined,
   needsAttention: boolean,
+  agents?: ReadonlyArray<{ status: string }>,
 ): Severity {
   if (needsAttention) return 'danger';
   // `undefined` is the first `gh` search still being out, which is not the same
@@ -189,5 +197,6 @@ export function worstState(
   }
   if (repos.some((r) => r.dirty > 0)) return 'warn';
   if (open.some((pr) => pr.reviewDecision === 'APPROVED')) return 'ok';
+  if (agents?.some((a) => a.status === 'working' || a.status === 'compacting')) return 'ok';
   return 'quiet';
 }
