@@ -23,6 +23,18 @@ export function useTheme(name: unknown): void {
   palette = THEMES[isThemeName(name) ? name : DEFAULT_THEME].palette;
 }
 
+/**
+ * The palette itself, for a caller that needs the values rather than a painter.
+ *
+ * `fw switch` is the one: fzf paints its own chrome — prompt, pointer, current
+ * line, borders — and takes hex, so those have to be handed the same eleven
+ * roles the rows are painted from or the popup comes out in fzf's default blue
+ * inside a rosé-pine terminal.
+ */
+export function currentPalette(): Palette {
+  return palette;
+}
+
 function role(name: keyof Palette): (s: string) => string {
   return (s) => (useColor ? `\x1b[38;2;${rgbTriplet(palette[name])}m${s}\x1b[0m` : s);
 }

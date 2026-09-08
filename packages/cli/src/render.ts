@@ -1,5 +1,5 @@
 import type { AgentStatus, FleetAgent, FleetState, PlanLimits } from '@fleetwood/core';
-import { isHidden, isPinned, sessionLabel, sortSessions } from '@fleetwood/core';
+import { agentUrgency, isHidden, isPinned, sessionLabel, sortSessions } from '@fleetwood/core';
 import { c, pad, relativeAge, tildify, width } from './ui.ts';
 
 /**
@@ -96,6 +96,23 @@ function provenanceMark(agent: FleetAgent): string {
   }
 }
 
+/**
+ * `▶ working` in the status' own colour, for a row that has no space for more.
+ *
+ * Exported so the picker's rows read as the fleet list's do: one glyph and one
+ * word per status, chosen once. `pad` before painting, since every role closes
+ * with a reset and padding after it would sit outside the colour.
+ */
+export function statusChip(status: AgentStatus, labelWidth = 0): string {
+  const style = STYLES[status];
+  return `${style.paint(style.glyph)} ${style.paint(pad(style.label, labelWidth))}`;
+}
+
+/** How long the agent has been in that status, or its uptime when nothing timed it. */
+export function agentAge(agent: FleetAgent): string {
+  return agent.ageIsUptime ? `up ${duration(agent.forSeconds)}` : duration(agent.forSeconds);
+}
+
 export function renderAgentLine(agent: FleetAgent, indent = '    '): string {
   const style = STYLES[agent.status];
   const status = `${style.paint(style.glyph)} ${pad(style.paint(style.label), 11)}`;
@@ -183,7 +200,7 @@ export function renderFleet(
       lines.push(`    ${c.dim(`no agents · ${panes} pane${panes === 1 ? '' : 's'}`)}`);
     } else {
       // Whoever needs the human comes first.
-      const ordered = [...session.agents].sort((a, b) => rank(a) - rank(b));
+      const ordered = [...session.agents].sort((a, b) => agentUrgency(a) - agentUrgency(b));
       for (const agent of ordered) lines.push(renderAgentLine(agent));
     }
     lines.push('');
@@ -229,25 +246,4 @@ export function renderFleet(
   // so it reads as a footer rather than competing with the fleet for the top.
   const bars = limits ? renderLimits(limits) : '';
   return bars ? `${body}\n${bars}\n` : body;
-}
-
-function rank(agent: FleetAgent): number {
-  switch (agent.status) {
-    case 'blocked_permission':
-      return 0;
-    case 'blocked_input':
-      return 1;
-    case 'error':
-      return 2;
-    case 'working':
-      return 3;
-    case 'compacting':
-      return 4;
-    case 'starting':
-      return 5;
-    case 'idle':
-      return 6;
-    case 'gone':
-      return 7;
-  }
 }

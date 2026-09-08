@@ -272,33 +272,50 @@ export async function readTaskRepos(dir: string): Promise<TaskRepo[]> {
   }
 
   const index = await getIndex();
-  const repos: TaskRepo[] = [];
+  const worktrees: string[] = [];
   for (const entry of entries.sort()) {
     if (entry.startsWith('.') || entry === RECORD_FILE || entry === BRIEF_FILE || entry === NOTES_FILE)
       continue;
-    const path = join(dir, entry);
-    if (!(await exists(join(path, '.git')))) continue;
-    const match = index.repos.find((r) => basename(r.path).toLowerCase() === entry.toLowerCase());
-    repos.push({
-      name: entry,
-      path,
-      /*
-       * The index first, then the worktree's own remote.
-       *
-       * Matching the directory name against the index is right for the ordinary
-       * layout, where a task's worktree is named after its repo. It is wrong for
-       * stacked work, where the convention is one directory per branch —
-       * `reflow-orders-drop-b2b-flag` — and none of them is called `reflow`. That
-       * left `repo` unknown, and `archiveTask` resolves the owning checkout
-       * through it: every worktree in a stacked task was kept with "owning repo
-       * not found", which is a task that cannot be archived at all.
-       */
-      repo: match?.nameWithOwner ?? (await remoteNameWithOwner(path)),
-      branch: await currentBranch(path),
-      dirty: await dirtyCount(path),
-    });
+    if (!(await exists(join(dir, entry, '.git')))) continue;
+    worktrees.push(entry);
   }
-  return repos;
+
+  /*
+   * The git reads run together, per task.
+   *
+   * Each worktree costs up to three subprocesses — its remote, its branch, its
+   * dirty count — and done one after another a ten-task fleet spent about half
+   * a second here. That was affordable while the caller was the panel's poll
+   * and `fw task ls`; it stopped being affordable when `prefix+g` started
+   * waiting on it, because the whole point of that key is that the list is
+   * already there. Fanned out per task rather than across all of them at once:
+   * a task holds a handful of worktrees, so this is a few processes in flight,
+   * not sixty every time the app refreshes.
+   */
+  return Promise.all(
+    worktrees.map(async (entry): Promise<TaskRepo> => {
+      const path = join(dir, entry);
+      const match = index.repos.find((r) => basename(r.path).toLowerCase() === entry.toLowerCase());
+      const [remote, branch, dirty] = await Promise.all([
+        /*
+         * The index first, then the worktree's own remote.
+         *
+         * Matching the directory name against the index is right for the
+         * ordinary layout, where a task's worktree is named after its repo. It
+         * is wrong for stacked work, where the convention is one directory per
+         * branch — `reflow-orders-drop-b2b-flag` — and none of them is called
+         * `reflow`. That left `repo` unknown, and `archiveTask` resolves the
+         * owning checkout through it: every worktree in a stacked task was kept
+         * with "owning repo not found", which is a task that cannot be archived
+         * at all.
+         */
+        match?.nameWithOwner ? Promise.resolve(match.nameWithOwner) : remoteNameWithOwner(path),
+        currentBranch(path),
+        dirtyCount(path),
+      ]);
+      return { name: entry, path, repo: remote, branch, dirty };
+    }),
+  );
 }
 
 /**

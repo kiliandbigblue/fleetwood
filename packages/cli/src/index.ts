@@ -33,6 +33,7 @@ import {
 import type { AgentTool, FleetState, MergedPr, PlanLimits, PullRequest, TaskPr } from '@fleetwood/core';
 import { c, pad, relativeAge, tildify, useTheme, width } from './ui.ts';
 import { renderAgentLine, renderFleet, renderLimits } from './render.ts';
+import { cmdSwitch } from './switch.ts';
 
 const HELP = `${c.bold('fleetwood')} — tmux-native cockpit for coding agents
 
@@ -62,6 +63,8 @@ ${c.bold('commands')}
 
   prs               pull requests awaiting your review, and your own
   open-pr <ref>     focus the session for a PR, or build one on a fresh worktree
+  switch [--all]    pick a session, an agent's pane, a dormant task or a project
+                    ${c.dim('the fleet in an fzf popup — what `prefix+g` runs')}
   focus <session>   point the terminal at a session
   resume-agent <tool>
                     launch <tool> here, resuming its last conversation in this
@@ -402,6 +405,22 @@ async function cmdDoctor(json: boolean): Promise<void> {
     detail: difitVersion
       ? `${difitVersion} — repo rows can open a review`
       : 'not found — the `review` button needs it (npm i -g difit)',
+  });
+
+  // A failure, not a warning: `prefix+g` runs `fw switch`, and without fzf that
+  // binding does nothing at all — which is the one check here whose subject is a
+  // key you press twenty times a day rather than a button on a row.
+  const fzfVersion = await new Promise<string | undefined>((res) => {
+    gh.execFile('fzf', ['--version'], (err, out) => {
+      res(err ? undefined : out.trim().split(' ')[0]);
+    });
+  });
+  checks.push({
+    name: 'fzf',
+    ok: fzfVersion !== undefined,
+    detail: fzfVersion
+      ? `${fzfVersion} — \`fw switch\` picks with it`
+      : 'not found — `fw switch` needs it (brew install fzf)',
   });
 
   if (json) return jsonOut(checks);
@@ -1222,6 +1241,10 @@ async function main(): Promise<void> {
       break;
     case 'open-pr':
       await cmdOpenPr(arg, background);
+      break;
+    case 'switch':
+    case 'pick':
+      await cmdSwitch({ capture, all: showHidden, json, list: argv.includes('--list') });
       break;
     case 'focus':
       await cmdFocus(arg);

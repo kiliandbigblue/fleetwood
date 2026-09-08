@@ -142,6 +142,9 @@ guessed onto the wrong terminal. `fw doctor` reports both numbers.
 - **What each task has open on GitHub**, on the task's own card — found from its
   worktrees' branches, stacks included, so a four-PR stack lists bottom-first
   instead of living in a note you typed yourself. See **Tasks that span repos**.
+- **`prefix+g` switches between agents, not directories.** The tmux binding runs
+  `fw switch`: the fleet in an fzf popup, agent status included, down to the pane
+  one agent is blocked in. See **prefix+g**.
 - **PR → session in one click.** Find-or-create: an existing session for that PR is
   focused, otherwise a dedicated git worktree and tmux session are built and stamped.
   Clicking twice never gives you two sessions.
@@ -155,7 +158,9 @@ guessed onto the wrong terminal. `fw doctor` reports both numbers.
 ## Setup
 
 Requires tmux ≥ 3.0, Node ≥ 23.6 (it runs the TypeScript directly — no build step
-for core or the CLI), and `gh` authenticated for the PR features. `difit` on the
+for core or the CLI), `gh` authenticated for the PR features, and `fzf` for
+`fw switch` — the one `prefix+g` runs, so `fw doctor` fails rather than warns
+without it. `difit` on the
 PATH is optional — only the repo rows' `review` button runs it, and `fw doctor`
 warns rather than fails when it's absent.
 
@@ -276,6 +281,106 @@ printf 'Electron.app/Contents/MacOS/Electron' > path.txt
 
 Also note pnpm 10 blocks postinstall scripts, so Electron's download is gated behind
 `onlyBuiltDependencies` in `pnpm-workspace.yaml`.
+
+## prefix+g
+
+The binding used to be `find ~/projects ~/dotfiles -maxdepth 1 | fzf`, which
+answers a question the fleet outgrew. A directory is where work *could* start;
+what you reach for twenty times a day is work already running — and the one
+thing that list could never say is which of it is waiting on you. So
+`prefix+g` runs `fw switch`, and the rows are ordered by how much they already
+exist:
+
+```
+  8 sessions · 3 agents · 2 dormant · 57 projects
+switch ›                                                          71/71
+────────────────────────────────────────────────────────────────────────
+▸ ● ✋ fleetwood                      ✋ permission ×2 1 wt · 2h   fleetwood
+  ↳ 3:claude                         ✋ permission   4m     Write: switch.ts
+  ↳ 5:cursor                         ▶ working      12m    Bash: pnpm test
+  ○   atlas-pr-3671                  ○ idle          3h    fix/address-validation
+  ◦   orders-b2b-flag-migration      dormant        7 wt · 11d  graphy proto reflow
+  +   graphy                         new session    ~/projects
+```
+
+Live sessions first, each with the pane of every agent inside it; then tasks
+that have a folder and no session; then the plain project directories the old
+binding offered. **Nothing it could start is out of reach** — picking a project
+is still find-or-create by the same session name, so `prefix+g` and the app's
+⌘K still agree that a project has one session rather than two. A dormant task
+gets `fw task start` and lands you in it.
+
+**The pane is the point.** A session row switches the client; an agent row runs
+`focusPane`, which selects the window *and* the pane — so `✋ permission` is one
+enter away from the prompt that is waiting, in a session holding four agents
+across four windows. An agent sitting in its session's active pane gets no row
+of its own, because switching to the session already lands on it and a second
+row would be the same jump written twice.
+
+**fzf, rather than a picker of our own.** The binding it replaces was already
+`| fzf` in a `display-popup`, so the matching, the keys and the popup are the
+parts nobody has to learn again; `core/fuzzy.ts` stays what the *panel* ranks
+with. It is fed and read over pipes and finds its own terminal on `/dev/tty`,
+which is what keeps this one process — the selection is acted on by the same
+`actions` calls the app's buttons make, not by a shell script reimplementing
+them. Being a hard dependency of a key you press all day, a missing `fzf` is a
+`fw doctor` **failure** rather than a warning, unlike `difit`.
+
+Four details that are load-bearing:
+
+- **The row is `<index>\ttext`, and there is no hidden column.** fzf displays
+  and searches from field 2 on, so the index comes back exact — a pane id parsed
+  out of a painted, clipped line is a bug waiting for a session called `%7` —
+  and cannot be matched by typing the number a row happens to sit at. The
+  obvious next move, a third field of repo names and slugs displayed to nobody
+  and matched by everything, is the one fzf rules out in as many words: *it
+  doesn't allow searching against the hidden fields*, since `--with-nth` makes
+  the transformed line the search space too. So what a row can be found by is
+  exactly what it shows — which turned out to be the better design anyway, see
+  the last column below.
+- **Previews are files, written once.** The obvious `--preview 'fw switch
+  --preview {1}'` pays a node start and a fresh `buildFleet` per keystroke, for
+  a picture of a fleet the process already has in hand. They live in one
+  `mkdtemp` directory removed on the way out, plus a sweep of any left behind on
+  the next run — the popup can be closed out from under the process, and that is
+  the one exit no `finally` sees.
+- **`--gutter=' '`.** fzf fills the pointer column of every *non*-current row
+  with `▌` by default, and in a single-select list there is nothing for it to
+  mean: it reads as a stray glyph in front of each name, or as a second pointer.
+  Colouring it away is the trap — `--color=gutter:-1` keeps the popup
+  transparent and paints that character in the foreground, which is how it got
+  noticed.
+- **`bg:-1` and `fg+:-1`.** fzf's chrome is painted from the same eleven theme
+  roles as everything else `fw` prints, so the popup matches the terminal it
+  opens over by construction. Those two are left alone deliberately: `bg`,
+  because `popup-style bg=default` is what makes the popup transparent and a
+  fill here would undo it, and `fg+`, because the current line has to keep each
+  row's own colours instead of flattening a red `✋ permission` to the cursor's
+  foreground.
+
+**It has to be there before you have finished pressing the key**, which is what
+made `readTaskRepos` fan its git reads out per task: every worktree costs up to
+three subprocesses, and one after another a ten-task fleet spent about half a
+second on branches and dirty counts before the popup could open. That was
+affordable while the callers were the panel's poll and `fw task ls`. The whole
+list now costs ~0.3s, most of it still that.
+
+Columns are capped rather than measured: one task called
+`receive-receive-item-into-rebin-or-mono-item` would otherwise push every status
+chip forty columns right and leave twenty rows reading as names with nothing
+beside them. What is clipped is in the preview.
+
+**The last column is the branch, or the repos.** A task's branch *is*
+`<type>/<slug>` by the naming convention, so beside the slug it spends the
+widest column in the list restating the word you just read. What earns that
+space instead is which repos the task touches — `7 wt · graphy proto reflow`
+answers the question `7 wt` only counted — and, since a row can only be found by
+what it shows, it is also what makes typing `proto` find the task that touches
+proto. What is left in the branch's own case is a branch the name does not
+already give you: a PR session's `fix/address-validation`, or a stack layer.
+A worktree with no GitHub remote falls back to its directory, with the task's
+own slug taken back off it (`read-later-ui-read-later-ui-improve` is a repo
+called `read-later-ui`).
 
 ## Tasks that span repos
 
@@ -564,6 +669,7 @@ fw open-pr <ref>      focus a PR's session, or build one on a fresh worktree
 fw approve [pane]     answer yes to a blocked agent
 fw deny [pane]        answer no
 fw kill-agent <pane|key>  close one agent, leaving its pane and session alone
+fw switch             pick a session, an agent's pane, a dormant task or a project
 fw focus <session>    point the terminal at a session
 fw order [<session> <slot>|none]  where each session sits in the fleet
 fw pin <session> [on|off]  hold it above every unpinned session
@@ -577,6 +683,10 @@ them too. The counts in the header and the quota gauge always speak for the whol
 fleet: a session nobody is looking at still spends tokens and still gets stuck.
 
 `fw open-pr` takes `owner/repo#123` or a full PR URL.
+
+`fw switch` is what `prefix+g` runs (see **prefix+g**); it needs `fzf`. `--json`
+prints the rows it would offer, `--list` the lines it would hand fzf, and
+`--all` includes hidden sessions.
 
 Output is painted in the configured `theme` (see **Themes**), and drops to plain text
 under `NO_COLOR` or when piped.
@@ -630,4 +740,6 @@ sessions, decoys included), the event folder (one case per agent event, with
 out-of-order delivery), the screen parser (against real box-drawn prompts), the
 kill-target precedence (each case has a plausible pid belonging to another agent),
 the task view — which repo an agent is in, and what the collapsed repo line claims —
-and the git/GitHub plumbing.
+the switcher's rows (which sessions, agents, tasks and projects `prefix+g` offers,
+in what order, and which of them are deliberately *not* offered twice) — and the
+git/GitHub plumbing.
