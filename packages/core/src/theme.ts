@@ -7,12 +7,13 @@
  *
  * The values are the upstream palettes exactly as their neovim plugins define
  * them (`rose-pine/palette.lua`, `catppuccin/palettes/*.lua`,
- * `tokyonight/colors/*.lua`), not approximations. That is the whole point of the
- * feature: a panel that sits beside the editor all day has to be the same
- * colours as the editor, and a hand-mixed near-miss is precisely what reads as
- * wrong. Ghostty's theme files were the other candidate source and are not
- * enough — they carry sixteen ANSI slots plus a background, with nothing for the
- * layered surfaces a card needs.
+ * `tokyonight/colors/*.lua`), not approximations — except Helldivers II, which
+ * has no editor palette and is read off helldiverscompanion.com instead. For the
+ * rest, matching the editor is the whole point of the feature: a panel that sits
+ * beside it all day has to be the same colours, and a hand-mixed near-miss is
+ * precisely what reads as wrong. Ghostty's theme files were the other candidate
+ * source and are not enough — they carry sixteen ANSI slots plus a background,
+ * with nothing for the layered surfaces a card needs.
  *
  * What *is* a judgement call is the mapping: which of a palette's greys is
  * `edge`, which of its accents is `ok`. Each family's block below says how it was
@@ -75,7 +76,8 @@ export type ThemeName =
   | 'catppuccin-frappe'
   | 'tokyonight-night'
   | 'tokyonight-storm'
-  | 'tokyonight-moon';
+  | 'tokyonight-moon'
+  | 'helldivers-ii';
 
 /**
  * Rose Pine ships `base < surface < overlay` as its three backgrounds and names
@@ -261,7 +263,49 @@ const TOKYO_NIGHT: Record<'tokyonight-night' | 'tokyonight-storm' | 'tokyonight-
   },
 };
 
-export const THEMES: Record<ThemeName, Theme> = { ...ROSE_PINE, ...CATPPUCCIN, ...TOKYO_NIGHT };
+/**
+ * Helldivers II has no neovim palette. The colours come from
+ * helldiverscompanion.com, which is the Super Earth HUD in a browser: near-black
+ * fills, a warm off-white for copy, and `#ffe710` as the yellow that every
+ * heading, border and selected control is painted in.
+ *
+ * Surfaces follow the site's own ladder — `#080808` page, `#111111` raised,
+ * `#282828` hairline — so cards lift off the window the way the companion's
+ * panels lift off the void. Text follows it too: `#fbfaf5` body, `#cbcbcd`
+ * secondary, `#969593` muted.
+ *
+ * Accents keep the companion's status colours rather than inventing Super Earth
+ * ones: yellow is spent on `accent` (it is the brand), so `warn` takes the
+ * orange `#ff8800` the site uses beside it, `ok` the lime `#02e675`, `danger`
+ * the `#ff4444`. `branch` is the info cyan `#6bb7ea` — the only remaining hue
+ * that is neither yellow nor a status.
+ */
+const HELLDIVERS: Record<'helldivers-ii', Theme> = {
+  'helldivers-ii': {
+    label: 'Inspired',
+    family: 'Helldivers II',
+    palette: {
+      bg: '#080808',
+      panel: '#111111',
+      edge: '#282828',
+      dim: '#969593',
+      soft: '#cbcbcd',
+      text: '#fbfaf5',
+      danger: '#ff4444',
+      warn: '#ff8800',
+      ok: '#02e675',
+      accent: '#ffe710',
+      branch: '#6bb7ea',
+    },
+  },
+};
+
+export const THEMES: Record<ThemeName, Theme> = {
+  ...ROSE_PINE,
+  ...CATPPUCCIN,
+  ...TOKYO_NIGHT,
+  ...HELLDIVERS,
+};
 
 /**
  * Rose Pine, because the tmux status line beside this panel is Rose Pine.
