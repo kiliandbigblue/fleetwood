@@ -113,6 +113,37 @@ async function refExists(repoPath: string, ref: string): Promise<boolean> {
   return code === 0;
 }
 
+/** True when `ancestor` is reachable from `descendant` — equal refs included. */
+async function isAncestor(repoPath: string, ancestor: string, descendant: string): Promise<boolean> {
+  const { code } = await run('git', ['-C', repoPath, 'merge-base', '--is-ancestor', ancestor, descendant]);
+  return code === 0;
+}
+
+/**
+ * Of a branch's local and remote-tracking copy, the one with the newer commit.
+ *
+ * A clone's local `dev` and its `origin/dev` drift in both directions: origin
+ * moves when anyone else pushes, the local copy moves when *this* checkout pulls
+ * or commits and has not pushed yet. Starting a task branch from whichever is
+ * behind is how a task begins life needing a rebase it should never have needed.
+ *
+ * Only a strict ancestor loses: when the two have diverged — each holding commits
+ * the other lacks — neither is "more recent", and origin wins as the shared
+ * history everyone else is building on. `undefined` when neither ref exists.
+ */
+async function freshestRef(repoPath: string, branch: string): Promise<string | undefined> {
+  const localRef = `refs/heads/${branch}`;
+  const remoteRef = `refs/remotes/origin/${branch}`;
+  const hasLocal = await refExists(repoPath, localRef);
+  const hasRemote = await refExists(repoPath, remoteRef);
+  if (!hasRemote) return hasLocal ? branch : undefined;
+  if (!hasLocal) return `origin/${branch}`;
+  // Local strictly ahead: it holds every remote commit and at least one more.
+  const localAhead =
+    (await isAncestor(repoPath, remoteRef, localRef)) && !(await isAncestor(repoPath, localRef, remoteRef));
+  return localAhead ? branch : `origin/${branch}`;
+}
+
 /**
  * The repo's default branch as a remote-tracking ref, read locally and only locally.
  *
@@ -256,26 +287,44 @@ export async function ensureWorktree(
 
   await mkdir(dirname(targetDir), { recursive: true });
 
+  // Whatever the branch turns out to start from, it should start from that
+  // ref's newest commit — so fetch before deciding anything, not after.
+  if (!options.offline) {
+    // Fetching the branch is cheap and makes "someone already pushed this" work.
+    await run('git', ['-C', repoPath, 'fetch', 'origin', branch], { timeoutMs: 120_000 });
+  }
+
   const localExists = await refExists(repoPath, `refs/heads/${branch}`);
   let args: string[];
 
   if (localExists) {
+    // The local branch may be behind what origin has — someone pushed to it from
+    // another machine, or from a worktree since archived. Nothing has it checked
+    // out (the two checks above just established that), so it is safe to advance
+    // the ref itself rather than hand the worktree a stale starting point.
+    const behindOrigin =
+      (await refExists(repoPath, `refs/remotes/origin/${branch}`)) &&
+      (await isAncestor(repoPath, `refs/heads/${branch}`, `refs/remotes/origin/${branch}`)) &&
+      !(await isAncestor(repoPath, `refs/remotes/origin/${branch}`, `refs/heads/${branch}`));
+    if (behindOrigin) {
+      await run('git', [
+        '-C',
+        repoPath,
+        'update-ref',
+        `refs/heads/${branch}`,
+        `refs/remotes/origin/${branch}`,
+      ]);
+    }
     args = ['-C', repoPath, 'worktree', 'add', targetDir, branch];
+  } else if (await refExists(repoPath, `refs/remotes/origin/${branch}`)) {
+    args = ['-C', repoPath, 'worktree', 'add', '--track', '-b', branch, targetDir, `origin/${branch}`];
   } else {
+    const base = options.base ?? (await defaultBranch(repoPath));
     if (!options.offline) {
-      // Fetching the branch is cheap and makes "someone already pushed this" work.
-      await run('git', ['-C', repoPath, 'fetch', 'origin', branch], { timeoutMs: 120_000 });
+      await run('git', ['-C', repoPath, 'fetch', 'origin', base], { timeoutMs: 120_000 });
     }
-    if (await refExists(repoPath, `refs/remotes/origin/${branch}`)) {
-      args = ['-C', repoPath, 'worktree', 'add', '--track', '-b', branch, targetDir, `origin/${branch}`];
-    } else {
-      const base = options.base ?? (await defaultBranch(repoPath));
-      if (!options.offline) {
-        await run('git', ['-C', repoPath, 'fetch', 'origin', base], { timeoutMs: 120_000 });
-      }
-      const start = (await refExists(repoPath, `refs/remotes/origin/${base}`)) ? `origin/${base}` : base;
-      args = ['-C', repoPath, 'worktree', 'add', '-b', branch, targetDir, start];
-    }
+    const start = (await freshestRef(repoPath, base)) ?? base;
+    args = ['-C', repoPath, 'worktree', 'add', '-b', branch, targetDir, start];
   }
 
   const { code, stderr } = await run('git', args, { timeoutMs: 120_000 });
