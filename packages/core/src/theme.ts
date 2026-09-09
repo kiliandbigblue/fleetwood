@@ -77,7 +77,9 @@ export type ThemeName =
   | 'tokyonight-night'
   | 'tokyonight-storm'
   | 'tokyonight-moon'
-  | 'helldivers-ii';
+  | 'helldivers-terminids'
+  | 'helldivers-automatons'
+  | 'helldivers-illuminate';
 
 /**
  * Rose Pine ships `base < surface < overlay` as its three backgrounds and names
@@ -265,36 +267,62 @@ const TOKYO_NIGHT: Record<'tokyonight-night' | 'tokyonight-storm' | 'tokyonight-
 
 /**
  * Helldivers II has no neovim palette. The colours come from
- * helldiverscompanion.com, which is the Super Earth HUD in a browser: near-black
- * fills, a warm off-white for copy, and `#ffe710` as the yellow that every
- * heading, border and selected control is painted in.
+ * helldiverscompanion.com: the Super Earth HUD for chrome (near-black fills,
+ * `#fbfaf5` copy, lime/red status) and the war-map tokens for the three enemy
+ * factions the site paints as `hd-terminids`, `hd-automatons`, `hd-illuminate`.
  *
- * Surfaces follow the site's own ladder — `#080808` page, `#111111` raised,
- * `#282828` hairline — so cards lift off the window the way the companion's
- * panels lift off the void. Text follows it too: `#fbfaf5` body, `#cbcbcd`
- * secondary, `#969593` muted.
+ * Super Earth itself is `#6bb7ea` on that map, and the HUD yellow `#ffe710` is
+ * the chrome — neither is a flavour here. Each flavour keeps the same surfaces
+ * and spends the faction hue on `accent`, so the picker rows are the three
+ * fronts, not three slightly different Super Earths.
  *
- * Accents keep the companion's status colours rather than inventing Super Earth
- * ones: yellow is spent on `accent` (it is the brand), so `warn` takes the
- * orange `#ff8800` the site uses beside it, `ok` the lime `#02e675`, `danger`
- * the `#ff4444`. `branch` is the info cyan `#6bb7ea` — the only remaining hue
- * that is neither yellow nor a status.
+ * `warn` stays HUD yellow except on Terminids, where yellow would sit on top of
+ * the orange accent; that flavour uses the companion gold `#c9a101` instead.
+ * `branch` is Super Earth cyan everywhere it is not already the accent, so a
+ * repo name never shares a hue with "blocked".
  */
-const HELLDIVERS: Record<'helldivers-ii', Theme> = {
-  'helldivers-ii': {
-    label: 'Inspired',
+const HD_CHROME = {
+  bg: '#080808',
+  panel: '#111111',
+  edge: '#282828',
+  dim: '#969593',
+  soft: '#cbcbcd',
+  text: '#fbfaf5',
+  danger: '#ff4444',
+  ok: '#02e675',
+} as const;
+
+const HELLDIVERS: Record<
+  'helldivers-terminids' | 'helldivers-automatons' | 'helldivers-illuminate',
+  Theme
+> = {
+  'helldivers-terminids': {
+    label: 'Terminids',
     family: 'Helldivers II',
     palette: {
-      bg: '#080808',
-      panel: '#111111',
-      edge: '#282828',
-      dim: '#969593',
-      soft: '#cbcbcd',
-      text: '#fbfaf5',
-      danger: '#ff4444',
-      warn: '#ff8800',
-      ok: '#02e675',
-      accent: '#ffe710',
+      ...HD_CHROME,
+      warn: '#c9a101',
+      accent: '#ff9900', // hd-terminids
+      branch: '#6bb7ea',
+    },
+  },
+  'helldivers-automatons': {
+    label: 'Automatons',
+    family: 'Helldivers II',
+    palette: {
+      ...HD_CHROME,
+      warn: '#ffe710',
+      accent: '#fe6d6a', // hd-automatons
+      branch: '#6bb7ea',
+    },
+  },
+  'helldivers-illuminate': {
+    label: 'Illuminate',
+    family: 'Helldivers II',
+    palette: {
+      ...HD_CHROME,
+      warn: '#ffe710',
+      accent: '#cf64f8', // hd-illuminate
       branch: '#6bb7ea',
     },
   },

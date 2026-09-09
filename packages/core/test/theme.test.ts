@@ -94,19 +94,25 @@ test('themes are grouped by family in listing order', () => {
 
 test('isThemeName rejects anything not in the registry', () => {
   assert.ok(isThemeName('catppuccin-mocha'));
-  assert.ok(isThemeName('helldivers-ii'));
+  assert.ok(isThemeName('helldivers-terminids'));
+  assert.ok(isThemeName('helldivers-automatons'));
+  assert.ok(isThemeName('helldivers-illuminate'));
   assert.ok(!isThemeName('catppuccin'));
   assert.ok(!isThemeName('Catppuccin Mocha'));
   assert.ok(!isThemeName('helldivers'));
+  assert.ok(!isThemeName('helldivers-ii'));
   assert.ok(!isThemeName(undefined));
   assert.ok(!isThemeName(42));
 });
 
-test('helldivers-ii is the companion-site yellow on near-black', () => {
-  const theme = THEMES['helldivers-ii'];
-  assert.equal(theme.family, 'Helldivers II');
-  assert.equal(theme.palette.accent, '#ffe710');
-  assert.equal(theme.palette.bg, '#080808');
+test('helldivers flavours are the companion war-map factions on shared chrome', () => {
+  for (const name of ['helldivers-terminids', 'helldivers-automatons', 'helldivers-illuminate'] as const) {
+    assert.equal(THEMES[name].family, 'Helldivers II');
+    assert.equal(THEMES[name].palette.bg, '#080808');
+  }
+  assert.equal(THEMES['helldivers-terminids'].palette.accent, '#ff9900');
+  assert.equal(THEMES['helldivers-automatons'].palette.accent, '#fe6d6a');
+  assert.equal(THEMES['helldivers-illuminate'].palette.accent, '#cf64f8');
 });
 
 test('paletteFor falls back rather than throwing on a hand-edited name', () => {
