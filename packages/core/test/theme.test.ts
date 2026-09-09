@@ -105,14 +105,15 @@ test('isThemeName rejects anything not in the registry', () => {
   assert.ok(!isThemeName(42));
 });
 
-test('helldivers flavours are the companion war-map factions on shared chrome', () => {
+test('helldivers flavours keep faction hue on rose-pine lightness', () => {
   for (const name of ['helldivers-terminids', 'helldivers-automatons', 'helldivers-illuminate'] as const) {
     assert.equal(THEMES[name].family, 'Helldivers II');
-    assert.equal(THEMES[name].palette.bg, '#080808');
+    assert.notEqual(THEMES[name].palette.bg, '#080808');
+    assert.notEqual(THEMES[name].palette.text, '#fbfaf5');
   }
-  assert.equal(THEMES['helldivers-terminids'].palette.accent, '#ff9900');
-  assert.equal(THEMES['helldivers-automatons'].palette.accent, '#fe6d6a');
-  assert.equal(THEMES['helldivers-illuminate'].palette.accent, '#cf64f8');
+  assert.equal(THEMES['helldivers-terminids'].palette.accent, '#d4924a');
+  assert.equal(THEMES['helldivers-automatons'].palette.accent, '#d48480');
+  assert.equal(THEMES['helldivers-illuminate'].palette.accent, '#b892d4');
 });
 
 test('paletteFor falls back rather than throwing on a hand-edited name', () => {

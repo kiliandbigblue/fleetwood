@@ -7,13 +7,14 @@
  *
  * The values are the upstream palettes exactly as their neovim plugins define
  * them (`rose-pine/palette.lua`, `catppuccin/palettes/*.lua`,
- * `tokyonight/colors/*.lua`), not approximations — except Helldivers II, which
- * has no editor palette and is read off helldiverscompanion.com instead. For the
- * rest, matching the editor is the whole point of the feature: a panel that sits
- * beside it all day has to be the same colours, and a hand-mixed near-miss is
- * precisely what reads as wrong. Ghostty's theme files were the other candidate
- * source and are not enough — they carry sixteen ANSI slots plus a background,
- * with nothing for the layered surfaces a card needs.
+ * `tokyonight/colors/*.lua`), not approximations — except Helldivers II, whose
+ * hues come from helldiverscompanion.com and whose lightness follows Rosé Pine,
+ * so the panel is not neon on black. For the rest, matching the editor is the
+ * whole point of the feature: a panel that sits beside it all day has to be the
+ * same colours, and a hand-mixed near-miss is precisely what reads as wrong.
+ * Ghostty's theme files were the other candidate source and are not enough —
+ * they carry sixteen ANSI slots plus a background, with nothing for the layered
+ * surfaces a card needs.
  *
  * What *is* a judgement call is the mapping: which of a palette's greys is
  * `edge`, which of its accents is `ok`. Each family's block below says how it was
@@ -266,32 +267,22 @@ const TOKYO_NIGHT: Record<'tokyonight-night' | 'tokyonight-storm' | 'tokyonight-
 };
 
 /**
- * Helldivers II has no neovim palette. The colours come from
- * helldiverscompanion.com: the Super Earth HUD for chrome (near-black fills,
- * `#fbfaf5` copy, lime/red status) and the war-map tokens for the three enemy
- * factions the site paints as `hd-terminids`, `hd-automatons`, `hd-illuminate`.
+ * Helldivers II has no neovim palette. The hues come from
+ * helldiverscompanion.com (`hd-terminids` / `hd-automatons` / `hd-illuminate`);
+ * the *values* follow Rosé Pine, which is the family these sit next to all day.
  *
- * Super Earth itself is `#6bb7ea` on that map, and the HUD yellow `#ffe710` is
- * the chrome — neither is a flavour here. Each flavour keeps the same surfaces
- * and spends the faction hue on `accent`, so the picker rows are the three
- * fronts, not three slightly different Super Earths.
+ * Rose Pine is readable because nothing is black or white: `base` is a tinted
+ * dark (~#191724), `text` is a tinted light (~#e0def4), `muted` sits in the
+ * middle, and every accent is a pastel — gold, not `#ffe710`; love, not `#ff4444`.
+ * The companion tokens are the opposite (near-black, near-white, neon), which is
+ * why the first cut of these flavours was too crisp to live in.
  *
- * `warn` stays HUD yellow except on Terminids, where yellow would sit on top of
- * the orange accent; that flavour uses the companion gold `#c9a101` instead.
- * `branch` is Super Earth cyan everywhere it is not already the accent, so a
- * repo name never shares a hue with "blocked".
+ * So each flavour keeps the faction's hue and borrows Rose Pine's lightness:
+ * a chroma-bearing `bg`/`panel`/`edge` ladder, warm or cool off-white copy,
+ * desaturated status colours, and the faction colour spent on `accent` only
+ * after mixing it toward pastel. `ok` and `branch` are foam-like so they do
+ * not compete with the accent the way the companion's lime and cyan did.
  */
-const HD_CHROME = {
-  bg: '#080808',
-  panel: '#111111',
-  edge: '#282828',
-  dim: '#969593',
-  soft: '#cbcbcd',
-  text: '#fbfaf5',
-  danger: '#ff4444',
-  ok: '#02e675',
-} as const;
-
 const HELLDIVERS: Record<
   'helldivers-terminids' | 'helldivers-automatons' | 'helldivers-illuminate',
   Theme
@@ -300,30 +291,51 @@ const HELLDIVERS: Record<
     label: 'Terminids',
     family: 'Helldivers II',
     palette: {
-      ...HD_CHROME,
-      warn: '#c9a101',
-      accent: '#ff9900', // hd-terminids
-      branch: '#6bb7ea',
+      bg: '#1a1714',
+      panel: '#221e1a',
+      edge: '#322c26',
+      dim: '#6e675c',
+      soft: '#9a9286',
+      text: '#e6dfd4',
+      danger: '#d47373',
+      warn: '#d4b07a',
+      ok: '#8fbfa8',
+      accent: '#d4924a', // hd-terminids, pastel
+      branch: '#8aafc4',
     },
   },
   'helldivers-automatons': {
     label: 'Automatons',
     family: 'Helldivers II',
     palette: {
-      ...HD_CHROME,
-      warn: '#ffe710',
-      accent: '#fe6d6a', // hd-automatons
-      branch: '#6bb7ea',
+      bg: '#1a1516',
+      panel: '#231a1c',
+      edge: '#342628',
+      dim: '#706266',
+      soft: '#9c8e90',
+      text: '#e6dcdd',
+      danger: '#c45c62',
+      warn: '#d4b07a',
+      ok: '#8fbfa8',
+      accent: '#d48480', // hd-automatons, pastel
+      branch: '#8aafc4',
     },
   },
   'helldivers-illuminate': {
     label: 'Illuminate',
     family: 'Helldivers II',
     palette: {
-      ...HD_CHROME,
-      warn: '#ffe710',
-      accent: '#cf64f8', // hd-illuminate
-      branch: '#6bb7ea',
+      bg: '#17151c',
+      panel: '#1f1c26',
+      edge: '#2e2a38',
+      dim: '#6a6578',
+      soft: '#9893a6',
+      text: '#e2deeb',
+      danger: '#d47373',
+      warn: '#d4b07a',
+      ok: '#8fbfa8',
+      accent: '#b892d4', // hd-illuminate, pastel
+      branch: '#8aafc4',
     },
   },
 };
