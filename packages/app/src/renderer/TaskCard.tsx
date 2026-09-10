@@ -269,6 +269,7 @@ export function PrRow({
   repoTag,
   stack,
   railed,
+  blocked,
   onResult,
 }: {
   pr: TaskPr;
@@ -287,6 +288,8 @@ export function PrRow({
    * names runs down the card instead of two ragged ones.
    */
   railed?: boolean;
+  /** Whether any row in this list is waiting on its base — see `.task-pr-base`. */
+  blocked?: boolean;
   onResult: Props['onResult'];
 }): React.JSX.Element {
   // A layer above the bottom is explained by its rung, so the `via` mark would be
@@ -353,23 +356,32 @@ export function PrRow({
        * reason, and nothing actionable is lost — `prSummary` above still counts
        * the states that ask something.
        */}
-      {pr.isDraft ? (
-        <span className="task-pr-flag">draft</span>
-      ) : (
-        pr.reviewDecision && (
-          <span className={`review-${pr.reviewDecision}`}>
-            {REVIEW_LABEL[pr.reviewDecision] ?? pr.reviewDecision}
-          </span>
-        )
-      )}
+      <span className="task-pr-state">
+        {pr.isDraft ? (
+          <span className="task-pr-flag">draft</span>
+        ) : (
+          pr.reviewDecision && (
+            <span className={`review-${pr.reviewDecision}`}>
+              {REVIEW_LABEL[pr.reviewDecision] ?? pr.reviewDecision}
+            </span>
+          )
+        )}
+      </span>
       {/* The one thing a stack view says that the rows alone do not: this cannot be
           merged yet, whatever its own checks and reviews look like. */}
-      {stack?.waitingOn !== undefined && (
+      {/* Held open for every row of a list where any row is waiting, like the
+          rung column — a value that only sometimes has a column to itself is a
+          value nothing lines up with. */}
+      {blocked && (
         <span
-          className="task-pr-flag"
-          title={`its base #${stack.waitingOn} is still open — this merges into that branch, not the trunk`}
+          className="task-pr-base"
+          title={
+            stack?.waitingOn !== undefined
+              ? `its base #${stack.waitingOn} is still open — this merges into that branch, not the trunk`
+              : undefined
+          }
         >
-          waiting on #{stack.waitingOn}
+          {stack?.waitingOn !== undefined ? `waiting on #${stack.waitingOn}` : ''}
         </span>
       )}
       <span className="row-act">
@@ -626,6 +638,7 @@ export function TaskCard({
           {(() => {
             const rows = groupPrStacks(prs);
             const railed = rows.some((row) => row.of > 1);
+            const blocked = rows.some((row) => row.waitingOn !== undefined);
             return rows.map((row) => (
               <PrRow
                 key={`${row.pr.repo}#${row.pr.number}`}
@@ -633,6 +646,7 @@ export function TaskCard({
                 repoTag={repoTags[`${row.pr.repo}#${row.pr.number}`]}
                 stack={row}
                 railed={railed}
+                blocked={blocked}
                 onResult={onResult}
               />
             ));

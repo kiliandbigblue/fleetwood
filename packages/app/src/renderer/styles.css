@@ -320,7 +320,16 @@ button {
 
 .rail-bottom {
   min-height: 28px;
-  padding: 0 var(--s4);
+  /*
+   * The first word lands on the list's own rail.
+   *
+   * `--s4` put `2 working` at the window's padding, 20px left of where every
+   * task title above it starts, so the one line summarising the list did not
+   * line up with the list. The dot hangs in the mark column, exactly as it does
+   * on a row — `--indent` minus `--mark-col`, the arrangement `.hidden-toggle`
+   * and `.agent` already use.
+   */
+  padding: 0 var(--s4) 0 calc(var(--indent) - var(--mark-col));
   gap: var(--s4);
   border-top: 1px solid var(--rail-line);
 }
@@ -2566,6 +2575,37 @@ button {
   font-size: var(--fs-micro);
   white-space: nowrap;
   flex: none;
+}
+
+/*
+ * The two values a pull request row ends on, each in a column of its own.
+ *
+ * They were ordinary flex items, so where a row said both — `changes requested`
+ * then `waiting on #3805` — the first one ended wherever the second one's width
+ * left it, and the row above with only a state ended somewhere else again. Down
+ * a stack of four that is four different x for the same fact, and nothing to
+ * rail the eye down. Held open at the width of the longest thing each can say,
+ * right-aligned, so the column exists whether or not this row fills it.
+ *
+ * `ch` on the micro step, and both are set in the body sans: these are
+ * sentences about the row, so the measure is approximate on purpose — the
+ * column has to hold `changes requested` and `waiting on #3808`, not any
+ * string either could ever be.
+ */
+.task-pr-state {
+  flex: none;
+  min-width: 15ch;
+  text-align: right;
+  font-size: var(--fs-micro);
+}
+
+.task-pr-base {
+  flex: none;
+  min-width: 14ch;
+  text-align: right;
+  font-size: var(--fs-micro);
+  color: var(--dim);
+  white-space: nowrap;
 }
 
 .task-pr-flag {

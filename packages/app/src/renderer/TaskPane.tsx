@@ -233,6 +233,7 @@ export function TaskPane({
           {(() => {
             const rows = groupPrStacks(prs);
             const railed = rows.some((row) => row.of > 1);
+            const blocked = rows.some((row) => row.waitingOn !== undefined);
             return rows.map((row) => (
               <PrRow
                 key={`${row.pr.repo}#${row.pr.number}`}
@@ -240,6 +241,7 @@ export function TaskPane({
                 repoTag={repoTags[`${row.pr.repo}#${row.pr.number}`]}
                 stack={row}
                 railed={railed}
+                blocked={blocked}
                 onResult={onResult}
               />
             ));
