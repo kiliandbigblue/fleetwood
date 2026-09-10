@@ -1199,8 +1199,8 @@ button {
  * would be opaque while everything around it thinned. Same technique as the
  * window's own edge on `.app`.
  *
- * Scoped to a card's groups rather than set on `.agent`, because in the pane and
- * in App's orphan card these rows are the *only* content — a card whose entire
+ * Scoped to a card's groups rather than set on `.agent`, so an orphan row in
+ * App that is the only content of its surface stays flat: a card whose entire
  * interior is 3% lighter than itself reads as a rendering artifact, not as a
  * distinction.
  */
@@ -2161,6 +2161,23 @@ button {
   min-width: 0;
 }
 
+/*
+ * The checkout, in full, under the row that names it.
+ *
+ * Only the focused pane asks for this: the list has no room, and the short
+ * worktree name is enough there. `--indent` so it starts on the same rail as
+ * the name above it.
+ */
+.task-repo-path {
+  padding: 0 var(--s4) var(--s2) var(--indent);
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .clean {
   color: var(--dim);
   font-size: var(--fs-micro);
@@ -2214,13 +2231,16 @@ button {
   transition: opacity 90ms ease-out;
 }
 .task-repo:hover .chip,
+.task-repo-block:hover .chip,
 .task-repo .chip:focus-visible,
 /* The whole set on any one of them, so tabbing along a row does not make the
    chips wink in and out one at a time. */
 .task-repo:focus-within .chip,
+.task-repo-block:focus-within .chip,
 /* A `remove — sure?` is a live four-second window: it must not fade out from
    under the pointer, and the two chips beside it must not collapse around it. */
-.task-repo:has(.chip.confirming) .chip {
+.task-repo:has(.chip.confirming) .chip,
+.task-repo-block:has(.chip.confirming) .chip {
   opacity: 1;
 }
 .task-repo .chip:hover {
@@ -2420,6 +2440,17 @@ button {
   color: var(--text);
 }
 
+/*
+ * A note you have not written yet.
+ *
+ * Only the focused pane draws this: a list of twelve empty boxes is what the
+ * pane exists to get away from. Dim, not dashed — the hairline above already
+ * says where the notes sit.
+ */
+.task-notes.empty {
+  color: var(--dim);
+}
+
 .task-notes-edit {
   border-top: 1px solid var(--edge);
   padding: 6px 10px 7px;
@@ -2595,285 +2626,47 @@ button {
 }
 
 /*
- * The body, with one thing in it.
+ * The focused task is a card that is the whole of the body.
  *
- * More air than the list gets, and that is the whole feature: 8px is the right
- * gutter for twelve cards being scanned and the wrong one for the single thing
- * you stopped to read.
+ * `.card` already is that sheet — hairline groups, the same rows — so the pane
+ * only adds the two facts the list has nowhere to put.
  */
-.body-pane {
-  padding: 20px 16px 16px;
-  gap: 20px;
-}
-
-.pane {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  min-width: 0;
-}
-
-/* No card around it: the window is already the border. */
-.pane-head {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 0;
-}
-
-.pane-title {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-}
-
-.pane-slug {
-  font-family: var(--mono);
-  font-size: 19px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 0 1 auto;
-  min-width: 0;
-}
-
-/* The same softening a dormant card's name gets, for the same reason. */
-.pane-slug.dormant {
-  color: var(--soft);
-}
-
-/* Aligned under the slug rather than under the dot, as on a card. */
-.pane-branch,
-.pane-dir {
-  padding-left: 17px;
-  font-family: var(--mono);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.pane-branch {
-  font-size: var(--fs-body);
-  color: var(--soft);
-}
 
 /*
- * The task folder, in full.
+ * The task folder, in full, on the same rail as every other row's first word.
  *
  * The card has nowhere to put this at all. It is the string you paste into a
  * terminal, so it is shown rather than left in a tooltip.
  */
 .pane-dir {
-  font-size: 10.5px;
-  color: var(--dim);
-}
-
-/* Under the title: on a page about one thing, what you do to it belongs beside
-   its name rather than at the bottom of a card. */
-.pane-actions {
-  display: flex;
-  gap: 2px;
-  padding-left: 13px;
-}
-
-/*
- * The one action on the page that goes somewhere.
- *
- * Tinted because it is what the card's header click used to be, and losing a
- * gesture to an unmarked chip in a row of four is how you lose it for good.
- * `ok` is the colour the panel already gives an attached session.
- */
-.chip.go {
-  color: var(--ok);
-  background: color-mix(in srgb, var(--ok) 10%, transparent);
-}
-
-.chip.go:hover {
-  background: color-mix(in srgb, var(--ok) 20%, transparent);
-  color: var(--ok);
-}
-
-.pane-section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-
-.pane-section-head {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-}
-
-/* `.section-title`'s mark — this file's existing "a label, not content". */
-.pane-section-title {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--dim);
-  flex: none;
-}
-
-.pane-section-dot {
-  color: var(--edge);
-  flex: none;
-}
-
-/*
- * The sentence the collapsed card shows, kept word for word.
- *
- * Deliberately the same string from `taskView.ts`: the pane must not be a place
- * where the fleet's numbers are recomputed differently.
- */
-.pane-section-summary {
-  font-size: 11px;
+  padding: 0 var(--s4) var(--s3) var(--indent);
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
   color: var(--dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-width: 0;
-}
-
-/* One surface per section, so the labels do the separating and the rows do not
-   each need a box. */
-.pane-block {
-  background: var(--panel);
-  border: 1px solid var(--edge);
-  border-radius: var(--radius);
-  overflow: hidden;
 }
 
 /*
  * A section with nothing in it yet.
  *
- * Dashed — this pane's mark for "real, not filled in yet".
- * Kept rather than hidden: a section that vanished when
- * empty would make a page about one task change shape as the task progressed, and
- * the empty state is usually the one carrying the next thing to do.
+ * Kept rather than hidden: a page about one task must not change shape as the
+ * task progresses, and the empty state is usually the one carrying the next
+ * thing to do. Quiet rather than dashed: the list already taught that silence
+ * is how this panel reports "nothing".
  */
-.pane-empty {
-  padding: 14px 12px;
-  border: 1px dashed var(--edge);
-  border-radius: var(--radius);
+.pane-quiet {
+  padding: var(--s2) var(--s4) var(--s2) var(--indent);
   font-size: var(--fs-body);
   line-height: 1.5;
   color: var(--dim);
+  min-height: 28px;
 }
 
-.pane-repo {
-  padding: 9px 11px;
-}
-
-.pane-repo + .pane-repo {
-  border-top: 1px solid color-mix(in srgb, var(--edge) 45%, var(--panel));
-}
-
-.pane-repo-line {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.pane-repo-name {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 0 1 auto;
-  min-width: 0;
-}
-
-/* Keeps the two buttons on the trailing edge whatever else is on the row. */
-.pane-repo-gap {
-  flex: 1 1 auto;
-}
-
-/*
- * Which of the four checkouts of this repo you are looking at.
- *
- * The card elides this to fit it beside the dirty count; here it is the second
- * line, in full, because that is the question the pane exists to answer without
- * a tooltip.
- */
-.pane-repo-path {
-  margin-top: 3px;
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--dim);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.pane-repo .chip {
-  font-size: 10px;
-  padding: 1px 5px;
-  color: var(--dim);
-}
-
-.pane-repo .chip:hover {
-  color: var(--ok);
-}
-
-/*
- * The shared rows, given the room the list could not spare them.
- *
- * `AgentRow`, `PrRow` and `TaskNotes` are the card's own — that is the point, a
- * pull request must read identically in both — so only their padding and their
- * seams are restated here. Nothing below changes what a row says.
- */
-.pane .agent,
-.pane .task-pr {
-  padding: 9px 11px;
-}
-
-.pane .task-pr + .task-pr,
-.pane .agent + .agent {
-  border-top: 1px solid color-mix(in srgb, var(--edge) 45%, var(--panel));
-}
-
-.pane .prompt {
-  padding-left: 25px;
-}
-
-/* Inside a section, so the block below it supplies the surface and the label
-   above it supplies the separation the border-top used to. */
-.pane .task-notes,
-.pane .task-notes-edit {
-  border-top: 0;
-  padding: 0;
-}
-
+/* Notes on a page get the height a list of twelve cards could not spare. */
 .pane .task-notes {
-  padding: 10px 11px;
-  background: var(--panel);
-  border: 1px solid var(--edge);
-  border-radius: var(--radius);
   max-height: 220px;
-}
-
-/*
- * A note you have not written yet.
- *
- * Dashed like the other empty sections rather than an empty box, so the pane
- * never shows a surface with nothing on it.
- */
-.pane .task-notes.empty {
-  background: none;
-  border-style: dashed;
-  color: var(--dim);
-}
-
-.pane .add-repo {
-  padding: 0 0 0 13px;
 }
 
 /* --- modal (new task) ---------------------------------------------------- */

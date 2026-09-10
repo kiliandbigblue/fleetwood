@@ -22,7 +22,7 @@ import { CardMenu } from './CardMenu.tsx';
 import type { MenuItem } from './CardMenu.tsx';
 import { Slug } from './Slug.tsx';
 import { TaskNotes } from './TaskNotes.tsx';
-import { send } from './api.ts';
+import { send, tildify } from './api.ts';
 
 interface Props {
   task: Task;
@@ -76,13 +76,20 @@ export function editorLabel(editor: string): string {
   return editor.trim().split(/\s+/)[0] || 'editor';
 }
 
-function RepoRow({
+/**
+ * One worktree row.
+ *
+ * Shared with `TaskPane`, which draws the same chips and the same dirty token
+ * and then, with room the list does not have, the path underneath.
+ */
+export function RepoRow({
   repo,
   slug,
   taskBranch,
   session,
   editor,
   base,
+  path,
   onResult,
 }: {
   repo: TaskRepo;
@@ -100,6 +107,14 @@ function RepoRow({
    * Absent (no pull request yet, or the search hasn't landed) main uses the trunk.
    */
   base?: string;
+  /**
+   * The checkout, shown in full under the row.
+   *
+   * The card elides this; the pane does not, because "which of the four
+   * checkouts of this repo am I looking at" is the question the page exists to
+   * answer without a tooltip.
+   */
+  path?: string;
   onResult: Props['onResult'];
 }): React.JSX.Element {
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -109,7 +124,7 @@ function RepoRow({
     onResult(result.detail, result.ok);
   };
 
-  return (
+  const row = (
     <div className="task-repo">
       {/* Shortened for display only, and inline for a reason: the raw name is
           what `hasDriftedOffBranch` below reasons about, what `repoSummary`
@@ -199,6 +214,17 @@ function RepoRow({
       )}
     </div>
   );
+
+  if (!path) return row;
+
+  return (
+    <div className="task-repo-block">
+      {row}
+      <div className="task-repo-path" title={path}>
+        {tildify(path)}
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -235,8 +261,8 @@ export function dotNote(state: Severity, attached: boolean, hasSession: boolean)
  * bordered surface nested in the first reads as a different kind of object. The
  * facts are the same ones, in the same colours.
  *
- * Exported for `TaskPane`, which draws the same rows with more room around them:
- * a pull request has to read identically in both, down to the marks.
+ * Exported for `TaskPane`, which draws the same rows: a pull request has to read
+ * identically in both, down to the marks.
  */
 export function PrRow({
   pr,

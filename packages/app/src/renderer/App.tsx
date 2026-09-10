@@ -272,7 +272,7 @@ export function App(): React.JSX.Element {
         }
       />
 
-      <div className={`body${focused ? ' body-pane' : ''}`}>
+      <div className="body">
         {snapshot && !snapshot.hooksInstalled && (
           <div className="banner">
             <span>

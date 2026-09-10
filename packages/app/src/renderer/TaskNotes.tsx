@@ -26,9 +26,9 @@ interface Props {
  * is held apart from the snapshot so a poll cannot replace what you are typing.
  * Which of those is wrong is not a thing you would notice twice.
  *
- * The state lives in the parent, not here: both call sites have a chip in their
- * actions row that opens this, and a component that owns its own `editing` flag
- * cannot be opened from outside it.
+ * The state lives in the parent, not here: both call sites open this from
+ * their menu, and a component that owns its own `editing` flag cannot be
+ * opened from outside it.
  */
 export function TaskNotes({
   notes,

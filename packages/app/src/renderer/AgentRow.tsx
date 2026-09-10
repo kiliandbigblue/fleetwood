@@ -7,11 +7,9 @@ interface Props {
   /**
    * The worktree this agent is working in, when the list it is in mixes them.
    *
-   * The card files agents under the repo row they belong to, so there it would be
-   * saying twice what the nesting already says and it is left off. `TaskPane`
-   * lists every agent of a task in one place — you go to that section to see what
-   * is running, not to see how the folder is arranged — so there the repo has to
-   * ride on the row.
+   * Both the card and the pane list every agent of a task in one block, so the
+   * worktree has to ride on the row rather than being implied by nesting. An
+   * agent at the task root has nothing to say here.
    */
   where?: string;
   onResult: (message: string, ok: boolean) => void;
