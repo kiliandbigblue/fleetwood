@@ -1,12 +1,14 @@
 import { useCallback, useRef, useState } from 'react';
-import type { FleetState, LimitWindow, PlanLimits } from '@fleetwood/core';
-import { duration } from './api.ts';
+import type { CursorUsage, FleetState, LimitWindow, PlanLimits } from '@fleetwood/core';
+import { duration, resetClock } from './api.ts';
 import { useDismiss } from './useDismiss.ts';
 
 interface Props {
   counts: FleetState['counts'];
   /** Absent unless `limits.tokenCommand` is configured. */
   limits?: PlanLimits;
+  /** Absent unless `limits.cursorTokenCommand` is configured. */
+  cursorUsage?: CursorUsage;
 }
 
 /** Warn before the wall, not at it — 75% of a five-hour window is worth seeing. */
@@ -16,35 +18,9 @@ function bandOf(utilization: number): string {
   return '';
 }
 
-/**
- * When the window rolls over.
- *
- * `bare` for the rail, which has room for `2h14m` and not for the verb, and whose
- * tooltip spells it out anyway; the popover rows have the room and say `resets`.
- */
-function resetLabel(resetsAt: number | undefined, now: number, bare = false): string {
-  if (resetsAt === undefined) return '';
-  const seconds = resetsAt - now;
-  // A window that should have rolled over already: say so rather than counting
-  // backwards, because the next fetch will confirm it.
-  if (seconds <= 0) return 'resetting';
-  return bare ? duration(seconds) : `resets ${duration(seconds)}`;
-}
-
-/**
- * The window closest to stopping you.
- *
- * Not the first one. The rail has room for a single gauge, and the five-hour
- * window is only the interesting one until the weekly cap gets ahead of it — at
- * which point showing the session's 20% while the week sits at 94% is a gauge
- * that reads green right up to the stall. Ties keep the endpoint's order, which
- * puts the session window first.
- */
-function binding(windows: LimitWindow[]): LimitWindow | undefined {
-  return windows.reduce<LimitWindow | undefined>(
-    (worst, window) => (worst && worst.utilization >= window.utilization ? worst : window),
-    undefined,
-  );
+function usd(cents: number): string {
+  const dollars = Math.round(cents) / 100;
+  return Number.isInteger(dollars) ? `$${dollars.toFixed(0)}` : `$${dollars.toFixed(2)}`;
 }
 
 function Meter({ utilization, stale }: { utilization: number; stale?: boolean }): React.JSX.Element {
@@ -60,15 +36,25 @@ function Meter({ utilization, stale }: { utilization: number; stale?: boolean })
 }
 
 /**
- * The plan quota, as one gauge that expands into all of them.
+ * The window closest to stopping you.
  *
- * It used to be every window at once, stacked — six rows of title, bar, percent
- * and reset, pinned under the fleet and taller than most of the cards it was
- * supposed to be annotating. This is runway, not work: it earns a glance a few
- * times a day and a proper read almost never, so it gets a line and a popover
- * rather than a table.
+ * Not the first one. The rail has room for a single gauge, and the five-hour
+ * window is only the interesting one until the weekly cap gets ahead of it.
  */
-function Quota({ limits }: { limits: PlanLimits }): React.JSX.Element | null {
+function binding(windows: LimitWindow[]): LimitWindow | undefined {
+  return windows.reduce<LimitWindow | undefined>(
+    (worst, window) => (worst && worst.utilization >= window.utilization ? worst : window),
+    undefined,
+  );
+}
+
+/**
+ * Claude: how full, and what time the window ends.
+ *
+ * The window's name (`5h`) and a countdown (`3h21m`) both restated the same
+ * fact. The bar plus a percent is the fill; a clock is when it opens again.
+ */
+function ClaudeQuota({ limits }: { limits: PlanLimits }): React.JSX.Element | null {
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -78,6 +64,10 @@ function Quota({ limits }: { limits: PlanLimits }): React.JSX.Element | null {
   if (!worst) return null;
   const now = Math.floor(Date.now() / 1000);
   const percent = Math.round(worst.utilization * 100);
+  const clock = resetClock(worst.resetsAt, now);
+
+  const extra = limits.windows.filter((window) => window.key !== worst.key);
+  const hasMenu = extra.length > 0 || Boolean(limits.stale);
 
   return (
     <div className="quota" ref={wrapRef}>
@@ -85,44 +75,91 @@ function Quota({ limits }: { limits: PlanLimits }): React.JSX.Element | null {
         className={`quota-gauge${open ? ' showing' : ''}`}
         title={[
           `${worst.title} — ${percent}% used`,
-          resetLabel(worst.resetsAt, now),
+          clock ? `resets ${clock}` : '',
           limits.stale ? `as of ${duration(now - limits.fetchedAt)} ago` : '',
+        ]
+          .filter(Boolean)
+          .join(', ')}
+        aria-expanded={hasMenu ? open : undefined}
+        onClick={() => {
+          if (hasMenu) setOpen((value) => !value);
+        }}
+      >
+        <span className="tool tool-claude">claude</span>
+        <Meter utilization={worst.utilization} stale={limits.stale} />
+        <span className="quota-fig">{percent}%</span>
+        {clock && <span className="quota-sub">{clock}</span>}
+      </button>
+
+      {open && hasMenu && (
+        <div className="quota-menu">
+          {extra.map((window) => (
+            <div className="quota-row" key={window.key}>
+              <span className="quota-row-title">{window.short}</span>
+              <Meter utilization={window.utilization} stale={limits.stale} />
+              <span className="quota-fig">{Math.round(window.utilization * 100)}%</span>
+              <span className="quota-sub">{resetClock(window.resetsAt, now)}</span>
+            </div>
+          ))}
+          {limits.stale && (
+            <div className="quota-stale" title="the usage endpoint did not answer the last poll">
+              as of {duration(now - limits.fetchedAt)} ago
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Cursor: what this seat has billed this cycle, and what it billed today.
+ *
+ * Included is always spent by mid-cycle on this plan, so a 100% bar would sit
+ * there every day saying nothing. On-demand dollars are the number that moves.
+ */
+function CursorQuota({ usage }: { usage: CursorUsage }): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  useDismiss(wrapRef, open, close);
+
+  const now = Math.floor(Date.now() / 1000);
+  const today = usage.todayCents === undefined ? '—' : usd(usage.todayCents);
+  const seat = usd(usage.seatCents);
+
+  return (
+    <div className="quota" ref={wrapRef}>
+      <button
+        className={`quota-gauge${open ? ' showing' : ''}`}
+        title={[
+          `this cycle ${seat}`,
+          `today ${today}`,
+          usage.stale ? `as of ${duration(now - usage.fetchedAt)} ago` : '',
         ]
           .filter(Boolean)
           .join(', ')}
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
-        {/*
-          Attributed to claude explicitly, in the same accent the agent rows use
-          for that tool. A fleet mixing claude with cursor-agent and codex would
-          otherwise read this as a fleet-wide gauge, when it only covers one of
-          them — the others have their own quotas that fleetwood cannot see.
-        */}
-        <span className="tool tool-claude">claude</span>
-        <span className="quota-window">{worst.short}</span>
-        <Meter utilization={worst.utilization} stale={limits.stale} />
-        <span className="quota-percent">{percent}%</span>
-        <span className="quota-reset">{resetLabel(worst.resetsAt, now, true)}</span>
+        <span className="tool tool-cursor">cursor</span>
+        <span className="quota-fig">{seat}</span>
+        <span className="quota-sub">{today}</span>
       </button>
 
       {open && (
         <div className="quota-menu">
-          <div className="quota-menu-head">plan usage</div>
-          {limits.windows.map((window) => (
-            <div className="quota-row" key={window.key}>
-              <span className="quota-row-title">{window.title}</span>
-              <Meter utilization={window.utilization} stale={limits.stale} />
-              <span className="quota-percent">{Math.round(window.utilization * 100)}%</span>
-              <span className="quota-reset">{resetLabel(window.resetsAt, now)}</span>
-            </div>
-          ))}
-          {/* Claude Code shows an "as of" note rather than an error when the
-              endpoint is unavailable; a dated bar still locates you, a missing one
-              does not. */}
-          {limits.stale && (
+          <div className="quota-row">
+            <span className="quota-row-title">cycle</span>
+            <span className="quota-row-value">{seat}</span>
+          </div>
+          <div className="quota-row">
+            <span className="quota-row-title">today</span>
+            <span className="quota-row-value">{today}</span>
+          </div>
+          {usage.stale && (
             <div className="quota-stale" title="the usage endpoint did not answer the last poll">
-              as of {duration(now - limits.fetchedAt)} ago
+              as of {duration(now - usage.fetchedAt)} ago
             </div>
           )}
         </div>
@@ -137,14 +174,8 @@ function Quota({ limits }: { limits: PlanLimits }): React.JSX.Element | null {
  * The counterweight to the top rail. Up there is everything that is waiting on
  * you and every way to get to it; down here is everything that is merely true —
  * ambient, never actionable, and so never in the way of the list between them.
- * That split is why `blocked` moved up out of this row and `working` and `idle`
- * moved down into it.
- *
- * `working` and `idle` do not have to add up to the fleet: `starting` and
- * `compacting` are real states that pass too quickly to be worth a word here, and
- * the rows below always have the full account.
  */
-export function StatusBar({ counts, limits }: Props): React.JSX.Element {
+export function StatusBar({ counts, limits, cursorUsage }: Props): React.JSX.Element {
   return (
     <footer className="rail rail-bottom">
       <div className="vitals">
@@ -165,7 +196,10 @@ export function StatusBar({ counts, limits }: Props): React.JSX.Element {
           {counts.total === 0 ? 'no agents' : `${counts.idle} idle`}
         </span>
       </div>
-      {limits && <Quota limits={limits} />}
+      <div className="quotas">
+        {limits && <ClaudeQuota limits={limits} />}
+        {cursorUsage && <CursorQuota usage={cursorUsage} />}
+      </div>
     </footer>
   );
 }

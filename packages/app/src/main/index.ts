@@ -7,6 +7,7 @@ import {
   config as configModule,
   github,
   hooks,
+  cursorUsage as cursorUsageApi,
   limits as limitsApi,
   paths,
   deployMarks,
@@ -22,6 +23,7 @@ import {
 import type {
   MergedPr,
   MergedPrs,
+  CursorUsage,
   PlanLimits,
   PrLists,
   PullRequest,
@@ -79,6 +81,7 @@ let taskCache: { at: number; tasks: Task[] } = { at: 0, tasks: [] };
  * and a bar that vanishes on one flaky request is worse than a dated one.
  */
 let planLimits: PlanLimits | undefined;
+let cursorUsage: CursorUsage | undefined;
 let limitsAt = 0;
 let fleetTimer: NodeJS.Timeout | undefined;
 let prTimer: NodeJS.Timeout | undefined;
@@ -143,16 +146,25 @@ async function getTasks(force = false): Promise<Task[]> {
 }
 
 async function refreshLimits(settings: Awaited<ReturnType<typeof configModule.loadConfig>>): Promise<void> {
-  if (!settings.limits.tokenCommand.trim()) {
-    planLimits = undefined;
-    return;
-  }
   const now = Date.now();
   if (now - limitsAt < settings.limits.pollSeconds * 1_000) return;
   limitsAt = now;
-  const fetched = await limitsApi.fetchLimits({ tokenCommand: settings.limits.tokenCommand });
-  if (fetched) planLimits = fetched;
+
+  const claudeCmd = settings.limits.tokenCommand.trim();
+  const cursorCmd = settings.limits.cursorTokenCommand.trim();
+
+  const [fetchedClaude, fetchedCursor] = await Promise.all([
+    claudeCmd ? limitsApi.fetchLimits({ tokenCommand: claudeCmd }) : Promise.resolve(undefined),
+    cursorCmd ? cursorUsageApi.fetchCursorUsage({ tokenCommand: cursorCmd }) : Promise.resolve(undefined),
+  ]);
+
+  if (!claudeCmd) planLimits = undefined;
+  else if (fetchedClaude) planLimits = fetchedClaude;
   else if (planLimits) planLimits = { ...planLimits, stale: true };
+
+  if (!cursorCmd) cursorUsage = undefined;
+  else if (fetchedCursor) cursorUsage = fetchedCursor;
+  else if (cursorUsage) cursorUsage = { ...cursorUsage, stale: true };
 }
 
 async function buildSnapshot(): Promise<Snapshot> {
@@ -182,6 +194,7 @@ async function buildSnapshot(): Promise<Snapshot> {
     theme: settings.theme,
     bgOpacity: settings.bgOpacity,
     limits: planLimits,
+    cursorUsage,
     history,
   };
 }

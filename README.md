@@ -43,21 +43,26 @@ inferred ones are marked (`~` screen, `?` process-only, `…` stale) so an infer
 never looks as solid as a report. Durations say what they measure: a status nobody
 timed is shown as uptime (`up 18h`), never as time spent working.
 
-**Runway is measured, spend is not.** Fleetwood used to price every agent off its
+**Runway is measured, per-agent spend is not.** Fleetwood used to price every agent off its
 transcript and show the dollars per row, per session and per fleet. It doesn't any
 more, in either front end: what an agent has already spent is history, no control
 here makes it smaller, and it sat next to the one figure that does change what you
-do next. So the question this answers is how much runway is left, and nothing else
-about money.
+do next. So the question this answers is how much runway is left. Cursor also
+shows this seat's on-demand this cycle and today — those are the plan's own
+meter, not a guess off a transcript.
 
-That number isn't on disk — the plan's usage windows come from the same endpoint
-`/usage` uses. It needs an OAuth credential, so **fleetwood ships no credential
-reader of its own**: you set `limits.tokenCommand` to a command that prints
-yours, and the feature is inert until you do. It cannot take the panel down
-either. An endpoint that changed shape yields an empty gauge, and a failed poll
-keeps the last bars with an "as of" note rather than blanking them. The gauge
-shows the window closest to stopping you rather than the first one, because a
-session at 20% while the week sits at 94% reads green right up to the stall.
+That number isn't on disk — Claude's usage windows come from the same endpoint
+`/usage` uses, and Cursor's cycle / today figures from the dashboard period API.
+Both need a credential, so **fleetwood ships no credential reader of its
+own**: you set `limits.tokenCommand` (Claude) and/or `limits.cursorTokenCommand`
+(Cursor) to a command that prints yours, and each gauge is inert until you do.
+It cannot take the panel down either. An endpoint that changed shape yields an
+empty gauge, and a failed poll keeps the last numbers with an "as of" note
+rather than blanking them. Claude's gauge shows the window closest to stopping
+you rather than the first one, because a session at 20% while the week sits at
+94% reads green right up to the stall. Cursor shows on-demand this cycle and
+today, and ignores provider bonus credits, which are not billed and would
+otherwise look like seat cost.
 
 **"Deployed" is mostly not a fact GitHub holds, so the badge doesn't claim it.**
 Across every repo here there are no Deployments-API entries and no job-level
@@ -115,9 +120,9 @@ guessed onto the wrong terminal. `fw doctor` reports both numbers.
 - **Live agent status per pane** — working / needs-permission / waiting / idle /
   compacting / gone, with what the agent is doing, how long it's been in that
   state, its subagent count and error count.
-- **How much runway is left**, as the plan's usage windows — one gauge in the
-  panel's bottom rail that expands into all of them, and `fw limits` in the
-  terminal. It is the only money-shaped number here; per-agent spend is gone.
+- **How much runway is left** — Claude's usage windows, and Cursor's on-demand
+  this cycle and today. One ticker per tool in the panel's bottom rail, and
+  `fw limits` in the terminal. Per-agent spend is gone.
 - **Approve or deny from the panel.** A blocked agent's actual prompt is read off
   the pane and rendered with buttons; clicking one sends the keystroke. This is the
   feature that makes the app worth keeping open.
@@ -694,7 +699,7 @@ fw                    the fleet (default)
 fw task ...           multi-repo tasks: new / add / start / ls / archive (see above)
 fw watch              the fleet, refreshed live
 fw agents             flat list, most urgent first
-fw limits             plan quota: how much of each usage window is spent
+fw limits             plan quota: Claude windows, Cursor cycle / today
 fw prs                PRs awaiting your review, and your own
 fw open-pr <ref>      focus a PR's session, or build one on a fresh worktree
 fw approve [pane]     answer yes to a blocked agent

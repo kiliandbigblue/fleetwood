@@ -135,16 +135,18 @@ export interface Config {
    */
   bgOpacity: number;
   /**
-   * The plan's quota bars — the same numbers Claude Code's `/usage` shows.
+   * Plan quota — Claude's `/usage` windows, and Cursor's on-demand cycle / today.
    *
-   * Off until `tokenCommand` is set, because reading it means handing fleetwood
-   * an OAuth credential. There is deliberately no built-in default command:
-   * fleetwood does not ship a Keychain scraper of its own, so the operator says
-   * explicitly where the token comes from. On macOS that is usually
-   * `security find-generic-password -a "<your account>" -w -s "Claude Code-credentials"`.
+   * Off until the matching command is set, because reading either means handing
+   * fleetwood a credential. There is deliberately no built-in default: fleetwood
+   * does not ship a Keychain scraper of its own, so the operator says explicitly
+   * where each token comes from. On macOS that is usually
+   * `security find-generic-password -a "<your account>" -w -s "Claude Code-credentials"`
+   * and `security find-generic-password -a cursor-user -w -s cursor-access-token`.
    */
   limits: {
     tokenCommand: string;
+    cursorTokenCommand: string;
     /** The window moves in hours; polling it hard would be rude and pointless. */
     pollSeconds: number;
   };
@@ -176,7 +178,7 @@ export const DEFAULT_CONFIG: Config = {
   editor: 'nvim',
   theme: DEFAULT_THEME,
   bgOpacity: DEFAULT_BG_OPACITY,
-  limits: { tokenCommand: '', pollSeconds: 300 },
+  limits: { tokenCommand: '', cursorTokenCommand: '', pollSeconds: 300 },
 };
 
 /** Shallow-merge on purpose: a partial config file must not lose new defaults. */

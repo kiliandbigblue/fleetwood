@@ -7,6 +7,7 @@ import {
   github,
   hooks,
   limits as limitsApi,
+  cursorUsage as cursorUsageApi,
   deployMarks,
   groupPrStacks,
   prSession,
@@ -30,9 +31,9 @@ import {
   sessionOrder,
   sortSessions,
 } from '@fleetwood/core';
-import type { AgentTool, FleetState, MergedPr, PlanLimits, PullRequest, TaskPr } from '@fleetwood/core';
+import type { AgentTool, CursorUsage, FleetState, MergedPr, PlanLimits, PullRequest, TaskPr } from '@fleetwood/core';
 import { c, pad, relativeAge, tildify, useTheme, width } from './ui.ts';
-import { renderAgentLine, renderFleet, renderLimits } from './render.ts';
+import { renderAgentLine, renderCursorUsage, renderFleet, renderLimits } from './render.ts';
 import { cmdSwitch } from './switch.ts';
 import { cmdNewTask } from './newTask.ts';
 
@@ -45,7 +46,7 @@ ${c.bold('commands')}
                     ${c.dim('--all also lists the sessions marked hidden')}
   watch [--all]     status, refreshed live
   agents            flat list of agents, most urgent first
-  limits            plan quota: how much of each usage window is spent
+  limits            plan quota: Claude windows, Cursor cycle / today
   sessions          tmux sessions and their fleetwood metadata
   panes             every pane and the agent process found in it
 
@@ -133,28 +134,40 @@ async function planLimits(): Promise<PlanLimits | undefined> {
   return limitsApi.fetchLimits({ tokenCommand: settings.limits.tokenCommand });
 }
 
+async function cursorPlanUsage(): Promise<CursorUsage | undefined> {
+  const settings = await configModule.loadConfig();
+  if (!settings.limits.cursorTokenCommand.trim()) return undefined;
+  return cursorUsageApi.fetchCursorUsage({ tokenCommand: settings.limits.cursorTokenCommand });
+}
+
 async function cmdStatus(json: boolean, capture: boolean, showHidden: boolean): Promise<void> {
-  const [state, limits] = await Promise.all([fleet(capture), planLimits()]);
+  const [state, limits, cursorUsage] = await Promise.all([fleet(capture), planLimits(), cursorPlanUsage()]);
   // `--json` is the whole fleet either way: a filter is a reading aid, and a
   // script asking for the state wants the state.
-  if (json) return jsonOut({ ...state, limits });
-  process.stdout.write(`${renderFleet(state, limits, showHidden)}\n`);
+  if (json) return jsonOut({ ...state, limits, cursorUsage });
+  process.stdout.write(`${renderFleet(state, limits, showHidden, cursorUsage)}\n`);
 }
 
 async function cmdLimits(json: boolean): Promise<void> {
-  const limits = await planLimits();
-  if (json) return jsonOut(limits ?? null);
-  if (!limits) {
+  const [limits, cursorUsage] = await Promise.all([planLimits(), cursorPlanUsage()]);
+  if (json) return jsonOut({ limits: limits ?? null, cursorUsage: cursorUsage ?? null });
+  if (!limits && !cursorUsage) {
     process.stdout.write(
       `${c.muted('no usage limits configured')}\n\n` +
-        `Set ${c.bold('limits.tokenCommand')} in ~/.fleetwood/config.json to a command that\n` +
-        `prints your Claude Code OAuth credential, e.g. on macOS:\n\n` +
-        `  ${c.dim('"limits": { "tokenCommand": "security find-generic-password -a \\"$USER\\" -w -s \\"Claude Code-credentials\\"" }')}\n\n` +
-        `${c.muted('fleetwood ships no credential reader of its own — you decide how the token is fetched.')}\n`,
+        `Set ${c.bold('limits.tokenCommand')} and/or ${c.bold('limits.cursorTokenCommand')} in\n` +
+        `~/.fleetwood/config.json to a command that prints the matching credential, e.g. on macOS:\n\n` +
+        `  ${c.dim('"limits": {')}\n` +
+        `  ${c.dim('  "tokenCommand": "security find-generic-password -a \\"$USER\\" -w -s \\"Claude Code-credentials\\"",')}\n` +
+        `  ${c.dim('  "cursorTokenCommand": "security find-generic-password -a cursor-user -w -s cursor-access-token"')}\n` +
+        `  ${c.dim('}')}\n\n` +
+        `${c.muted('fleetwood ships no credential reader of its own — you decide how each token is fetched.')}\n`,
     );
     return;
   }
-  process.stdout.write(`${renderLimits(limits)}\n`);
+  const blocks = [limits ? renderLimits(limits) : '', cursorUsage ? renderCursorUsage(cursorUsage) : '']
+    .filter(Boolean)
+    .join('\n\n');
+  process.stdout.write(`${blocks}\n`);
 }
 
 async function cmdWatch(
@@ -163,9 +176,9 @@ async function cmdWatch(
   showHidden: boolean,
 ): Promise<void> {
   const draw = async (): Promise<void> => {
-    const [state, limits] = await Promise.all([fleet(capture), planLimits()]);
+    const [state, limits, cursorUsage] = await Promise.all([fleet(capture), planLimits(), cursorPlanUsage()]);
     // Clear and home, then paint. Cheaper and less flickery than full reset.
-    process.stdout.write(`\x1b[H\x1b[2J${renderFleet(state, limits, showHidden)}\n`);
+    process.stdout.write(`\x1b[H\x1b[2J${renderFleet(state, limits, showHidden, cursorUsage)}\n`);
   };
   await draw();
   const timer = setInterval(() => void draw(), Math.max(500, intervalSeconds * 1000));

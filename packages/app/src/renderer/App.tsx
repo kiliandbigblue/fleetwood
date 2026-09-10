@@ -428,7 +428,7 @@ export function App(): React.JSX.Element {
 
       {/* Pinned below the scrolling body: everything down there is ambient
           context rather than something you act on — see `StatusBar`. */}
-      {counts && <StatusBar counts={counts} limits={snapshot?.limits} />}
+      {counts && <StatusBar counts={counts} limits={snapshot?.limits} cursorUsage={snapshot?.cursorUsage} />}
 
       <NewTask
         open={newTaskOpen}

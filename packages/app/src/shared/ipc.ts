@@ -3,6 +3,7 @@ import type {
   ArchivedTask,
   FleetState,
   MergedPrs,
+  CursorUsage,
   PlanLimits,
   PrLists,
   Task,
@@ -53,8 +54,10 @@ export interface Snapshot {
    * to the same key.
    */
   bgOpacity: number;
-  /** Plan quota bars. Absent unless `limits.tokenCommand` is configured. */
+  /** Claude plan quota bars. Absent unless `limits.tokenCommand` is configured. */
   limits?: PlanLimits;
+  /** Cursor included / seat / today. Absent unless `limits.cursorTokenCommand` is set. */
+  cursorUsage?: CursorUsage;
   /**
    * Tasks that have been archived, most recent first.
    *

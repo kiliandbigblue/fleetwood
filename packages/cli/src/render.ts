@@ -1,6 +1,23 @@
-import type { AgentStatus, FleetAgent, FleetState, PlanLimits } from '@fleetwood/core';
-import { agentUrgency, isHidden, isPinned, sessionLabel, sortSessions } from '@fleetwood/core';
+import type { AgentStatus, CursorUsage, FleetAgent, FleetState, PlanLimits } from '@fleetwood/core';
+import { agentUrgency, formatUsd, isHidden, isPinned, sessionLabel, sortSessions } from '@fleetwood/core';
 import { c, pad, relativeAge, tildify, width } from './ui.ts';
+
+function resetClock(resetsAt: number | undefined, now: number): string {
+  if (resetsAt === undefined) return '';
+  if (resetsAt - now <= 0) return 'resetting';
+  const at = new Date(resetsAt * 1000);
+  const time = at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+  const today = new Date(now * 1000);
+  const startOf = (d: Date): number => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((startOf(at) - startOf(today)) / 86_400_000);
+  if (days <= 0) return time;
+  if (days === 1) return `tomorrow ${time}`;
+  if (days < 7) {
+    const weekday = at.toLocaleDateString(undefined, { weekday: 'short' });
+    return `${weekday} ${time}`;
+  }
+  return at.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
 
 /**
  * The Claude plan's quota, as `/usage` shows it.
@@ -9,8 +26,8 @@ import { c, pad, relativeAge, tildify, width } from './ui.ts';
  * how much runway is left before the fleet stalls, not the exact figure.
  *
  * Labelled `claude` in that tool's own colour: a fleet also running cursor-agent
- * or codex would otherwise read this as covering all of them, when those have
- * separate quotas fleetwood has no way to see.
+ * or codex would otherwise read this as covering all of them. Cursor has its own
+ * block beside this one when `limits.cursorTokenCommand` is set.
  */
 export function renderLimits(limits: PlanLimits): string {
   if (limits.windows.length === 0) return '';
@@ -23,18 +40,32 @@ export function renderLimits(limits: PlanLimits): string {
     const filled = Math.max(1, Math.round(window.utilization * 16));
     const paint = percent >= 90 ? c.danger : percent >= 75 ? c.warn : c.ok;
     const bar = `${paint('█'.repeat(filled))}${c.dim('░'.repeat(16 - filled))}`;
-    const reset =
-      window.resetsAt === undefined
-        ? ''
-        : window.resetsAt - now <= 0
-          ? c.dim(' resetting')
-          : c.dim(` resets ${duration(window.resetsAt - now)}`);
+    const clock = resetClock(window.resetsAt, now);
+    const reset = clock ? c.dim(` ${clock}`) : '';
     lines.push(
       `  ${c.muted(pad(window.title, titleWidth))}  ${bar} ${pad(`${percent}%`, 4)}${reset}`,
     );
   }
   if (limits.stale) {
     lines.push(c.dim(`  as of ${duration(now - limits.fetchedAt)} ago`));
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Cursor on-demand: this cycle, and today. Included is omitted — it is spent
+ * every month on this plan, so a 100% bar would never change.
+ */
+export function renderCursorUsage(usage: CursorUsage): string {
+  const now = Math.floor(Date.now() / 1000);
+  const today = usage.todayCents === undefined ? c.dim('—') : formatUsd(usage.todayCents);
+  const lines: string[] = [
+    `  ${c.ok('cursor')} ${c.muted('plan usage')}`,
+    `  ${c.muted(pad('This cycle', 12))}  ${formatUsd(usage.seatCents)}`,
+    `  ${c.muted(pad('Today', 12))}  ${today}`,
+  ];
+  if (usage.stale) {
+    lines.push(c.dim(`  as of ${duration(now - usage.fetchedAt)} ago`));
   }
   return lines.join('\n');
 }
@@ -139,6 +170,7 @@ export function renderFleet(
   fleet: FleetState,
   limits?: PlanLimits,
   showHidden = false,
+  cursorUsage?: CursorUsage,
 ): string {
   const lines: string[] = [];
   const { counts } = fleet;
@@ -242,8 +274,9 @@ export function renderFleet(
 
   const body = lines.join('\n').replace(/\n+$/, '\n');
 
-  // Quota last: it is standing context for one agent tool, not a per-agent fact,
-  // so it reads as a footer rather than competing with the fleet for the top.
-  const bars = limits ? renderLimits(limits) : '';
+  // Quota last: standing context for the agent tools, not a per-agent fact.
+  const bars = [limits ? renderLimits(limits) : '', cursorUsage ? renderCursorUsage(cursorUsage) : '']
+    .filter(Boolean)
+    .join('\n\n');
   return bars ? `${body}\n${bars}\n` : body;
 }

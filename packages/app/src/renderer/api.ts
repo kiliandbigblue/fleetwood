@@ -13,6 +13,30 @@ export function send(request: Request): Promise<Response> {
   return api.invoke(request);
 }
 
+/**
+ * When a quota window rolls over, as a clock rather than a countdown.
+ *
+ * The rail already says how full the window is; a second duration (`3h21m`)
+ * next to a percent is two ways of saying "soon". The time of day is the fact
+ * that changes what you do — stop at 17:40, or keep going.
+ */
+export function resetClock(resetsAt: number | undefined, now: number): string {
+  if (resetsAt === undefined) return '';
+  if (resetsAt - now <= 0) return 'resetting';
+  const at = new Date(resetsAt * 1000);
+  const time = at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+  const today = new Date(now * 1000);
+  const startOf = (d: Date): number => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((startOf(at) - startOf(today)) / 86_400_000);
+  if (days <= 0) return time;
+  if (days === 1) return `tomorrow ${time}`;
+  if (days < 7) {
+    const weekday = at.toLocaleDateString(undefined, { weekday: 'short' });
+    return `${weekday} ${time}`;
+  }
+  return at.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
 /** Human-readable elapsed time, matching the CLI's format. */
 export function duration(seconds: number): string {
   if (seconds < 60) return `${Math.max(0, seconds)}s`;
