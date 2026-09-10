@@ -1,6 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { matchPrsToTasks, parseAheadBehind, parseCheckoutBranches, prCacheKey, trunkBranchName } from '../src/taskPrs.ts';
+import {
+  fleetOwners,
+  matchPrsToTasks,
+  parseAheadBehind,
+  parseCheckoutBranches,
+  prCacheKey,
+  repoBranchPairs,
+  trunkBranchName,
+  unclonedBranchNames,
+} from '../src/taskPrs.ts';
 import type { TaskBranches } from '../src/taskPrs.ts';
 import { batchHeadQualifiers } from '../src/github.ts';
 import type { PullRequest } from '../src/github.ts';
@@ -219,4 +228,105 @@ test('the summary counts only what asks something of you', () => {
     ]),
     '3 open · 1 failing · 1 approved',
   );
+});
+
+/** A discovered branch set, as `discoverTaskBranches` would hand it over. */
+function branches(slug: string, entries: TaskBranches['branches']): TaskBranches {
+  return { slug, branches: entries };
+}
+
+test('a branch whose worktree named its remote is a lookup, not a search', () => {
+  const sets = [
+    branches('receive', [
+      { branch: 'feature/receive-a', via: 'head', repoName: 'atlas-a', repo: 'bigbluedisco/atlas' },
+      { branch: 'feature/receive-b', via: 'stack', repoName: 'atlas-a', repo: 'bigbluedisco/atlas' },
+      { branch: 'feature/receive', via: 'task' },
+    ]),
+  ];
+  assert.deepEqual(repoBranchPairs(sets), [
+    { repo: 'bigbluedisco/atlas', branch: 'feature/receive-a' },
+    { repo: 'bigbluedisco/atlas', branch: 'feature/receive-b' },
+  ]);
+  assert.deepEqual(unclonedBranchNames(sets), ['feature/receive']);
+});
+
+test('the same pair in two tasks is asked about once', () => {
+  // Stacked tasks share their lower layers, and the naming convention reuses
+  // one branch name across repos — both make duplicates the normal case.
+  const sets = [
+    branches('lower', [{ branch: 'feature/x', via: 'head', repo: 'org/repo' }]),
+    branches('upper', [
+      { branch: 'feature/x', via: 'stack', repo: 'org/repo' },
+      { branch: 'feature/y', via: 'head', repo: 'org/repo' },
+    ]),
+  ];
+  assert.deepEqual(repoBranchPairs(sets), [
+    { repo: 'org/repo', branch: 'feature/x' },
+    { repo: 'org/repo', branch: 'feature/y' },
+  ]);
+});
+
+test('a name already looked up in a real repo is not searched for as well', () => {
+  // The task entry is deliberately repo-less, but when a worktree in the task
+  // is on that very branch the lookup has already covered it. Searching it
+  // again would spend the one throttled call on an answer we hold.
+  const sets = [
+    branches('task', [
+      { branch: 'fix/thing', via: 'head', repoName: 'repo-thing', repo: 'org/repo' },
+      { branch: 'fix/thing', via: 'task' },
+    ]),
+  ];
+  assert.deepEqual(unclonedBranchNames(sets), []);
+});
+
+test('a worktree whose remote git would not name falls back to the search', () => {
+  const sets = [
+    branches('local', [
+      { branch: 'feature/local', via: 'head', repoName: 'octoposte-local' },
+      { branch: 'feature/local', via: 'task' },
+    ]),
+  ];
+  assert.deepEqual(repoBranchPairs(sets), []);
+  assert.deepEqual(unclonedBranchNames(sets), ['feature/local']);
+});
+
+test('a stranger\'s repo with the same branch name is not the task\'s pull request', () => {
+  // `feature/new-app` is a name other people use. The task entry is allowed to
+  // match a repo the folder does not hold, so without an owner bound the
+  // org-wide search files a stranger's pull request under the task.
+  const sets = [
+    branches('new-app', [
+      { branch: 'feature/new-app', via: 'head', repoName: 'graphy-new-app', repo: 'bigbluedisco/graphy' },
+      { branch: 'feature/new-app', via: 'task' },
+    ]),
+  ];
+  const prs = [pr('rummyze/boxfuse-sample-java-war-hello', 1, 'feature/new-app')];
+  assert.deepEqual(matchPrsToTasks(sets, prs, ['bigbluedisco']), {});
+});
+
+test('a teammate\'s pull request in an uncloned repo of the fleet\'s own org still counts', () => {
+  const sets = [branches('orders', [{ branch: 'fix/orders', via: 'task' }])];
+  const prs = [pr('bigbluedisco/reflow', 42, 'fix/orders')];
+  const matched = matchPrsToTasks(sets, prs, ['bigbluedisco']);
+  assert.deepEqual(
+    (matched['orders'] ?? []).map((entry) => [entry.repo, entry.number, entry.via]),
+    [['bigbluedisco/reflow', 42, 'task']],
+  );
+});
+
+test('no owner readable from git narrows nothing, rather than everything', () => {
+  // Every worktree local-only: silence about owners must not be read as "no
+  // owner is legitimate", which would drop the task's real pull requests.
+  const sets = [branches('local', [{ branch: 'feature/local', via: 'task' }])];
+  const prs = [pr('someone/repo', 3, 'feature/local')];
+  assert.equal((matchPrsToTasks(sets, prs, [])['local'] ?? []).length, 1);
+});
+
+test('the owner allowlist is the whole fleet, not one task', () => {
+  const sets = [
+    branches('a', [{ branch: 'feature/a', via: 'head', repo: 'bigbluedisco/atlas' }]),
+    branches('b', [{ branch: 'feature/b', via: 'head', repo: 'kiliandbigblue/fleetwood' }]),
+    branches('c', [{ branch: 'feature/c', via: 'task' }]),
+  ];
+  assert.deepEqual(fleetOwners(sets), ['bigbluedisco', 'kiliandbigblue']);
 });

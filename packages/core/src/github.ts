@@ -1,4 +1,5 @@
 import { run } from './exec.ts';
+import { ghSearch } from './ghSearch.ts';
 import { loadConfig } from './config.ts';
 import type { DeployPatterns, MergedConfig } from './config.ts';
 
@@ -59,8 +60,10 @@ async function searchRaw(flags: string[], limit: number): Promise<{ ok: boolean;
   if (config.github.extraQualifiers.trim().length > 0) {
     args.push(...config.github.extraQualifiers.trim().split(/\s+/));
   }
-  const { code, stdout } = await run('gh', args, { timeoutMs: 20_000 });
-  if (code !== 0) return { ok: false, rows: [] };
+  // Through the gate, not straight to `gh` — see `ghSearch`. Every search in
+  // the process shares one budget, so this is where the pacing has to live.
+  const { ok, stdout } = await ghSearch(args);
+  if (!ok) return { ok: false, rows: [] };
   try {
     return { ok: true, rows: JSON.parse(stdout) as SearchRow[] };
   } catch {
@@ -380,6 +383,7 @@ export function batchHeadQualifiers(branches: string[], maxChars = 600, maxBranc
 export async function fetchPrsForBranches(
   branches: string[],
   limit = 200,
+  owners: string[] = [],
 ): Promise<{ ok: boolean; prs: PullRequest[] }> {
   if (branches.length === 0) return { ok: true, prs: [] };
   const config = await loadConfig();
@@ -395,9 +399,14 @@ export async function fetchPrsForBranches(
       '--json',
       SEARCH_FIELDS,
     ];
+    // Bounded to the owners the fleet actually works in. A branch name like
+    // `feature/new-app` exists in strangers' repositories too, and this search
+    // is the one path allowed to match a repo no worktree holds — so without a
+    // bound it hands back somebody else's pull request as the task's.
+    for (const owner of owners) args.push('--owner', owner);
     if (extra.length > 0) args.push(...extra.split(/\s+/));
-    const { code, stdout } = await run('gh', args, { timeoutMs: 20_000 });
-    if (code !== 0) return undefined;
+    const { ok, stdout } = await ghSearch(args);
+    if (!ok) return undefined;
     let rows: SearchRow[];
     try {
       rows = JSON.parse(stdout) as SearchRow[];
@@ -434,6 +443,247 @@ export async function fetchPrsForBranches(
     if (!pr) continue;
     byKey.set(prKey(pr.repo, pr.number), { ...pr, roles: [] });
   }
+  return { ok: true, prs: [...byKey.values()] };
+}
+
+/** A branch in a repo we know the name of — the lookup a search was standing in for. */
+export interface RepoBranch {
+  /** `owner/name`. */
+  repo: string;
+  branch: string;
+}
+
+/**
+ * How many `(repo, branch)` pairs ride in one GraphQL document.
+ *
+ * Each alias is a repository field asking for one pull request and up to a
+ * hundred of its check contexts, so the node count — which is what GitHub
+ * charges for — is about a hundred per pair. Forty keeps a document well inside
+ * both the node ceiling and a readable size, and a fleet that needs a second
+ * document is a fleet of eighty branches.
+ */
+const GRAPHQL_PAIRS_PER_QUERY = 40;
+
+/** The rollup as GraphQL returns it: two shapes behind one union. */
+interface GqlContext {
+  __typename?: string;
+  name?: string;
+  status?: string;
+  conclusion?: string;
+  startedAt?: string;
+  completedAt?: string;
+  createdAt?: string;
+  context?: string;
+  state?: string;
+  checkSuite?: { workflowRun?: { workflow?: { name?: string } } | null } | null;
+}
+
+interface GqlPr {
+  number: number;
+  title: string;
+  url: string;
+  updatedAt: string;
+  isDraft: boolean;
+  headRefName?: string;
+  baseRefName?: string;
+  reviewDecision?: string | null;
+  additions?: number;
+  deletions?: number;
+  author?: { login?: string } | null;
+  latestReviews?: { nodes?: Array<{ state?: string } | null> | null } | null;
+  commits?: {
+    nodes?: Array<{ commit?: { statusCheckRollup?: { contexts?: { nodes?: Array<GqlContext | null> | null } } | null } } | null> | null;
+  } | null;
+}
+
+interface GqlRepository {
+  pullRequests?: { nodes?: Array<GqlPr | null> | null } | null;
+}
+
+/**
+ * Flatten GraphQL's union back into the shape `summariseChecks` already reads.
+ *
+ * The REST rollup is one flat list where a check run carries `name`/`conclusion`
+ * and a legacy commit status carries `context`/`state`; GraphQL splits those
+ * into `CheckRun` and `StatusContext` and nests the workflow name two levels
+ * down. Undoing that here rather than teaching the summariser a second shape
+ * keeps one implementation of what counts as red — the part with the
+ * force-push and retry subtleties in it.
+ */
+function toCheckRuns(pr: GqlPr): CheckRun[] {
+  const nodes = pr.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.nodes ?? [];
+  const out: CheckRun[] = [];
+  for (const node of nodes) {
+    if (!node) continue;
+    out.push({
+      name: node.name,
+      context: node.context,
+      workflowName: node.checkSuite?.workflowRun?.workflow?.name,
+      status: node.status,
+      conclusion: node.conclusion,
+      state: node.state,
+      // A status has no start of its own; its creation is the closest thing,
+      // and `latestAttempts` only ever compares these against each other.
+      startedAt: node.startedAt ?? node.createdAt,
+      completedAt: node.completedAt,
+    });
+  }
+  return out;
+}
+
+function toPrFromGraphql(repo: string, node: GqlPr, ignorePattern: string): PullRequest {
+  const checks = summariseChecks(toCheckRuns(node), ignorePattern);
+  const reviews = (node.latestReviews?.nodes ?? []).filter((review): review is { state?: string } => review !== null);
+  return {
+    repo,
+    number: node.number,
+    title: node.title,
+    url: node.url,
+    updatedAt: node.updatedAt,
+    isDraft: node.isDraft,
+    author: node.author?.login,
+    roles: [],
+    branch: node.headRefName,
+    base: node.baseRefName,
+    reviewDecision: effectiveReviewDecision(node.reviewDecision ?? undefined, reviews),
+    checks: checks.state,
+    checksDetail: checks.detail,
+    additions: node.additions,
+    deletions: node.deletions,
+  };
+}
+
+/** One aliased `repository` field. `JSON.stringify` is a valid GraphQL string literal. */
+function repoBranchField(alias: string, pair: RepoBranch): string | undefined {
+  const slash = pair.repo.indexOf('/');
+  if (slash <= 0 || slash === pair.repo.length - 1) return undefined;
+  const owner = pair.repo.slice(0, slash);
+  const name = pair.repo.slice(slash + 1);
+  return `${alias}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) {
+    pullRequests(headRefName: ${JSON.stringify(pair.branch)}, states: OPEN, first: 1) {
+      nodes {
+        number title url updatedAt isDraft headRefName baseRefName reviewDecision additions deletions
+        author { login }
+        latestReviews(last: 20) { nodes { state } }
+        commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
+          __typename
+          ... on CheckRun { name status conclusion startedAt completedAt checkSuite { workflowRun { workflow { name } } } }
+          ... on StatusContext { context state createdAt }
+        } } } } } }
+      }
+    }
+  }`;
+}
+
+export interface GqlPayload {
+  data?: Record<string, GqlRepository | null> | null;
+}
+
+/**
+ * Turn one GraphQL document's answer back into pull requests.
+ *
+ * Split out and pure because this is where the shape changes hands, and two
+ * things about it are easy to get quietly wrong: which alias belongs to which
+ * `(repo, branch)` pair — the repo is not in the response, only in the
+ * question we asked — and the check union, where a run and a legacy status
+ * arrive as different types and only one of the two is ever populated.
+ *
+ * A null alias is skipped rather than failing the document. GitHub answers
+ * that way for a repo that has been renamed, deleted or is no longer visible,
+ * alongside good data for every other alias.
+ */
+export function decodeRepoBranchPrs(
+  payload: GqlPayload,
+  pairs: RepoBranch[],
+  ignorePattern = '',
+): PullRequest[] {
+  const out: PullRequest[] = [];
+  for (const [alias, value] of Object.entries(payload.data ?? {})) {
+    const index = Number.parseInt(alias.slice(1), 10);
+    const pair = Number.isFinite(index) ? pairs[index] : undefined;
+    if (pair === undefined) continue;
+    for (const node of value?.pullRequests?.nodes ?? []) {
+      if (node) out.push(toPrFromGraphql(pair.repo, node, ignorePattern));
+    }
+  }
+  return out;
+}
+
+/**
+ * The open pull requests on branches whose repo we already know, in one call.
+ *
+ * This is the lookup a search was standing in for, and the difference is not
+ * only volume. `head:` qualifiers OR'd together are an org-wide scatter query
+ * on the one GitHub endpoint with a secondary throttle strict enough to refuse
+ * a poll that has spent none of its published budget — and having refused it,
+ * to keep refusing for minutes. A task's worktree already names its origin
+ * remote, so for all but the branch nobody has cloned there is nothing to
+ * search *for*: the repo and the ref are both known, and asking GitHub about a
+ * ref it can look up directly is both cheaper and on the ordinary 5,000/hour
+ * budget.
+ *
+ * It also collapses the second call per pull request. A search cannot return a
+ * head ref, which is why every hit needed a `gh pr view` after it; here the
+ * head ref, the base, the reviews and the whole check rollup arrive with the
+ * pull request, so a fleet of twenty branches costs one request rather than
+ * five searches and seventeen views.
+ *
+ * `ok` is kept for the reason every fetch here keeps it: no pull request open
+ * and a broken `gh` produce the same empty list, and the caller must be able to
+ * say `degraded` rather than "nothing is pushed".
+ */
+export async function fetchPrsForRepoBranches(
+  pairs: RepoBranch[],
+): Promise<{ ok: boolean; prs: PullRequest[] }> {
+  if (pairs.length === 0) return { ok: true, prs: [] };
+  const config = await loadConfig();
+
+  const chunks: RepoBranch[][] = [];
+  for (let i = 0; i < pairs.length; i += GRAPHQL_PAIRS_PER_QUERY) {
+    chunks.push(pairs.slice(i, i + GRAPHQL_PAIRS_PER_QUERY));
+  }
+
+  const results = await Promise.all(
+    chunks.map(async (chunk): Promise<PullRequest[] | undefined> => {
+      const fields: string[] = [];
+      const owners: RepoBranch[] = [];
+      for (const pair of chunk) {
+        const field = repoBranchField(`p${owners.length}`, pair);
+        // A malformed `owner/name` is dropped rather than failing the chunk: it
+        // would take every well-formed pair beside it down with it.
+        if (field === undefined) continue;
+        fields.push(field);
+        owners.push(pair);
+      }
+      if (fields.length === 0) return [];
+
+      const query = `query {\n${fields.join('\n')}\n}`;
+      const { code, stdout } = await run('gh', ['api', 'graphql', '-f', `query=${query}`], {
+        timeoutMs: 30_000,
+      });
+
+      // Parsed before the exit code is consulted, on purpose. `gh` exits
+      // non-zero when the response carries any `errors`, and a single renamed
+      // or since-deleted repo produces exactly that beside perfectly good data
+      // for every other alias. Losing the fleet's pull requests to one dead
+      // remote is the failure this whole path exists to avoid.
+      let payload: GqlPayload | undefined;
+      try {
+        payload = JSON.parse(stdout) as GqlPayload;
+      } catch {
+        payload = undefined;
+      }
+      if (!payload?.data) return code === 0 ? [] : undefined;
+      return decodeRepoBranchPrs(payload, owners, config.github.ignoreChecksPattern);
+    }),
+  );
+
+  // One failed chunk means an incomplete answer, and an incomplete answer here
+  // reads as "that pull request was closed".
+  if (results.some((rows) => rows === undefined)) return { ok: false, prs: [] };
+
+  const byKey = new Map<string, PullRequest>();
+  for (const pr of results.flat() as PullRequest[]) byKey.set(prKey(pr.repo, pr.number), pr);
   return { ok: true, prs: [...byKey.values()] };
 }
 

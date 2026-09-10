@@ -1,7 +1,13 @@
 import { run } from './exec.ts';
-import { enrichPr, fetchPrsForBranches, mapLimit, prKey } from './github.ts';
+import {
+  enrichPr,
+  fetchPrsForBranches,
+  fetchPrsForRepoBranches,
+  mapLimit,
+  prKey,
+} from './github.ts';
 import { localDefaultBranch, remoteNameWithOwner } from './worktree.ts';
-import type { PullRequest } from './github.ts';
+import type { PullRequest, RepoBranch } from './github.ts';
 import type { Task } from './task.ts';
 
 /*
@@ -246,8 +252,25 @@ function betterEntry(a: TaskBranch, b: TaskBranch): TaskBranch {
  * actually holds — or when it is on the task's own branch, which is the one name
  * the convention deliberately reuses across repos.
  */
-export function matchPrsToTasks(sets: TaskBranches[], prs: PullRequest[]): Record<string, TaskPr[]> {
+export function matchPrsToTasks(
+  sets: TaskBranches[],
+  prs: PullRequest[],
+  owners: string[] = [],
+): Record<string, TaskPr[]> {
   const byTask: Record<string, TaskPr[]> = {};
+  const allowed = new Set(owners);
+  // The task entry is the one that may match a repo the folder does not hold,
+  // and that licence is what a bare branch name abuses: `feature/new-app` is a
+  // name strangers use too, and an org-wide search returns theirs. Requiring
+  // the owner to be one the fleet works in keeps the case this is for — a
+  // teammate's pull request in a repo nobody has cloned — and drops the rest.
+  // An empty allowlist means nothing could be read from git, so nothing is
+  // narrowed: silence must not be read as "no owner is legitimate".
+  const ownerAllowed = (repo: string): boolean => {
+    if (allowed.size === 0) return true;
+    const slash = repo.indexOf('/');
+    return allowed.has(slash > 0 ? repo.slice(0, slash) : repo);
+  };
 
   for (const set of sets) {
     const picked = new Map<string, TaskPr>();
@@ -257,7 +280,9 @@ export function matchPrsToTasks(sets: TaskBranches[], prs: PullRequest[]): Recor
       const matches = set.branches.filter(
         (entry) =>
           entry.branch === branch &&
-          (entry.via === 'task' || entry.repo === undefined || entry.repo === pr.repo),
+          (entry.via === 'task'
+            ? ownerAllowed(pr.repo)
+            : entry.repo === undefined || entry.repo === pr.repo),
       );
       if (matches.length === 0) continue;
 
@@ -291,41 +316,154 @@ export interface FetchTaskPrsOptions {
   /** Last poll's enriched pull requests, by `prCacheKey`. Rebuilt by the caller. */
   cached?: Map<string, PullRequest>;
   now?: number;
+  /**
+   * Also search org-wide for the branches whose repo is unknown.
+   *
+   * Off by default, and meant for a slower clock than the poll. It is the only
+   * part of this that still touches the search API, and the case it covers —
+   * a teammate opening a pull request on the task's branch in a repo nobody
+   * has added to the task folder — is both rare and not urgent. Everything a
+   * worktree can name its remote for is answered by the lookup instead.
+   */
+  searchUnclonedRepos?: boolean;
 }
 
 export interface TaskPrsResult extends TaskPrs {
   /** Every enriched pull request seen this round, for the caller's cache. */
   enriched: PullRequest[];
+  /**
+   * Whether `byTask` is an answer at all.
+   *
+   * Distinct from `degraded`, and the distinction is the point. `ok: false` is
+   * the lookup itself failing, where the only honest move is to keep whatever
+   * was on screen before. `degraded` is softer: the lookup answered, and only
+   * the org-wide fallback for uncloned repos did not, so `byTask` is complete
+   * for every branch a worktree could name and possibly missing one nobody has
+   * cloned. Collapsing the two would throw a good answer away for a gap in the
+   * rarest corner of it.
+   */
+  ok: boolean;
+}
+
+/**
+ * The repository owners the fleet works in, from the remotes git could name.
+ *
+ * The bound on the org-wide fallback, and deliberately fleet-wide rather than
+ * per-task: a task whose every worktree is a local-only repo knows no owner of
+ * its own, and would otherwise be the one task left unbounded.
+ */
+export function fleetOwners(sets: TaskBranches[]): string[] {
+  const owners = new Set<string>();
+  for (const set of sets) {
+    for (const entry of set.branches) {
+      if (entry.repo === undefined) continue;
+      const slash = entry.repo.indexOf('/');
+      if (slash > 0) owners.add(entry.repo.slice(0, slash));
+    }
+  }
+  return [...owners];
+}
+
+/**
+ * Every branch of a task whose repo is known, as a lookup rather than a search.
+ *
+ * Deduped across tasks: the naming convention reuses one branch name in every
+ * repo a change touches, and two tasks stacked in the same repo share their
+ * lower layers, so the same pair turns up more than once and is worth asking
+ * about once.
+ */
+export function repoBranchPairs(sets: TaskBranches[]): RepoBranch[] {
+  const pairs = new Map<string, RepoBranch>();
+  for (const set of sets) {
+    for (const entry of set.branches) {
+      if (entry.repo === undefined) continue;
+      pairs.set(`${entry.repo} ${entry.branch}`, { repo: entry.repo, branch: entry.branch });
+    }
+  }
+  return [...pairs.values()];
+}
+
+/**
+ * The branch names left over: real branches whose repo git would not name.
+ *
+ * Two kinds reach here. The task's own entry, which is deliberately repo-less
+ * so it can match a pull request in a repo the task folder does not hold; and
+ * a worktree whose origin remote could not be read at all. Both can only be
+ * answered by an org-wide search, which is why they are separated out rather
+ * than folded in — that search is the expensive half, and the half that gets
+ * refused.
+ */
+export function unclonedBranchNames(sets: TaskBranches[]): string[] {
+  const named = new Set<string>();
+  const orphans = new Set<string>();
+  for (const set of sets) {
+    for (const entry of set.branches) {
+      if (entry.repo === undefined) orphans.add(entry.branch);
+      else named.add(entry.branch);
+    }
+  }
+  // A name we already looked up in a real repo does not need searching for;
+  // only a name no worktree could place is worth the org-wide query.
+  for (const name of named) orphans.delete(name);
+  return [...orphans];
 }
 
 /**
  * The open pull requests of every task, in as few `gh` calls as it can be done in.
  *
- * One search covers the whole fleet: GitHub ORs repeated `head:` qualifiers, so
- * every branch of every task goes into one query (chunked only to keep each a
- * sane length). The search cannot return a head ref, though, so which branch a
- * pull request came from — along with its checks and review state — costs a
- * `gh pr view` each. Those are cached against the pull request's `updatedAt`,
- * which is the one field that moves when any of the rest does, so a quiet fleet
- * settles at a single call.
+ * One GraphQL request for the whole fleet. A task's worktree names its own
+ * origin remote, so for all but the branch nobody has cloned the repo and the
+ * ref are both already known — which makes this a lookup, and a lookup is not
+ * only cheaper than the `head:` search it replaces but on a different budget.
+ * The search endpoint has a secondary throttle that refuses a burst of scatter
+ * queries while every published allowance still reads untouched, and stays
+ * refusing for minutes; asking `repository(owner:, name:)` about a ref it can
+ * find directly never goes near it.
+ *
+ * It also removes the second call per pull request. A search cannot return a
+ * head ref, so each hit used to cost a `gh pr view` for its branch, base,
+ * reviews and checks; those all arrive inline here, and the cache that existed
+ * to blunt that fan-out is no longer on the critical path — it is kept only for
+ * the org-wide fallback, which still enriches the old way.
  */
 export async function fetchTaskPrs(options: FetchTaskPrsOptions): Promise<TaskPrsResult> {
   const now = options.now ?? Date.now();
   const cached = options.cached ?? new Map<string, PullRequest>();
-  const empty = { byTask: {}, fetchedAt: Math.floor(now / 1000), enriched: [] };
+  const empty = { byTask: {}, fetchedAt: Math.floor(now / 1000), enriched: [], ok: true };
 
   const sets = await mapLimit(options.tasks, 4, discoverTaskBranches);
-  const distinct = [...new Set(sets.flatMap((set) => set.branches.map((entry) => entry.branch)))];
-  if (distinct.length === 0) return { ...empty, degraded: false };
+  const pairs = repoBranchPairs(sets);
+  const uncloned = options.searchUnclonedRepos ? unclonedBranchNames(sets) : [];
+  if (pairs.length === 0 && uncloned.length === 0) return { ...empty, degraded: false };
 
-  const found = await fetchPrsForBranches(distinct);
-  if (!found.ok) return { ...empty, degraded: true };
+  const owners = fleetOwners(sets);
+  const [found, searched] = await Promise.all([
+    fetchPrsForRepoBranches(pairs),
+    uncloned.length > 0
+      ? fetchPrsForBranches(uncloned, 200, owners)
+      : Promise.resolve({ ok: true, prs: [] }),
+  ]);
+  // The lookup failing is a broken answer; the org-wide fallback failing is the
+  // rate limit doing what it does, and must not blank pull requests the lookup
+  // just returned perfectly well.
+  if (!found.ok) return { ...empty, ok: false, degraded: true };
 
-  const enriched = await mapLimit(found.prs, 6, async (pr) => cached.get(prCacheKey(pr)) ?? enrichPr(pr));
+  const extra = searched.ok
+    ? await mapLimit(searched.prs, 4, async (pr) => cached.get(prCacheKey(pr)) ?? enrichPr(pr))
+    : [];
+
+  // The lookup wins a collision: it named the repo and the ref it asked about,
+  // where the search only matched a name.
+  const byKey = new Map<string, PullRequest>();
+  for (const pr of extra) byKey.set(prKey(pr.repo, pr.number), pr);
+  for (const pr of found.prs) byKey.set(prKey(pr.repo, pr.number), pr);
+  const enriched = [...byKey.values()];
+
   return {
-    byTask: matchPrsToTasks(sets, enriched),
+    byTask: matchPrsToTasks(sets, enriched, owners),
     fetchedAt: Math.floor(now / 1000),
-    degraded: false,
+    degraded: !searched.ok,
     enriched,
+    ok: true,
   };
 }

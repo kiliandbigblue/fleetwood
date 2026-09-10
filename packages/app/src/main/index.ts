@@ -62,6 +62,9 @@ let mergedCache = new Map<string, MergedPr>();
 /** `prKey → epoch seconds` for merges the user says they deployed by hand. */
 let deployedByHand = new Map<string, number>();
 let taskPrs: TaskPrs | undefined;
+/** When the org-wide fallback last ran, so it can sit out most polls. */
+let unclonedSearchAt = 0;
+const UNCLONED_SEARCH_MS = 10 * 60 * 1_000;
 /**
  * Enriched pull requests from the last task-PR poll, by `prCacheKey`.
  *
@@ -233,13 +236,28 @@ async function refreshTaskPrs(): Promise<void> {
   const settings = await configModule.loadConfig();
   if (!settings.github.enabled) return;
 
-  const result = await taskPrsApi.fetchTaskPrs({ tasks: await getTasks(), cached: taskPrCache });
-  // A failed search says nothing about what is open, and an empty card would
-  // read as "nothing pushed yet" — so keep the last answer and flag it.
-  if (result.degraded && taskPrs) taskPrs = { ...taskPrs, degraded: true };
+  // The org-wide search rides a slower clock than the lookup around it. It is
+  // the only part still on the endpoint that throttles, and the only thing it
+  // adds is a pull request on the task's branch in a repo nobody has cloned —
+  // which nobody is waiting on this minute.
+  const now = Date.now();
+  const searchUnclonedRepos = now - unclonedSearchAt >= UNCLONED_SEARCH_MS;
+  if (searchUnclonedRepos) unclonedSearchAt = now;
+
+  const result = await taskPrsApi.fetchTaskPrs({
+    tasks: await getTasks(),
+    cached: taskPrCache,
+    searchUnclonedRepos,
+  });
+  // A failed lookup says nothing about what is open, and an empty card would
+  // read as "nothing pushed yet" — so keep the last answer and flag it. Note
+  // `ok`, not `degraded`: a fallback that could not run leaves an answer that
+  // is still right about every branch a worktree names, and dropping it for
+  // that would put the fleet back to blank for the sake of a rare corner.
+  if (!result.ok && taskPrs) taskPrs = { ...taskPrs, degraded: true };
   else taskPrs = { byTask: result.byTask, fetchedAt: result.fetchedAt, degraded: result.degraded };
 
-  if (!result.degraded) {
+  if (result.ok) {
     const next = new Map<string, PullRequest>();
     for (const pr of result.enriched) next.set(taskPrsApi.prCacheKey(pr), pr);
     taskPrCache = next;
