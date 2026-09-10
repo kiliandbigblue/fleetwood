@@ -353,11 +353,15 @@ export function App(): React.JSX.Element {
               return (
                 <div key={reason}>
                   <div className="section-title">
+                    {/* Said in the panel's own voice. `pane gone — ended without a
+                        closing event` was the internal state name and the reason
+                        it was set, verbatim: true, and the only line in the list
+                        written for whoever wrote the collector. */}
                     {reason === 'daemon-hosted'
-                      ? `no terminal matched (${group.length}) — running in the claude daemon`
-                      : `pane gone (${group.length}) — ended without a closing event`}
+                      ? `${group.length} in the claude daemon — no terminal to attach to`
+                      : `${group.length} left over — the terminal these ran in is gone`}
                   </div>
-                  <div className="card" style={{ marginTop: 6 }}>
+                  <div className="card">
                     <div className="agents">
                       {group.map((agent) => (
                         <AgentRow key={agent.key} agent={agent} onResult={onResult} />

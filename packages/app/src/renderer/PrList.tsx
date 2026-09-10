@@ -117,11 +117,11 @@ function PrRow({
         {/* One column, held open across the whole section — see `.task-pr-rung`. */}
         {railed && (
           <span
-            className="task-pr-rung"
+            className={`task-pr-rung${
+              stack !== undefined && stack.depth > 0 ? ' rung-nested' : ''
+            }`}
             title={inStack ? `rung ${stack.rung} of ${stack.of}` : undefined}
-          >
-            {stack !== undefined && stack.depth > 0 ? '└' : ''}
-          </span>
+          />
         )}
         {/* `ident`: under this repo's convention a pull request's title *is* its
             branch, so it is set as the identifier it is. */}

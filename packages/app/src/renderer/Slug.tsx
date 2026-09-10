@@ -18,10 +18,17 @@ import { Fragment } from 'react';
  *
  * The identity is in the hyphens. A slug this long is one unbroken token to the
  * eye, and the four or five words inside it are the part you actually read; so
- * the separators drop a tier and the words keep the ink. It costs nothing, it is
+ * the separators give up their ink and keep their width. It costs nothing, it is
  * derived from the data rather than applied to it, and it makes a 43-character
  * name scannable in a 738px column — which no choice of typeface would have
  * done.
+ *
+ * They are dropped rather than dimmed. Dimmed was the first try, and at title
+ * weight a dim hyphen every seven characters does not read as five separators:
+ * mono sets them all at one height, at the ink's own mid-line, and five of them
+ * across a heading line up into something the eye takes for a strikethrough —
+ * the whole fleet looked struck out. The character stays in the DOM so the slug
+ * still copies as the branch it is; only the ink goes.
  */
 export function Slug({ text }: { text: string }): React.JSX.Element {
   const words = text.split('-');

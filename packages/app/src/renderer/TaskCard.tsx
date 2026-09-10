@@ -322,11 +322,11 @@ export function PrRow({
           which layer exactly is in the tooltip, where it does not cost a column. */}
       {railed && (
         <span
-          className="task-pr-rung"
+          className={`task-pr-rung${
+            stack !== undefined && stack.depth > 0 ? ' rung-nested' : ''
+          }`}
           title={inStack ? `rung ${stack.rung} of ${stack.of}` : undefined}
-        >
-          {stack !== undefined && stack.depth > 0 ? '└' : ''}
-        </span>
+        />
       )}
       {/* Beside the number rather than out among the flags: it says which thing
           this row is, so it belongs with the identifier and not with the states

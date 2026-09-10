@@ -77,17 +77,37 @@ export function TaskNotes({
     );
   }
 
+  /*
+   * Labelled, like every other group on a card.
+   *
+   * The worktrees announce themselves by being worktree names and the pull
+   * requests carry `4 open · stack of 4` over them; this block carried nothing,
+   * so a paragraph of English arrived under a stack of machine rows as the one
+   * thing on the card that never said what it was — it read as a stray comment
+   * rather than as the one part a person wrote. The heading is the same micro
+   * label the pull requests already use, in the same place.
+   */
   if (notes) {
     return (
-      <div className="task-notes" onClick={onOpen} title="click to edit · kept in NOTES.md">
-        {notes.trim()}
+      <div className="task-notes-block">
+        <div className="task-notes-label">note</div>
+        <div className="task-notes" onClick={onOpen} title="click to edit · kept in NOTES.md">
+          {notes.trim()}
+        </div>
       </div>
     );
   }
 
   return placeholder ? (
-    <div className="task-notes empty" onClick={onOpen} title="click to write one · kept in NOTES.md">
-      {placeholder}
+    <div className="task-notes-block">
+      <div className="task-notes-label">note</div>
+      <div
+        className="task-notes empty"
+        onClick={onOpen}
+        title="click to write one · kept in NOTES.md"
+      >
+        {placeholder}
+      </div>
     </div>
   ) : null;
 }

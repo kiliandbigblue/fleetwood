@@ -49,7 +49,14 @@
    */
   --fs-micro: 10px;
   --fs-body: 11px;
-  --fs-head: 13px;
+  /*
+   * 14, not 13. The three steps were 10/11/13, and 11-against-13 is not a step
+   * the eye reads as one: a task's name and the worktree names under it came
+   * out at nearly the same volume, so the only thing marking the title as the
+   * title was its weight. At 14 the head is a clear tier above the rows without
+   * the list losing a line of density.
+   */
+  --fs-head: 14px;
 
   /*
    * Marks are shapes, and were the reason the type scale kept growing: `●` at
@@ -85,6 +92,19 @@
    * only ever approximately true.
    */
   --indent: 32px;
+
+  /*
+   * Where a card's rows start, one step in from where its title starts.
+   *
+   * They used to share the rail: a title and the rows under it began at the same
+   * x, and the only thing saying which was which was that one of them was
+   * heavier. That is hierarchy asserted in ink and nowhere in the layout — a
+   * flat stream you re-read to parse, rather than a group you see. One step of
+   * the scale is the whole device: it costs 8px of a 738px column, it needs no
+   * rule, no box and no second surface, and it is what makes the title read as
+   * the thing the rows belong to.
+   */
+  --row-indent: calc(var(--indent) + var(--s3));
 
   /*
    * The task mark's diameter.
@@ -607,15 +627,39 @@ button {
  * exists. See `.attached-dot`.
  */
 .card {
-  border-top: 1px solid var(--edge);
+  position: relative;
   padding-top: var(--s3);
+}
+
+/*
+ * The seam between two tasks, inset to the panel's own margin.
+ *
+ * It ran the full width of the window, corner to corner, and six of those down
+ * a list stop reading as separations between groups and start reading as the
+ * edges of stacked slabs — the banding this list gave up its card fills to be
+ * rid of, drawn back in one line at a time. Pulled in to the padding the rest
+ * of the card already respects, the same line reads as a rule inside a sheet
+ * instead of as a cut across it.
+ */
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: var(--s4);
+  right: var(--s4);
+  height: 1px;
+  background: var(--edge);
 }
 
 /* The rail already draws the line above the first group. */
 .body > .card:first-child,
 .hidden-group > .card:first-child {
-  border-top: none;
   padding-top: 0;
+}
+
+.body > .card:first-child::before,
+.hidden-group > .card:first-child::before {
+  content: none;
 }
 
 /*
@@ -757,14 +801,18 @@ button {
 }
 
 /*
- * The hyphens in a slug, a tier below the words they separate.
+ * The hyphens in a slug: kept as width, dropped as ink.
  *
  * Not decoration: it is what turns one 43-character token into the four or five
- * words you are actually reading. `400` as well as dimmer, so the separator
- * thins while the words stay at the title's weight.
+ * words you are actually reading. It was `--dim` here, which is the treatment
+ * every other piece of secondary text gets and the one place it backfires —
+ * mono puts every hyphen at the same height, dead on the ink's mid-line, so
+ * five of them across a heading resolve into one broken line and the title
+ * reads as struck through. A mono hyphen's advance is a word space, so giving
+ * up the glyph leaves exactly the gap the separation was for. See `Slug.tsx`.
  */
 .slug-sep {
-  color: var(--dim);
+  color: transparent;
   font-weight: 400;
 }
 
@@ -1166,7 +1214,7 @@ button {
 .agent {
   /* Pulled back by the mark column, so `cursor`/`claude` starts on the same
      rail as a worktree name rather than a mark's width to the right of it. */
-  padding: var(--s2) var(--s4) var(--s2) calc(var(--indent) - var(--mark-col));
+  padding: var(--s2) var(--s4) var(--s2) calc(var(--row-indent) - var(--mark-col));
   display: flex;
   align-items: center;
   gap: var(--s3);
@@ -1222,7 +1270,7 @@ button {
  * says whose it is.
  */
 .task-repos .agent {
-  padding-left: calc(var(--indent) + var(--s3) - var(--mark-col));
+  padding-left: calc(var(--row-indent) + var(--s3) - var(--mark-col));
 }
 
 /*
@@ -1234,7 +1282,7 @@ button {
  * own edge.
  */
 .agent:not(:has(.status-dot)) {
-  padding-left: var(--indent);
+  padding-left: var(--row-indent);
 }
 
 .agent.clickable {
@@ -1462,7 +1510,9 @@ button {
 .vitals {
   display: flex;
   align-items: center;
-  gap: 9px;
+  /* On the scale, like everything else in this rail. It was 9px — a value with
+     no relation to the 8 the whole panel is spaced on. */
+  gap: var(--s3);
   min-width: 0;
   font-family: var(--mono);
   font-size: var(--fs-micro);
@@ -1473,7 +1523,7 @@ button {
 .vital {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--s2);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -1497,15 +1547,35 @@ button {
   flex: none;
 }
 
+/*
+ * The seam between two gauges.
+ *
+ * They are separate meters of separate things in separate currencies, and side
+ * by side with nothing but air between them the rail's right end read as one
+ * run of six figures. A hairline is what the rest of the panel uses to say
+ * "different thing" — the same `--edge`, at the height of the type it divides.
+ */
+.quota + .quota {
+  padding-left: var(--s4);
+  border-left: 1px solid var(--edge);
+}
+
 .quota-gauge {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  /*
+   * `--s2` inside a gauge against the `--s4` between them: the four parts of
+   * `claude ▂▂ 27% 19:59` are one reading, and at 6-against-12 the halves of
+   * that reading sat almost as far apart as the two different gauges did — a
+   * right edge of loose figures rather than two clusters. Half the outer gap
+   * is what makes each one read as a single object.
+   */
+  gap: var(--s2);
   height: 20px;
   padding: 0;
   border-radius: 0;
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.03em;
   color: var(--dim);
 }
@@ -1745,6 +1815,18 @@ button {
 }
 
 /*
+ * The gap under a label that has its group right under it, on the scale.
+ *
+ * `.body`'s gap does not reach here — an orphan group wraps its label and its
+ * card in one element, so the two are siblings inside it rather than items of
+ * the list. This was a `marginTop: 6` written inline on the card: the one
+ * spacing value in the panel that was neither on the scale nor in this file.
+ */
+.section-title + .card {
+  margin-top: var(--s2);
+}
+
+/*
  * A pull request, or an archived task, as a group of rows.
  *
  * The same object the fleet list is built from — see `.card`. These two tabs
@@ -1883,6 +1965,21 @@ button {
   color: var(--dim);
 }
 
+/*
+ * Two hues carry state in this panel, and this is where the third came from.
+ *
+ * `needs review` was `--warn`, the same amber as a dirty worktree, on the most
+ * common review state there is — so a card with four open pull requests lit up
+ * amber four times to report the ordinary case, next to a red that meant
+ * somebody is actually waiting on you. Colour spent on the default state is
+ * colour that no longer marks anything, and it is why the fleet read as a
+ * warning board.
+ *
+ * So: `--danger` when a person has asked you for something, `--warn` for work
+ * you have not committed, and nothing else gets a hue. `needs review` is where
+ * a pull request sits by default and says nothing about your next move; it
+ * takes the same dim as `draft` and `waiting on #3803`.
+ */
 .review-APPROVED {
   color: var(--ok);
 }
@@ -1890,7 +1987,7 @@ button {
   color: var(--danger);
 }
 .review-REVIEW_REQUIRED {
-  color: var(--warn);
+  color: var(--dim);
 }
 
 .linked {
@@ -2002,7 +2099,12 @@ button {
  */
 .repo-summary {
   margin-left: auto;
-  font-family: ui-monospace, SFMono-Regular, monospace;
+  /*
+   * Sans, by the panel's own rule: `2 repos · 6 worktrees · 1 dirty` is a
+   * sentence about the card, not an identifier off it. It was mono — the only
+   * English on screen set in the machine face, which is what made a heading's
+   * right edge read as another piece of data rather than as a caption.
+   */
   font-size: var(--fs-micro);
   color: var(--dim);
   white-space: nowrap;
@@ -2023,7 +2125,19 @@ button {
  * press looked exactly like the ones you cannot, and the target was the width
  * of its own words. It is a row now, at the list's pitch and full width.
  */
+/*
+ * The drawer sits at the foot of the list, not wherever the list stopped.
+ *
+ * On a tall window the fleet ends halfway up and everything below it was empty:
+ * the last thing on screen was a half-lit row floating in the middle of a black
+ * field, with the status rail alone at the bottom edge. `margin-top: auto` in
+ * the body's column costs nothing when the list overflows — there is no free
+ * space to claim — and when there is room it puts the one row that is deliberately
+ * out of the way at the bottom, where out of the way is. The void goes above it,
+ * between the fleet and its drawer, which is where an empty list belongs.
+ */
 .hidden-toggle {
+  margin-top: auto;
   display: flex;
   align-items: center;
   gap: var(--s3);
@@ -2033,15 +2147,21 @@ button {
      rail every other row's first word starts on, which is most of why this now
      reads as one of them. Same arrangement as `.pr-top`. */
   padding: 0 var(--s4) 0 calc(var(--indent) - var(--mark-col));
-  /* The seam every other group in this list is separated by. */
-  border-top: 1px solid var(--edge);
+  /* The seam every other group in this list is separated by — inset to the same
+     margin, see `.card::before`. Drawn as a background rather than a border so
+     the inset does not need a pseudo-element the caret would have to dodge. */
+  background:
+    linear-gradient(var(--edge), var(--edge)) var(--s4) 0 / calc(100% - 2 * var(--s4)) 1px no-repeat;
   color: var(--soft);
   font-size: var(--fs-body);
   text-align: left;
 }
 .hidden-toggle:hover {
-  /* The row hover this list already uses — see `.pr:hover`. */
-  background: color-mix(in srgb, var(--text) 5%, transparent);
+  /* The row hover this list already uses — see `.pr:hover`, with the seam kept
+     on top of it: the fill is the row's, the hairline belongs to the list. */
+  background:
+    linear-gradient(var(--edge), var(--edge)) var(--s4) 0 / calc(100% - 2 * var(--s4)) 1px no-repeat,
+    linear-gradient(color-mix(in srgb, var(--text) 5%, transparent), color-mix(in srgb, var(--text) 5%, transparent));
   color: var(--text);
 }
 
@@ -2134,6 +2254,23 @@ button {
   padding: var(--s3) 0;
 }
 
+/*
+ * Two adjacent groups are one seam, not two.
+ *
+ * Each group pads itself by `--s3` so that it stands off whatever it is next
+ * to; where the agents run straight into the worktrees those two paddings add
+ * up and the gap between the last agent and the first worktree comes out at
+ * twice every other gap on the card. On a card with no agents nothing shows,
+ * which is why this read as cards keeping different rhythms rather than as one
+ * rule being applied twice.
+ */
+.agents + .task-repos,
+.task-repos + .task-prs,
+.task-repos + .task-notes-block,
+.task-prs + .task-notes-block {
+  padding-top: 0;
+}
+
 .task-repo {
   display: flex;
   align-items: center;
@@ -2151,10 +2288,19 @@ button {
   /* `--s1` vertically, not `--s2`: the mono name's own line box is a shade over
      16px, so 4px of padding pushed the row to 24.5 and off the grid. At 2px the
      `min-height` below is what sets the height, exactly. */
-  padding: var(--s1) calc(var(--s4) + var(--act) + var(--s3)) var(--s1) var(--indent);
+  padding: var(--s1) calc(var(--s4) + var(--act) + var(--s3)) var(--s1) var(--row-indent);
   font-size: var(--fs-body);
-  /* The 28px row floor — see `.agent`, which sets it for the same reason. */
-  min-height: 28px;
+  /*
+   * 24, where a live row is 28 — the one place the two floors part.
+   *
+   * A card's worktrees are its longest list and its least urgent one: six rows
+   * of static names, each held to the same height as the single row saying what
+   * an agent is doing right now. At six-to-one the card's whole mass ended up
+   * on the half of it that never changes, which is the inversion of the
+   * question this panel answers. A step down the same grid puts the weight back
+   * on the live row without touching type size or ink.
+   */
+  min-height: 24px;
   min-width: 0;
 }
 
@@ -2178,7 +2324,7 @@ button {
  * the name above it.
  */
 .task-repo-path {
-  padding: 0 var(--s4) var(--s2) var(--indent);
+  padding: 0 var(--s4) var(--s2) var(--row-indent);
   font-family: var(--mono);
   font-size: var(--fs-micro);
   color: var(--dim);
@@ -2276,7 +2422,7 @@ button {
 }
 
 .task-prs-head {
-  padding: 0 var(--s4) var(--s2) var(--indent);
+  padding: 0 var(--s4) var(--s2) var(--row-indent);
   font-size: var(--fs-micro);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -2287,7 +2433,7 @@ button {
   display: flex;
   align-items: center;
   gap: var(--s3);
-  padding: var(--s2) var(--s4) var(--s2) calc(var(--indent) - var(--mark-col));
+  padding: var(--s2) var(--s4) var(--s2) calc(var(--row-indent) - var(--mark-col));
   font-size: var(--fs-body);
   /* The 28px row floor — see `.agent`, which sets it for the same reason. */
   min-height: 28px;
@@ -2371,12 +2517,35 @@ button {
   text-align: right;
 }
 
+/*
+ * A layer's connector, drawn rather than typed.
+ *
+ * It was a `└` — a box-drawing character set in the row's own face, which puts
+ * the elbow wherever that face's metrics happen to put it: a hair below the
+ * text's centre in one family, a hair above in the next, and never aligned with
+ * the number it hangs off. Two borders on the column that already exists give
+ * the same mark at the weight of every other hairline in the panel, landing on
+ * the row's midline exactly. The column is held open on unstacked rows too, so
+ * one line of branch names runs down the card either way — see `PrRow`.
+ */
 .task-pr-rung {
   flex: none;
   width: var(--s3);
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  color: var(--dim);
+  align-self: stretch;
+  position: relative;
+}
+
+.task-pr-rung.rung-nested::before {
+  content: '';
+  position: absolute;
+  /* Half the row, so the elbow turns on the midline the number sits on. */
+  top: 0;
+  bottom: 50%;
+  left: 1px;
+  right: 1px;
+  border-left: 1px solid var(--edge);
+  border-bottom: 1px solid var(--edge);
+  border-bottom-left-radius: 2px;
 }
 
 .task-pr-title {
@@ -2433,9 +2602,37 @@ button {
  * Clamped and scrollable rather than free to grow: notes accumulate, and one long
  * one must not push every other task off a panel this narrow.
  */
+/* The group, spaced from the one above it exactly as the others are. */
+.task-notes-block {
+  padding: var(--s3) 0;
+}
+
+/* The pull requests' own heading, verbatim — see `.task-prs-head`. */
+.task-notes-label {
+  padding: 0 var(--s4) var(--s2) var(--row-indent);
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dim);
+}
+
 .task-notes {
-  border-top: 1px solid var(--edge);
-  padding: var(--s3) var(--s4);
+  /*
+   * Marked as a quotation, not as another row.
+   *
+   * Everything else on a card is machine-reported; this is the one block a
+   * person wrote, and it was arriving under the worktrees behind the same
+   * hairline that separates one task from the next — so a paragraph of English
+   * read as a new group with a missing title. A rule down its left margin says
+   * what it is with the vocabulary the list already has: it is the seam the
+   * list draws between things, turned ninety degrees to bracket one instead.
+   *
+   * `--indent` for the rule and `--s3` after it, which lands the text on
+   * `--row-indent` — the rail every other row on the card starts on.
+   */
+  border-left: 1px solid var(--edge);
+  margin-left: var(--indent);
+  padding: 0 var(--s4) 0 var(--s3);
   font-size: var(--fs-body);
   line-height: 1.5;
   color: var(--soft);
@@ -2460,9 +2657,11 @@ button {
   color: var(--dim);
 }
 
+/* The same bracket the written note gets, so opening the editor moves nothing. */
 .task-notes-edit {
-  border-top: 1px solid var(--edge);
-  padding: 6px 10px 7px;
+  border-left: 1px solid var(--edge);
+  margin-left: var(--indent);
+  padding: var(--s2) var(--s4) var(--s3) var(--s3);
 }
 
 .task-notes-edit textarea {
