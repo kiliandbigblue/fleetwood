@@ -25,13 +25,20 @@ export * as taskPrs from './taskPrs.ts';
 export * as taskHistory from './taskHistory.ts';
 export {
   groupPrStacks,
+  isMerged,
   partitionAgents,
   prRepoTags,
   prSummary,
   repoSummary,
+  splitPrs,
   worstState,
 } from './taskView.ts';
 export type { Severity, StackRow } from './taskView.ts';
+// Flat for the same reason as the taskView helpers above: both front ends draw
+// the progress mark, and the renderer takes it off the leaf module rather than
+// this barrel.
+export { STATUS_LABEL, prStatus, repoStatus, taskStatus } from './taskStatus.ts';
+export type { TaskStatus } from './taskStatus.ts';
 export { worktreeShortName } from './naming.ts';
 // Flat, like the theme and switch helpers below, for the CLI and for core's own
 // banding pass. The renderer imports the same module by its leaf path instead —

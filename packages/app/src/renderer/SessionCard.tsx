@@ -1,13 +1,33 @@
 import type { FleetSession } from '@fleetwood/core';
 import { isPinned, sessionLabel } from '@fleetwood/core/sessionOrder';
+import type { Severity } from '@fleetwood/core';
 import { worstState } from '@fleetwood/core/taskView';
 import { AgentRow } from './AgentRow.tsx';
 import { Icon } from './Icon.tsx';
-import { dotNote } from './TaskCard.tsx';
 import { CardMenu } from './CardMenu.tsx';
 import type { MenuItem } from './CardMenu.tsx';
 import { Slug } from './Slug.tsx';
 import { send, shortenPath, tildify } from './api.ts';
+
+/**
+ * The dot, in words — a bare session's version.
+ *
+ * A session is not a task and has no progress to report: nothing here has a
+ * branch, a pull request or a trunk to have landed on. What it has is agents,
+ * so the mark stays the urgency rank it always was, and the sentence says which
+ * rank and whether you are attached. The task cards moved on — see `dotNote` —
+ * and keeping this here rather than sharing one function is the honest version
+ * of that: the two marks now measure different things.
+ */
+export function sevNote(state: Severity, attached: boolean): string {
+  const colour = {
+    danger: 'something here needs you',
+    warn: 'uncommitted work',
+    ok: 'live, or approved and waiting',
+    quiet: 'nothing waiting',
+  }[state];
+  return `${colour} · ${attached ? 'attached' : 'running, not attached'}`;
+}
 
 interface Props {
   session: FleetSession;
@@ -92,7 +112,7 @@ export function SessionCard({ session, order, onResult }: Props): React.JSX.Elem
         {/* Colour is the state, shape is attachment — as on a task group. */}
         <span
           className={`attached-dot sev-${state}${session.attached > 0 ? '' : ' detached'}`}
-          title={dotNote(state, session.attached > 0, true)}
+          title={sevNote(state, session.attached > 0)}
         />
         {/* The label, not the name: an order prefix is fleetwood's own bookkeeping
             and reading `20-atlas` on the card would be noise. The tooltip above

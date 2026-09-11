@@ -9,8 +9,9 @@ import {
   prRepoTags,
   prSummary,
   repoSummary,
-  worstState,
+  splitPrs,
 } from '@fleetwood/core/taskView';
+import { taskStatus } from '@fleetwood/core/taskStatus';
 import { isPinned } from '@fleetwood/core/sessionOrder';
 import { AddRepo } from './AddRepo.tsx';
 import { AgentRow } from './AgentRow.tsx';
@@ -80,7 +81,7 @@ export function TaskPane({
   // two views cannot come to disagree about when the tag is worth showing.
   const repoTags = prRepoTags(prs ?? []);
   const needsAttention = session?.needsAttention ?? false;
-  const state = worstState(task.repos, prs, needsAttention, session?.agents);
+  const status = taskStatus(task.repos, prs);
   const dormant = !task.session;
 
   const openNotes = (): void => {
@@ -156,10 +157,8 @@ export function TaskPane({
         }
       >
         <span
-          className={`attached-dot sev-${state}${
-            session && session.attached > 0 ? '' : ' detached'
-          }`}
-          title={dotNote(state, (session?.attached ?? 0) > 0, task.session !== undefined)}
+          className={`status-dot status-${status}`}
+          title={dotNote(status, (session?.attached ?? 0) > 0, task.session !== undefined)}
         />
         <span className="session-name">
           <Slug text={task.slug} />
@@ -230,21 +229,35 @@ export function TaskPane({
             {prSummary(prs)}
             {prsStale && <span className="task-pr-via"> · stale</span>}
           </div>
+          {/* Split and ordered exactly as on the card — see the comment there. */}
           {(() => {
-            const rows = groupPrStacks(prs);
+            const { open, merged } = splitPrs(prs);
+            const rows = groupPrStacks(open);
             const railed = rows.some((row) => row.of > 1);
             const blocked = rows.some((row) => row.waitingOn !== undefined);
-            return rows.map((row) => (
-              <PrRow
-                key={`${row.pr.repo}#${row.pr.number}`}
-                pr={row.pr}
-                repoTag={repoTags[`${row.pr.repo}#${row.pr.number}`]}
-                stack={row}
-                railed={railed}
-                blocked={blocked}
-                onResult={onResult}
-              />
-            ));
+            return [
+              ...rows.map((row) => (
+                <PrRow
+                  key={`${row.pr.repo}#${row.pr.number}`}
+                  pr={row.pr}
+                  repoTag={repoTags[`${row.pr.repo}#${row.pr.number}`]}
+                  stack={row}
+                  railed={railed}
+                  blocked={blocked}
+                  onResult={onResult}
+                />
+              )),
+              ...merged.map((pr) => (
+                <PrRow
+                  key={`${pr.repo}#${pr.number}`}
+                  pr={pr}
+                  repoTag={repoTags[`${pr.repo}#${pr.number}`]}
+                  railed={railed}
+                  blocked={blocked}
+                  onResult={onResult}
+                />
+              )),
+            ];
           })()}
         </div>
       ) : (

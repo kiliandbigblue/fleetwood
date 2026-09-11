@@ -1046,6 +1046,82 @@ button {
 }
 
 /*
+ * A task's mark: how far along it is, and nothing else.
+ *
+ * The session card above still carries the urgency rank, because for a bare
+ * session that *is* the question. A task has a second one the old mark could
+ * not answer at all — has this landed — and answering both on one glyph is what
+ * made it unreadable: colour said urgency, fill said which tmux client you were
+ * attached to, and neither said whether the work was finished.
+ *
+ * So one channel, four rungs, and the glyph fills up as the work does: an empty
+ * ring, a half-filled one, a filled one still inside its ring, and a solid disc.
+ * Read down a list of twelve cards that is a progress bar per row. Colour only
+ * seconds it — dim, accent, accent, green — so a card is still legible to
+ * someone who cannot tell the four hues apart, which a rank drawn in colour
+ * alone never was.
+ *
+ * Same column and same `--dot` / `--dot-mark` split as `.attached-dot`, since
+ * `--indent` and every row's text rail are derived from that width.
+ */
+.status-dot {
+  width: var(--dot);
+  height: var(--dot);
+  flex: none;
+  align-self: center;
+  display: grid;
+  place-items: center;
+}
+
+.status-dot::before {
+  content: '';
+  box-sizing: border-box;
+  width: var(--dot-mark);
+  height: var(--dot-mark);
+  border: 1.75px solid currentColor;
+  border-radius: 50%;
+  padding: 1.75px;
+  /* Clipped to the content box, so the ring stays a ring whatever fills it. */
+  background-clip: content-box;
+  background-color: transparent;
+}
+
+/* Nothing committed. The quietest thing on the card, and the only rung drawn in
+   the dim ink — an untouched task should not compete with a live one. */
+.status-dot.status-not-started {
+  color: var(--dim);
+}
+
+/* Half filled, and the half is literal: a hard-edged gradient rather than a
+   second element, so the mark stays one box that cannot drift out of round. */
+.status-dot.status-wip {
+  color: var(--accent);
+}
+.status-dot.status-wip::before {
+  background-image: linear-gradient(90deg, currentColor 50%, transparent 50%);
+}
+
+/* Written, and waiting on somebody else. Filled inside its ring — the work is
+   done, the ring is the review still standing around it. */
+.status-dot.status-in-review {
+  color: var(--accent);
+}
+.status-dot.status-in-review::before {
+  background-color: currentColor;
+}
+
+/* Landed. The ring closes: border and fill are the same ink, so this is the one
+   rung with no gap in it at all, which is what makes it read as finished across
+   a list rather than as "in review but greener". */
+.status-dot.status-done {
+  color: var(--ok);
+}
+.status-dot.status-done::before {
+  background-color: currentColor;
+  padding: 0;
+}
+
+/*
  * A marker, not a chip.
  *
  * The filled, rounded patch made `tmux` — an inert label on the least urgent
@@ -2695,6 +2771,26 @@ button {
 
 .task-pr-flag {
   color: var(--dim);
+}
+
+/*
+ * A pull request that has landed.
+ *
+ * Kept on the card rather than dropped, because it is the only thing on screen
+ * that says where the work went — and sunk below the open ones, because it is
+ * the one row with nothing left to do. The whole row dims: its checks and its
+ * `↗` are history too, and leaving them at full weight put a finished task's
+ * loudest mark on its most finished row.
+ */
+.task-pr-landed {
+  opacity: 0.55;
+}
+
+.task-pr-merged {
+  font-size: var(--fs-micro);
+  white-space: nowrap;
+  flex: none;
+  color: var(--ok);
 }
 
 /*

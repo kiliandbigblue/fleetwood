@@ -17,6 +17,9 @@ import {
   repoIndex,
   repoSummary,
   spool,
+  splitPrs,
+  STATUS_LABEL,
+  taskStatus,
   task as taskApi,
   taskHistory as taskHistoryApi,
   taskPrs as taskPrsApi,
@@ -31,7 +34,7 @@ import {
   sessionOrder,
   sortSessions,
 } from '@fleetwood/core';
-import type { AgentTool, CursorUsage, FleetState, MergedPr, PlanLimits, PullRequest, TaskPr } from '@fleetwood/core';
+import type { AgentTool, CursorUsage, FleetState, MergedPr, PlanLimits, PullRequest, TaskPr, TaskStatus } from '@fleetwood/core';
 import { c, pad, relativeAge, tildify, useTheme, width } from './ui.ts';
 import { renderAgentLine, renderCursorUsage, renderFleet, renderLimits } from './render.ts';
 import { cmdSwitch } from './switch.ts';
@@ -1098,8 +1101,17 @@ async function cmdTaskList(argv: string[], json: boolean): Promise<void> {
   }
   for (const t of tasks) {
     const live = t.session ? c.ok('●') : c.muted('○');
+    /*
+     * The same rung the panel's dot draws, in the word it stands for.
+     *
+     * Printed without `--prs` too, where it is read off the worktrees alone and
+     * so can say not-started, wip or done but never in-review. That is the honest
+     * reading of local git and it is the whole answer for a task that lands
+     * straight on `main` — see `taskStatus`.
+     */
+    const status = statusMark(taskStatus(t.repos, prs?.byTask[t.slug]));
     process.stdout.write(
-      `${live} ${c.bold(t.slug)} ${c.warn(t.branch)} ${c.muted(repoSummary(t.repos, t.branch))}` +
+      `${live} ${status} ${c.bold(t.slug)} ${c.warn(t.branch)} ${c.muted(repoSummary(t.repos, t.branch))}` +
         `${t.session ? c.dim(` session ${t.session}`) : ''}\n`,
     );
     for (const repo of t.repos) {
@@ -1107,23 +1119,27 @@ async function cmdTaskList(argv: string[], json: boolean): Promise<void> {
       const offBranch = repo.branch && repo.branch !== t.branch ? c.danger(` on ${repo.branch}`) : '';
       process.stdout.write(`    ${pad(repo.name, 22)} ${dirty}${offBranch}\n`);
     }
-    const open = prs?.byTask[t.slug] ?? [];
-    if (open.length === 0) continue;
+    const all = prs?.byTask[t.slug] ?? [];
+    if (all.length === 0) continue;
+    // Merged ones are listed under the open ones rather than grouped with them —
+    // the panel does the same, and for the same reason: a landed layer is not a
+    // rung anything is still waiting on. See `splitPrs`.
+    const { open, merged } = splitPrs(all);
     // Bottom of each stack first, its layers kept together — the panel's order.
     const rows = groupPrStacks(open);
     // One fixed column, held open on every row once anything here is stacked, for
     // the reason `.task-pr-rung` gives: a growing indent staggers the branch names.
     const railed = rows.some((row) => row.of > 1);
-    process.stdout.write(`    ${c.muted(prSummary(open))}\n`);
+    process.stdout.write(`    ${c.muted(prSummary(all))}\n`);
     // Empty unless this task's pull requests span repos, which is the only case
     // where naming one tells you anything — see `prRepoTags`.
-    const repoTags = prRepoTags(open);
+    const repoTags = prRepoTags(all);
     // Padded to the widest of them, so adding the column does not stagger the
     // branch names it sits in front of.
     const tagWidth = Math.max(0, ...Object.values(repoTags).map((t) => t.length));
     // Numbers differ in width across repos — `#3004` beside `#10427` — so both
     // this and the tag are padded, or the branch names step in and out.
-    const numWidth = Math.max(...open.map((pr) => `#${pr.number}`.length));
+    const numWidth = Math.max(...all.map((pr) => `#${pr.number}`.length));
     for (const row of rows) {
       const pr = row.pr;
       const tag = repoTags[`${pr.repo}#${pr.number}`];
@@ -1138,7 +1154,30 @@ async function cmdTaskList(argv: string[], json: boolean): Promise<void> {
           `${reviewMark(pr)}${pr.isDraft ? c.dim(' draft') : ''}${waiting}\n`,
       );
     }
+    for (const pr of merged) {
+      const tag = repoTags[`${pr.repo}#${pr.number}`];
+      const rail = railed ? '  ' : '';
+      // Dim throughout, including the branch name: the row is a record of where
+      // the work went, not a row with anything left on it.
+      process.stdout.write(
+        `    ${viaMark(pr, 1)} ${c.dim('·')} ${c.dim(pad(`#${pr.number}`, numWidth))}` +
+          `${tagWidth > 0 ? ` ${c.muted(pad(tag ?? '', tagWidth))}` : ''}` +
+          ` ${c.dim(rail)}${c.dim(pad(pr.branch, Math.max(0, 46 - rail.length)))} ` +
+          `${c.ok('merged')}\n`,
+      );
+    }
   }
+}
+
+/** The task's rung, padded to one column so the slugs after it line up. */
+function statusMark(status: TaskStatus): string {
+  const paint = {
+    'not-started': c.dim,
+    wip: c.warn,
+    'in-review': c.muted,
+    done: c.ok,
+  }[status];
+  return paint(pad(STATUS_LABEL[status], 10));
 }
 
 async function cmdTaskArchive(argv: string[], json: boolean): Promise<void> {

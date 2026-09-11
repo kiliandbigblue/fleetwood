@@ -5,6 +5,8 @@ import type { DeployPatterns, MergedConfig } from './config.ts';
 
 export type ChecksState = 'passing' | 'failing' | 'pending' | 'none';
 
+export type PrState = 'OPEN' | 'MERGED' | 'CLOSED';
+
 export interface PullRequest {
   repo: string; // "bigbluedisco/atlas"
   number: number;
@@ -27,6 +29,18 @@ export interface PullRequest {
    * the other.
    */
   base?: string;
+  /**
+   * Open, merged, or closed without merging.
+   *
+   * Absent from every search path — those are filtered to open pull requests at
+   * the query, so there is nothing for the field to say. Present on the repo/ref
+   * lookup, which deliberately asks for merged ones too: a task whose pull
+   * requests have all landed has no open ones left, and without this that is
+   * indistinguishable from a task that never opened any. See `taskStatus`.
+   */
+  state?: PrState;
+  /** ISO timestamp, on a merged pull request only. */
+  mergedAt?: string;
   /** Normalised by `effectiveReviewDecision` — not raw `gh` output. */
   reviewDecision?: string;
   checks?: ChecksState;
@@ -484,6 +498,8 @@ interface GqlPr {
   url: string;
   updatedAt: string;
   isDraft: boolean;
+  state?: string;
+  mergedAt?: string | null;
   headRefName?: string;
   baseRefName?: string;
   reviewDecision?: string | null;
@@ -541,6 +557,8 @@ function toPrFromGraphql(repo: string, node: GqlPr, ignorePattern: string): Pull
     url: node.url,
     updatedAt: node.updatedAt,
     isDraft: node.isDraft,
+    state: node.state === 'MERGED' || node.state === 'CLOSED' ? node.state : 'OPEN',
+    mergedAt: node.mergedAt ?? undefined,
     author: node.author?.login,
     roles: [],
     branch: node.headRefName,
@@ -560,9 +578,9 @@ function repoBranchField(alias: string, pair: RepoBranch): string | undefined {
   const owner = pair.repo.slice(0, slash);
   const name = pair.repo.slice(slash + 1);
   return `${alias}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) {
-    pullRequests(headRefName: ${JSON.stringify(pair.branch)}, states: OPEN, first: 1) {
+    pullRequests(headRefName: ${JSON.stringify(pair.branch)}, states: [OPEN, MERGED], orderBy: { field: UPDATED_AT, direction: DESC }, first: 3) {
       nodes {
-        number title url updatedAt isDraft headRefName baseRefName reviewDecision additions deletions
+        number title url updatedAt isDraft state mergedAt headRefName baseRefName reviewDecision additions deletions
         author { login }
         latestReviews(last: 20) { nodes { state } }
         commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
@@ -610,7 +628,18 @@ export function decodeRepoBranchPrs(
 }
 
 /**
- * The open pull requests on branches whose repo we already know, in one call.
+ * The pull requests on branches whose repo we already know, in one call.
+ *
+ * Open *and* merged, which is a deliberate widening. A branch's merged pull
+ * request is the only durable record that the work landed — the branch itself
+ * falls back to zero commits ahead of the trunk and reads like one nobody ever
+ * started — and asking for it here costs nothing: it is the same aliased field
+ * on the same request, two extra states rather than a second round trip. The
+ * merged-PR list in the deploy tab cannot stand in for it, since that one is
+ * bounded by a lookback window and by `--involves=@me`.
+ *
+ * Closed-without-merging is left out on purpose. It is neither work in flight
+ * nor work that landed, and counting it either way would misreport a task.
  *
  * This is the lookup a search was standing in for, and the difference is not
  * only volume. `head:` qualifiers OR'd together are an org-wide scatter query

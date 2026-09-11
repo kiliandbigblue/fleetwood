@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   baseFor,
   groupPrStacks,
+  isMerged,
+  splitPrs,
   partitionAgents,
   prRepoTags,
   prSummary,
@@ -413,4 +415,38 @@ test('the summary names the stack, and both of them when a task has two', () => 
   assert.equal(prSummary([bottom, middle, top, ...pair]), '5 open · stacks of 3, 2');
   // A lone pull request is not a stack, so nothing is said about the shape.
   assert.equal(prSummary([pr({ number: 1, base: 'dev' })]), '1 open');
+});
+
+// --- merged pull requests, which the repo/ref lookup now returns too --------
+
+test('a pull request with no state is open, because every search is open-only', () => {
+  assert.equal(isMerged({ state: undefined }), false);
+  assert.equal(isMerged({ state: 'OPEN' }), false);
+  assert.equal(isMerged({ state: 'MERGED' }), true);
+});
+
+test('splitPrs keeps the two halves in the order they were given', () => {
+  const rows = [
+    { state: 'MERGED' as const, n: 1 },
+    { state: 'OPEN' as const, n: 2 },
+    { state: undefined, n: 3 },
+  ];
+  const { open, merged } = splitPrs(rows);
+  assert.deepEqual(open.map((r) => r.n), [2, 3]);
+  assert.deepEqual(merged.map((r) => r.n), [1]);
+});
+
+test('prSummary counts merged apart from open rather than folding them in', () => {
+  assert.equal(
+    prSummary([pr({ number: 1 }), pr({ number: 2, state: 'MERGED' })]),
+    '1 open · 1 merged',
+  );
+});
+
+test('a task with nothing left open says only what landed', () => {
+  assert.equal(prSummary([pr({ number: 1, state: 'MERGED' })]), '1 merged');
+});
+
+test('a landed pull request is not an errand, so it cannot make a task urgent', () => {
+  assert.equal(worstState([repo(0)], [pr({ state: 'MERGED', checks: 'failing' })], false), 'quiet');
 });

@@ -1,17 +1,19 @@
 import { useState } from 'react';
-import type { FleetSession, Severity, StackRow, Task, TaskPr, TaskRepo } from '@fleetwood/core';
+import type { FleetSession, StackRow, Task, TaskPr, TaskRepo, TaskStatus } from '@fleetwood/core';
 // The leaf module: the barrel re-exports tmux and process scanning, which fail the
 // renderer bundle on `node:child_process`.
 import {
   baseFor,
   groupPrStacks,
+  isMerged,
   partitionAgents,
   prRepoTags,
   prSummary,
   repoSummary,
+  splitPrs,
   VIA_LABEL,
-  worstState,
 } from '@fleetwood/core/taskView';
+import { STATUS_LABEL, taskStatus } from '@fleetwood/core/taskStatus';
 import { hasDriftedOffBranch, worktreeShortName } from '@fleetwood/core/naming';
 import { isPinned } from '@fleetwood/core/sessionOrder';
 import { AddRepo } from './AddRepo.tsx';
@@ -239,19 +241,24 @@ const VIA_MARK: Record<TaskPr['via'], string> = { head: '', stack: '⇡', histor
 /**
  * The dot, in words.
  *
- * Two channels on one glyph is only worth it if you can find out what they are,
- * and a panel this quiet has nowhere to put a legend. So the mark carries its
- * own: what the colour means, then what the shape means.
+ * One channel now, where there used to be two. The mark said an urgency rank in
+ * colour and your attachment to the session in its fill, and neither was the
+ * thing a list of tasks is scanned for — so the glyph is how far along the task
+ * is, and the tooltip spells out both the rung and what put it there.
+ *
+ * Attachment moved into the sentence rather than off the card: it is a fact
+ * about a tmux client, it changes nothing about the work, and the session name
+ * beside the mark already goes dim when there is no session at all.
  */
-export function dotNote(state: Severity, attached: boolean, hasSession: boolean): string {
-  const colour = {
-    danger: 'something here needs you',
-    warn: 'uncommitted work',
-    ok: 'live, or approved and waiting',
-    quiet: 'nothing waiting',
-  }[state];
+export function dotNote(status: TaskStatus, attached: boolean, hasSession: boolean): string {
+  const why = {
+    'not-started': 'nothing committed yet',
+    wip: 'work in flight — uncommitted, unpushed, or still a draft',
+    'in-review': 'every pull request is up and waiting on a reviewer',
+    done: 'everything landed',
+  }[status];
   const shape = hasSession ? (attached ? 'attached' : 'running, not attached') : 'no session yet';
-  return `${colour} · ${shape}`;
+  return `${STATUS_LABEL[status]} — ${why} · ${shape}`;
 }
 
 /**
@@ -305,7 +312,7 @@ export function PrRow({
 
   return (
     <div
-      className="task-pr"
+      className={`task-pr${isMerged(pr) ? ' task-pr-landed' : ''}`}
       onClick={open}
       title={`${pr.repo}#${pr.number} · ${pr.branch}\n${VIA_LABEL[pr.via]}${where ? ` · ${where}` : ''}`}
     >
@@ -357,7 +364,12 @@ export function PrRow({
        * the states that ask something.
        */}
       <span className="task-pr-state">
-        {pr.isDraft ? (
+        {isMerged(pr) ? (
+          /* The end of the line, so it displaces both of the others: a landed
+             pull request's last review decision and last check run are history,
+             and drawing them would put an errand on a row with none left. */
+          <span className="task-pr-merged">merged</span>
+        ) : pr.isDraft ? (
           <span className="task-pr-flag">draft</span>
         ) : (
           pr.reviewDecision && (
@@ -469,7 +481,7 @@ export function TaskCard({
   // where the tag tells you anything — see `prRepoTags`.
   const repoTags = prRepoTags(prs ?? []);
   const needsAttention = session?.needsAttention ?? false;
-  const state = worstState(task.repos, prs, needsAttention, session?.agents);
+  const status = taskStatus(task.repos, prs);
   const dormant = !task.session;
 
   const openNotes = (): void => {
@@ -548,12 +560,10 @@ export function TaskCard({
             : `${task.branch} · no session yet — open one on ${task.dir}`
         }
       >
-        {/* Colour is the state, shape is whether you are attached. */}
+        {/* How far along this is, and nothing else — see `dotNote`. */}
         <span
-          className={`attached-dot sev-${state}${
-            session && session.attached > 0 ? '' : ' detached'
-          }`}
-          title={dotNote(state, (session?.attached ?? 0) > 0, task.session !== undefined)}
+          className={`status-dot status-${status}`}
+          title={dotNote(status, (session?.attached ?? 0) > 0, task.session !== undefined)}
         />
         <span className="session-name">
           <Slug text={task.slug} />
@@ -636,20 +646,41 @@ export function TaskCard({
             {prsStale && <span className="task-pr-via"> · stale</span>}
           </div>
           {(() => {
-            const rows = groupPrStacks(prs);
+            /*
+             * Stacked on the open ones alone, then the landed ones underneath.
+             *
+             * A stack is a chain of branches waiting on each other, and a merged
+             * layer has stopped waiting on anything: grouped in, it would take a
+             * rung in the rail and leave the live layers above it reading as
+             * blocked on work that is already in the trunk.
+             */
+            const { open, merged } = splitPrs(prs);
+            const rows = groupPrStacks(open);
             const railed = rows.some((row) => row.of > 1);
             const blocked = rows.some((row) => row.waitingOn !== undefined);
-            return rows.map((row) => (
-              <PrRow
-                key={`${row.pr.repo}#${row.pr.number}`}
-                pr={row.pr}
-                repoTag={repoTags[`${row.pr.repo}#${row.pr.number}`]}
-                stack={row}
-                railed={railed}
-                blocked={blocked}
-                onResult={onResult}
-              />
-            ));
+            return [
+              ...rows.map((row) => (
+                <PrRow
+                  key={`${row.pr.repo}#${row.pr.number}`}
+                  pr={row.pr}
+                  repoTag={repoTags[`${row.pr.repo}#${row.pr.number}`]}
+                  stack={row}
+                  railed={railed}
+                  blocked={blocked}
+                  onResult={onResult}
+                />
+              )),
+              ...merged.map((pr) => (
+                <PrRow
+                  key={`${pr.repo}#${pr.number}`}
+                  pr={pr}
+                  repoTag={repoTags[`${pr.repo}#${pr.number}`]}
+                  railed={railed}
+                  blocked={blocked}
+                  onResult={onResult}
+                />
+              )),
+            ];
           })()}
         </div>
       )}

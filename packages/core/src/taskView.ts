@@ -70,23 +70,55 @@ export function repoSummary(repos: TaskRepo[], taskBranch: string): string {
 }
 
 /**
- * A task's open pull requests in one line: how many, and what they are waiting on.
+ * The two halves of a task's pull requests.
+ *
+ * The repo/ref lookup asks for merged pull requests as well as open ones, because
+ * a merged one is the only durable record that a branch's work landed — see
+ * `fetchPrsForRepoBranches`. Everything downstream of that wants one half or the
+ * other rather than the mixture: the rows, the stack grouping and the counts all
+ * mean "in flight", and the progress mark is the one reader that wants both.
+ *
+ * A pull request with no `state` came from a search, and every search here is
+ * filtered to open — so absent means open.
+ */
+export function isMerged(pr: Pick<PullRequest, 'state'>): boolean {
+  return pr.state === 'MERGED';
+}
+
+export function splitPrs<T extends Pick<PullRequest, 'state'>>(
+  prs: readonly T[],
+): { open: T[]; merged: T[] } {
+  return {
+    open: prs.filter((pr) => !isMerged(pr)),
+    merged: prs.filter((pr) => isMerged(pr)),
+  };
+}
+
+/**
+ * A task's pull requests in one line: how many, and what they are waiting on.
  *
  * The same shape as `repoSummary` and for the same reason — one sentence, both
  * front ends. Only the two states that ask something of you get counted: a red
  * check is work, an approval is a merge you have not done yet. Everything else
  * is a pull request quietly waiting for a reviewer, which the count already says.
  *
+ * Merged ones are counted apart rather than folded in. `3 open` meaning two open
+ * and one landed would be the same collapse the progress mark exists to undo, and
+ * on a finished task `2 merged` alone is the whole of what there is to say.
+ *
  * The shape comes last, after both of those: a stack asks nothing of you, it only
  * says that `4 open` is four rungs rather than four errands.
  */
 export function prSummary(prs: TaskPr[]): string {
-  const failing = prs.filter((pr) => pr.checks === 'failing').length;
-  const approved = prs.filter((pr) => pr.reviewDecision === 'APPROVED').length;
-  const stacks = stackSizes(prs);
-  const parts = [`${prs.length} open`];
+  const { open, merged } = splitPrs(prs);
+  const failing = open.filter((pr) => pr.checks === 'failing').length;
+  const approved = open.filter((pr) => pr.reviewDecision === 'APPROVED').length;
+  const stacks = stackSizes(open);
+  const parts: string[] = [];
+  if (open.length > 0 || merged.length === 0) parts.push(`${open.length} open`);
   if (failing > 0) parts.push(`${failing} failing`);
   if (approved > 0) parts.push(`${approved} approved`);
+  if (merged.length > 0) parts.push(`${merged.length} merged`);
   if (stacks.length > 0) {
     parts.push(`stack${stacks.length === 1 ? '' : 's'} of ${stacks.join(', ')}`);
   }
@@ -114,7 +146,7 @@ export function prSummary(prs: TaskPr[]): string {
 export function baseFor(prs: TaskPr[] | undefined, repo: TaskRepo): string | undefined {
   if (!prs || !repo.branch) return undefined;
   return prs.find(
-    (pr) => pr.via === 'head' && pr.branch === repo.branch && pr.repoName === repo.name,
+    (pr) => !isMerged(pr) && pr.via === 'head' && pr.branch === repo.branch && pr.repoName === repo.name,
   )?.base;
 }
 
@@ -200,7 +232,9 @@ export function worstState(
   // `undefined` is the first `gh` search still being out, which is not the same
   // claim as "this task has no pull requests" — an absent answer contributes
   // nothing rather than confirming quiet.
-  const open = prs ?? [];
+  // Merged ones are out: a landed pull request's last check run and last review
+  // are history, and a red one among them is not an errand.
+  const open = (prs ?? []).filter((pr) => !isMerged(pr));
   if (open.some((pr) => pr.reviewDecision === 'CHANGES_REQUESTED' || pr.checks === 'failing')) {
     return 'danger';
   }

@@ -9,6 +9,7 @@ import {
   dirtyCount,
   ensureWorktree,
   listWorktrees,
+  localProgress,
   mainCheckoutFor,
   removeWorktree,
   remoteNameWithOwner,
@@ -62,6 +63,20 @@ export interface TaskRepo {
   repo?: string;
   branch?: string;
   dirty: number;
+  /**
+   * Commits this worktree holds that the trunk does not — see `localProgress`.
+   *
+   * Absent when there was no trunk to ask against, which is not the same claim
+   * as zero and must not be read as one.
+   */
+  ahead?: number;
+  /**
+   * Whether a commit was ever made on this branch.
+   *
+   * Only read when `ahead` is 0, where it is the whole difference between a
+   * worktree nobody has touched and one whose work has already landed.
+   */
+  everCommitted?: boolean;
 }
 
 /** The immutable half of a task, stored beside its worktrees. */
@@ -322,7 +337,12 @@ export async function readTaskRepos(dir: string): Promise<TaskRepo[]> {
     worktrees.map(async (entry): Promise<TaskRepo> => {
       const path = join(dir, entry);
       const match = index.repos.find((r) => basename(r.path).toLowerCase() === entry.toLowerCase());
-      const [remote, branch, dirty] = await Promise.all([
+      // One `rev-parse`, two readers. `localProgress` needs the branch to tell a
+      // trunk from a task branch, and awaiting it first would serialise the fan-out
+      // this whole block exists to avoid — so the promise is shared rather than the
+      // read repeated.
+      const branchRead = currentBranch(path);
+      const [remote, branch, dirty, progress] = await Promise.all([
         /*
          * The index first, then the worktree's own remote.
          *
@@ -336,10 +356,11 @@ export async function readTaskRepos(dir: string): Promise<TaskRepo[]> {
          * at all.
          */
         match?.nameWithOwner ? Promise.resolve(match.nameWithOwner) : remoteNameWithOwner(path),
-        currentBranch(path),
+        branchRead,
         dirtyCount(path),
+        branchRead.then((b) => localProgress(path, b)),
       ]);
-      return { name: entry, path, repo: remote, branch, dirty };
+      return { name: entry, path, repo: remote, branch, dirty, ...progress };
     }),
   );
 }

@@ -11,7 +11,7 @@ import type { PullRequest, RepoBranch } from './github.ts';
 import type { Task } from './task.ts';
 
 /*
- * The pull requests a task has open, found from the worktrees themselves.
+ * The pull requests a task has, found from the worktrees themselves.
  *
  * A task is a folder of worktrees and nothing records what it has pushed, so the
  * link back to GitHub has to be rebuilt from git. The naive read — "the branch
@@ -42,7 +42,7 @@ export interface TaskBranches {
   branches: TaskBranch[];
 }
 
-/** An open pull request, plus which of the task's branches it was opened from. */
+/** A pull request, plus which of the task's branches it was opened from. */
 export interface TaskPr extends PullRequest {
   branch: string;
   via: BranchVia;
@@ -51,7 +51,10 @@ export interface TaskPr extends PullRequest {
 }
 
 export interface TaskPrs {
-  /** slug → its open pull requests, bottom of the stack first. */
+  /**
+   * slug → its pull requests: open first, bottom of the stack first, then the
+   * merged ones. See `splitPrs` for why both halves are here.
+   */
   byTask: Record<string, TaskPr[]>;
   fetchedAt: number;
   /** True when `gh` produced nothing at all — usually an auth or network problem. */
@@ -294,11 +297,15 @@ export function matchPrsToTasks(
     }
 
     if (picked.size === 0) continue;
-    // Bottom of the stack first: distance from the default branch is what orders
-    // a stack, since each layer holds every commit below it and then some. A
-    // branch whose distance could not be read sinks, in pull request order.
+    // Open first, then bottom of the stack first: distance from the default
+    // branch is what orders a stack, since each layer holds every commit below
+    // it and then some. A branch whose distance could not be read sinks, in
+    // pull request order. Merged ones sit under the lot — they are the record
+    // that the work landed, not work in flight, and a landed layer would
+    // otherwise wedge itself into the middle of a live stack on its `ahead`.
     byTask[set.slug] = [...picked.values()].sort(
       (a, b) =>
+        Number(a.state === 'MERGED') - Number(b.state === 'MERGED') ||
         (a.ahead ?? Number.MAX_SAFE_INTEGER) - (b.ahead ?? Number.MAX_SAFE_INTEGER) ||
         a.number - b.number,
     );
@@ -409,7 +416,7 @@ export function unclonedBranchNames(sets: TaskBranches[]): string[] {
 }
 
 /**
- * The open pull requests of every task, in as few `gh` calls as it can be done in.
+ * The pull requests of every task, in as few `gh` calls as it can be done in.
  *
  * One GraphQL request for the whole fleet. A task's worktree names its own
  * origin remote, so for all but the branch nobody has cloned the repo and the

@@ -695,6 +695,49 @@ list, because a PR list that blanks on one flaky call reads as "you closed them"
 otherwise all local git, and a network round trip is not what you want from the
 command you run to remember a slug.
 
+**The mark beside a task's name is how far along it is** — `not started`, `wip`,
+`in review`, `done` — and nothing else. It used to be an urgency rank in colour
+with your tmux attachment in its fill, which answered "which card do I open next"
+and left the two questions a list of tasks is actually scanned for unanswered: how
+far is this, and is it finished. The two orders also disagree. Uncommitted changes
+outranked an approval, so a task one click from merging drew louder than one still
+being written, and a task whose every PR had merged was indistinguishable from one
+nobody had started. Session cards keep the urgency rank, because for a bare session
+that *is* the question.
+
+The rules, in the order they are consulted:
+
+- **A repo with a pull request is described by that pull request**, not by its
+  worktree. Merged is `done`; open and out of draft is `in review`; a draft is
+  `wip`. Draft is the line rather than the review decision — "awaiting review or
+  higher" is one state from your side and four from GitHub's, and folding those
+  into separate rungs is how the old mark became unreadable. The decision and the
+  checks still say their own words on the row; they are just not what the progress
+  mark measures, and neither is the dirty count.
+- **A repo without one answers from git alone.** That is the whole of the local
+  mode — a personal task that lands straight on `main` and never opens a PR — and
+  the hard case in it is that a branch level with the trunk is either one nobody
+  started or one whose work the trunk already swallowed. The **branch's own reflog**
+  separates them: a branch that has been committed to carries `commit:` entries for
+  the rest of its life, including after a local merge leaves it level again. So
+  nothing has to be written down, and a task folder fleetwood has never seen before
+  still reads correctly.
+- **A task is the weakest rung in it**, except that a repo nobody has touched is
+  dropped once anything else has moved. Adding a repo to a task and never editing
+  it is ordinary, and a strict weakest-wins would leave such a task reading
+  `not started` forever after everything else had merged. Nothing else is dropped:
+  one draft among four merged PRs is a task still being written.
+
+Making `done` reachable at all meant the repo/ref lookup had to stop asking only
+for open pull requests — a merged one is the only durable record that a branch's
+work landed, and it costs nothing to ask for: the same aliased field on the same
+request, two states rather than a second round trip. They sit under the open ones
+on the card, dimmed, out of the stack rail — a landed layer has stopped waiting on
+anything, and grouped in it would leave the live layers above it reading as blocked
+on work already in the trunk. Closed-without-merging is left out on purpose: it is
+neither work in flight nor work that landed, and counting it either way misreports
+the task.
+
 A task-root agent does **not** load each repo's `CLAUDE.md`/`AGENTS.md` or
 `.claude/settings.local.json` at startup; `TASK.md` says so, and it picks them up
 when it reads into a repo. Fresh worktrees have no `node_modules` (Go's module cache

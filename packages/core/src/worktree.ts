@@ -435,6 +435,86 @@ export async function removeWorktree(repoPath: string, worktreePath: string, for
   return { ok: true, detail: `removed ${worktreePath}${dirty ? ' (forced, discarded local changes)' : ''}` };
 }
 
+/** The two facts about a worktree's own branch that `dirty` cannot supply. */
+export interface LocalProgress {
+  /** Commits HEAD holds that the trunk does not. Absent when there is no trunk to ask against. */
+  ahead?: number;
+  /** Whether a commit was ever made on this branch. Only meaningful when `ahead` is 0. */
+  everCommitted: boolean;
+}
+
+/**
+ * Branch names that are a trunk rather than work of their own.
+ *
+ * By name, and without asking git — `taskPrs` takes the same route for the same
+ * reason. The alternative is a `symbolic-ref` per settled worktree on a path the
+ * panel polls, to rule out a case that a naming convention already rules out:
+ * every branch fleetwood makes is `<type>/<slug>`, and nothing named that way is
+ * in this list.
+ */
+const TRUNK_NAMES = new Set([...LOCAL_TRUNKS, 'trunk', 'production', 'staging', 'release']);
+
+/**
+ * How far along a worktree's own branch is, without asking GitHub anything.
+ *
+ * Between them these two settle the question a commit count alone cannot: a
+ * branch sitting level with the trunk is either one nobody has started or one
+ * whose work the trunk has already swallowed, and those are opposite ends of the
+ * same task.
+ *
+ * `everCommitted` is what tells them apart, and it is read from the branch's own
+ * reflog rather than remembered in a file of fleetwood's. A branch that has been
+ * committed to carries `commit:` entries for the rest of its life — including
+ * after a local merge into `main` leaves it zero commits ahead again, which is
+ * exactly the moment the distinction is needed. Nothing has to be written down,
+ * and a task folder that fleetwood has never seen before still answers correctly.
+ *
+ * Only asked when the count is zero: a branch with commits of its own is work in
+ * progress whatever its reflog says, and the read is a subprocess this path pays
+ * for once per worktree per poll. The branch comes from the caller rather than
+ * being read here, since `readTaskRepos` already has that subprocess in flight.
+ */
+export async function localProgress(path: string, branch: string | undefined): Promise<LocalProgress> {
+  const ahead = await aheadOfTrunk(path);
+  if (ahead === undefined || ahead > 0) return { ahead, everCommitted: false };
+  // Sitting on the trunk itself, the reflog is the trunk's whole history and
+  // says nothing about this task. Silence beats reading every repo's `main` as
+  // a finished piece of work.
+  if (branch === undefined || TRUNK_NAMES.has(branch)) return { ahead, everCommitted: false };
+  return { ahead, everCommitted: await hasCommitReflog(path, branch) };
+}
+
+/**
+ * Commits ahead of the trunk, in one subprocess where there is a remote.
+ *
+ * `origin/HEAD` is asked for by name rather than resolved first, which is the
+ * whole saving: `rev-list` looks the ref up itself, and only a repo without one
+ * — a local-only checkout, fleetwood's own among them — pays for `reviewBase`.
+ */
+async function aheadOfTrunk(path: string): Promise<number | undefined> {
+  const direct = await run('git', ['-C', path, 'rev-list', '--count', 'origin/HEAD..HEAD']);
+  if (direct.code === 0) {
+    const n = Number.parseInt(direct.stdout.trim(), 10);
+    if (Number.isFinite(n)) return n;
+  }
+  const base = await reviewBase(path);
+  if (base === undefined) return undefined;
+  const { code, stdout } = await run('git', ['-C', path, 'rev-list', '--count', `${base}..HEAD`]);
+  if (code !== 0) return undefined;
+  const n = Number.parseInt(stdout.trim(), 10);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/** Whether the branch's reflog holds a commit — see `localProgress`. */
+export function hasCommitEntry(stdout: string): boolean {
+  return stdout.split('\n').some((line) => /^commit(?: \(amend\)| \(initial\)|:)/.test(line.trim()));
+}
+
+async function hasCommitReflog(path: string, branch: string): Promise<boolean> {
+  const { code, stdout } = await run('git', ['-C', path, 'reflog', 'show', '--format=%gs', branch]);
+  return code === 0 && hasCommitEntry(stdout);
+}
+
 /** Uncommitted-change count for a working tree, for the dirty indicator. */
 export async function dirtyCount(path: string): Promise<number> {
   const { code, stdout } = await run('git', ['-C', path, 'status', '--porcelain']);
