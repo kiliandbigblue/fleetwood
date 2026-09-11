@@ -94,17 +94,22 @@
   --indent: 32px;
 
   /*
-   * Where a card's rows start, one step in from where its title starts.
+   * Where a card's rows start — the same rail the title starts on.
    *
-   * They used to share the rail: a title and the rows under it began at the same
-   * x, and the only thing saying which was which was that one of them was
-   * heavier. That is hierarchy asserted in ink and nowhere in the layout — a
-   * flat stream you re-read to parse, rather than a group you see. One step of
-   * the scale is the whole device: it costs 8px of a 738px column, it needs no
-   * rule, no box and no second surface, and it is what makes the title read as
-   * the thing the rows belong to.
+   * They were a step apart for a while, on the argument that a title and its rows
+   * sharing an x leaves nothing but ink weight to say which is which. What that
+   * missed is that a card already has a boundary: the rule above it and the space
+   * around it say where the group begins, and the title is the only bold line in
+   * it. The step was hierarchy paid for twice, and the price was the thing you
+   * actually see — every card in the list with its title hanging 8px to the left
+   * of its own contents, which reads as a mistake long before it reads as a
+   * level.
+   *
+   * Kept as its own name rather than folded into `--indent`, because the two mean
+   * different things: `--indent` is the gutter the marks hang in, this is where
+   * text begins. They are equal, not the same.
    */
-  --row-indent: calc(var(--indent) + var(--s3));
+  --row-indent: var(--indent);
 
   /*
    * The task mark's diameter.
@@ -135,8 +140,16 @@
    * worktree — and each mark used to set where that row's text began, so one
    * group had four left edges. The marks hang in the `--indent` gutter now and
    * every row's first word starts on the same rail.
+   *
+   * `--dot` wide and not a mark's own width, which is the part that took two
+   * goes to get right. Sized to the mark, each kind got a *box* of a different
+   * width, so the marks themselves sat on four different centres in a column
+   * that was nominally one — the card's 12px mark on one axis, an agent's 6px
+   * dot three pixels to the right of it. Sized to the column, every mark centres
+   * in the same 12px whatever it is drawn as, and the small ones are small by
+   * being drawn small rather than by being boxed tight.
    */
-  --mark-col: 14px;
+  --mark-col: calc(var(--dot) + var(--s3));
 
   /*
    * The two rails and the face they are set in. Named roles, not new colours.
@@ -1071,13 +1084,35 @@ button {
  * Same column and same `--dot` / `--dot-mark` split as `.attached-dot`, since
  * `--indent` and every row's text rail are derived from that width.
  */
+/*
+ * Centred on the title's x-height, which is the line the eye actually reads it
+ * against — not on the line box, which is where `align-self: center` puts it.
+ *
+ * A line box reserves descender room under the baseline that a row of lowercase
+ * kebab-case mostly never uses, so its arithmetic centre and the middle of the
+ * letters are not the same point, and how far apart they are is a property of
+ * whichever mono the theme is set in. Centring on the box put the mark about a
+ * pixel above the letters in this one and would put it somewhere else in the
+ * next.
+ *
+ * So it is pinned to the type instead: sit on the baseline, then come up half
+ * an x-height. `ex` is the font's own measure, and the face and size are
+ * restated here so that `ex` is the *title's* x-height rather than whatever the
+ * header happens to inherit. No magic pixel, and nothing to re-tune when the
+ * mark, the face or the step changes.
+ */
 .task-status-dot {
   width: var(--dot);
   height: var(--dot);
   flex: none;
-  align-self: center;
   display: grid;
   place-items: center;
+  font-family: var(--mono);
+  font-size: var(--fs-head);
+  align-self: baseline;
+  /* Baseline on an empty flex item is its bottom edge, so this lifts the mark's
+     centre from `--dot / 2` above the baseline to half an x-height above it. */
+  transform: translateY(calc(var(--dot) / 2 - 0.5ex));
 }
 
 .task-status-dot::before {
@@ -1407,10 +1442,13 @@ button {
  * the name was taken, so the collision only showed up on screen.
  */
 .status-dot {
-  /* 6px and not 7, so the mark plus the row's `--s3` gap is exactly
-     `--mark-col` and the text after it lands on the rail. */
+  /* 6px, and centred in the `--dot`-wide mark box rather than filling it: an
+     agent's mark is smaller than a task's on purpose — it is a row inside the
+     card, not the card — but the two have to share a centre line, or the column
+     the whole layout is built on is a column only in the stylesheet. */
   width: 6px;
   height: 6px;
+  margin-inline: calc((var(--dot) - 6px) / 2);
   border-radius: 50%;
   flex: none;
 }
