@@ -1071,7 +1071,7 @@ button {
  * Same column and same `--dot` / `--dot-mark` split as `.attached-dot`, since
  * `--indent` and every row's text rail are derived from that width.
  */
-.status-dot {
+.task-status-dot {
   width: var(--dot);
   height: var(--dot);
   flex: none;
@@ -1080,7 +1080,7 @@ button {
   place-items: center;
 }
 
-.status-dot::before {
+.task-status-dot::before {
   content: '';
   box-sizing: border-box;
   width: var(--dot-mark);
@@ -1095,17 +1095,17 @@ button {
 
 /* Nothing committed: an empty ring in the dim ink. The quietest thing on the
    card, because an untouched task should not compete with a live one. */
-.status-dot.status-not-started {
+.task-status-dot.task-status-not-started {
   color: var(--dim);
 }
 
 /* Something is being written. A small core — the ring has started to fill — in
    the same gold the dirty count uses, which is the fact underneath it most of
    the time. */
-.status-dot.status-wip {
+.task-status-dot.task-status-wip {
   color: var(--warn);
 }
-.status-dot.status-wip::before {
+.task-status-dot.task-status-wip::before {
   background-color: currentColor;
   padding: 2.5px;
 }
@@ -1113,20 +1113,20 @@ button {
 /* Written, and waiting on somebody else. The core grows to meet the ring, and
    the hue changes hands: gold is work you are doing, iris is work that has left
    you. */
-.status-dot.status-in-review {
+.task-status-dot.task-status-in-review {
   color: var(--accent);
 }
-.status-dot.status-in-review::before {
+.task-status-dot.task-status-in-review::before {
   background-color: currentColor;
 }
 
 /* Landed. The ring closes — border and fill are one ink, the only rung with no
    gap in it at all — which is what makes it read as finished down a list rather
    than as "in review but greener". */
-.status-dot.status-done {
+.task-status-dot.task-status-done {
   color: var(--ok);
 }
-.status-dot.status-done::before {
+.task-status-dot.task-status-done::before {
   background-color: currentColor;
   padding: 0;
 }
@@ -1397,6 +1397,14 @@ button {
  * row reads as a group boundary that isn't there. The rows are 24px apart on a
  * grid and that is enough to tell them apart; the one line that means something
  * is the one between tasks.
+ */
+/*
+ * The agent row's mark, and the older claim on this name.
+ *
+ * The task progress mark is `.task-status-dot` precisely because this exists:
+ * it was written as `.status-dot` first, which quietly gave every agent row in
+ * the app an 11px ring drawn inside this 6px box. Nothing in either file said
+ * the name was taken, so the collision only showed up on screen.
  */
 .status-dot {
   /* 6px and not 7, so the mark plus the row's `--s3` gap is exactly

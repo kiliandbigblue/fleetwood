@@ -578,7 +578,7 @@ export function TaskCard({
       >
         {/* How far along this is, and nothing else — see `dotNote`. */}
         <span
-          className={`status-dot status-${status}`}
+          className={`task-status-dot task-status-${status}`}
           title={dotNote(status, (session?.attached ?? 0) > 0, task.session !== undefined)}
         />
         <span className="session-name">
