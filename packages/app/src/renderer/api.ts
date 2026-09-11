@@ -13,18 +13,37 @@ export function send(request: Request): Promise<Response> {
   return api.invoke(request);
 }
 
+/** Local wall clock, 24h, the form both quota readouts use. */
+function hhmm(at: Date): string {
+  return at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+/**
+ * When the five-hour window rolls over, as a bare local time.
+ *
+ * A session window is at most five hours away, so it needs no day: `15:00`
+ * is unambiguous, and it is the whole of what the rail has room to say. The
+ * dated forms belong to the weekly windows, which `resetClock` handles.
+ */
+export function resetTime(resetsAt: number | undefined, now: number): string {
+  if (resetsAt === undefined) return '';
+  if (resetsAt - now <= 0) return 'resetting';
+  return hhmm(new Date(resetsAt * 1000));
+}
+
 /**
  * When a quota window rolls over, as a clock rather than a countdown.
  *
  * The rail already says how full the window is; a second duration (`3h21m`)
  * next to a percent is two ways of saying "soon". The time of day is the fact
- * that changes what you do — stop at 17:40, or keep going.
+ * that changes what you do — stop at 17:40, or keep going. A weekly window
+ * lands days out, so this one names the day it lands on.
  */
 export function resetClock(resetsAt: number | undefined, now: number): string {
   if (resetsAt === undefined) return '';
   if (resetsAt - now <= 0) return 'resetting';
   const at = new Date(resetsAt * 1000);
-  const time = at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+  const time = hhmm(at);
   const today = new Date(now * 1000);
   const startOf = (d: Date): number => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const days = Math.round((startOf(at) - startOf(today)) / 86_400_000);

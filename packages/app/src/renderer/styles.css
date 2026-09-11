@@ -1691,6 +1691,42 @@ button {
   color: var(--dim);
 }
 
+/*
+ * The windows list, as four columns rather than four rows of flex.
+ *
+ * Every row says the same four things — name, bar, percent, reset — and as
+ * flex items each row set its own x for all four: `week` is 4 characters and
+ * `sonnet` is 6, so the bars started at two different places and the percents
+ * ended at two more, in a list whose whole purpose is comparing them. The rows
+ * are `display: contents` so their cells are the grid's, and the columns are
+ * held by the widest thing any row puts in them. Figures right-aligned, so the
+ * units line up under each other and not just the digits.
+ *
+ * `max-content` on the name and reset columns rather than a `ch` measure: a
+ * scoped cap is named after a model family, and `fable` is not the longest one
+ * there will ever be.
+ */
+.quota-windows {
+  display: grid;
+  grid-template-columns: max-content 42px max-content max-content;
+  align-items: center;
+  gap: 3px 8px;
+}
+
+.quota-windows .quota-row {
+  display: contents;
+}
+
+.quota-windows .quota-fig,
+.quota-windows .quota-sub {
+  text-align: right;
+}
+
+/* The note sits under the list, not in its first column. */
+.quota-windows .quota-stale {
+  grid-column: 1 / -1;
+}
+
 .quota-row-title {
   flex: none;
   white-space: nowrap;

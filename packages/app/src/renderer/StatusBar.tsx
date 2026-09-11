@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import type { CursorUsage, FleetState, LimitWindow, PlanLimits } from '@fleetwood/core';
-import { duration, resetClock } from './api.ts';
+import { duration, resetClock, resetTime } from './api.ts';
 import { useDismiss } from './useDismiss.ts';
 
 interface Props {
@@ -36,20 +36,37 @@ function Meter({ utilization, stale }: { utilization: number; stale?: boolean })
 }
 
 /**
- * The window closest to stopping you.
+ * The five-hour session window — the gauge's one subject.
  *
- * Not the first one. The rail has room for a single gauge, and the five-hour
- * window is only the interesting one until the weekly cap gets ahead of it.
+ * The rail used to show whichever window was fullest, which made the figure
+ * anonymous: `4%` with nothing to say it was the week, sitting above a popover
+ * listing every window *except* the one being shown. The session window is the
+ * one that moves while you work, so the rail holds it and only it, and every
+ * other window is in the popover where its name is beside it.
  */
-function binding(windows: LimitWindow[]): LimitWindow | undefined {
-  return windows.reduce<LimitWindow | undefined>(
-    (worst, window) => (worst && worst.utilization >= window.utilization ? worst : window),
-    undefined,
-  );
+function session(windows: LimitWindow[]): LimitWindow | undefined {
+  return windows.find((window) => window.key === 'five_hour');
 }
 
 /**
- * Claude: how full, and what time the window ends.
+ * The popover's rows: the week, then each model's own cap.
+ *
+ * In that order because they are different things — `week` is one pool shared
+ * across models, and a model row is a cap you can walk away from by switching
+ * model. Within the model rows, fullest first; that is the only ordering that
+ * survives a plan gaining or losing a family.
+ */
+function weeklyRows(windows: LimitWindow[]): LimitWindow[] {
+  const rest = windows.filter((window) => window.key !== 'five_hour');
+  const all = rest.filter((window) => window.key === 'seven_day');
+  const perModel = rest
+    .filter((window) => window.key !== 'seven_day')
+    .sort((a, b) => b.utilization - a.utilization);
+  return [...all, ...perModel];
+}
+
+/**
+ * Claude: how full the session window is, and what time it resets.
  *
  * The window's name (`5h`) and a countdown (`3h21m`) both restated the same
  * fact. The bar plus a percent is the fill; a clock is when it opens again.
@@ -60,21 +77,21 @@ function ClaudeQuota({ limits }: { limits: PlanLimits }): React.JSX.Element | nu
   const wrapRef = useRef<HTMLDivElement>(null);
   useDismiss(wrapRef, open, close);
 
-  const worst = binding(limits.windows);
-  if (!worst) return null;
+  if (limits.windows.length === 0) return null;
   const now = Math.floor(Date.now() / 1000);
-  const percent = Math.round(worst.utilization * 100);
-  const clock = resetClock(worst.resetsAt, now);
+  const current = session(limits.windows);
+  const percent = current ? Math.round(current.utilization * 100) : undefined;
+  const clock = resetTime(current?.resetsAt, now);
 
-  const extra = limits.windows.filter((window) => window.key !== worst.key);
-  const hasMenu = extra.length > 0 || Boolean(limits.stale);
+  const rows = weeklyRows(limits.windows);
+  const hasMenu = rows.length > 0 || Boolean(limits.stale);
 
   return (
     <div className="quota" ref={wrapRef}>
       <button
         className={`quota-gauge${open ? ' showing' : ''}`}
         title={[
-          `${worst.title} — ${percent}% used`,
+          current ? `${current.title} — ${percent}% used` : 'no session window reported',
           clock ? `resets ${clock}` : '',
           limits.stale ? `as of ${duration(now - limits.fetchedAt)} ago` : '',
         ]
@@ -86,16 +103,27 @@ function ClaudeQuota({ limits }: { limits: PlanLimits }): React.JSX.Element | nu
         }}
       >
         <span className="tool tool-claude">claude</span>
-        <Meter utilization={worst.utilization} stale={limits.stale} />
-        <span className="quota-fig">{percent}%</span>
-        {clock && <span className="quota-sub">{clock}</span>}
+        {current ? (
+          <>
+            <Meter utilization={current.utilization} stale={limits.stale} />
+            <span className="quota-fig">{percent}%</span>
+            {clock && <span className="quota-sub">{clock}</span>}
+          </>
+        ) : (
+          /* The endpoint answered without a session window. The weekly list is
+             still worth opening, so the gauge stays clickable and says nothing
+             rather than promoting another window into a slot that names none. */
+          <span className="quota-fig">—</span>
+        )}
       </button>
 
       {open && hasMenu && (
-        <div className="quota-menu">
-          {extra.map((window) => (
+        <div className="quota-menu quota-windows">
+          {rows.map((window) => (
             <div className="quota-row" key={window.key}>
-              <span className="quota-row-title">{window.short}</span>
+              <span className="quota-row-title" title={window.title}>
+                {window.short}
+              </span>
               <Meter utilization={window.utilization} stale={limits.stale} />
               <span className="quota-fig">{Math.round(window.utilization * 100)}%</span>
               <span className="quota-sub">{resetClock(window.resetsAt, now)}</span>
