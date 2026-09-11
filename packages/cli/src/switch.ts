@@ -1,7 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
-import { homedir, hostname, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { homedir, hostname } from 'node:os';
 import {
   actions,
   buildFleet,
@@ -11,7 +9,7 @@ import {
 } from '@fleetwood/core';
 import type { ActionResult, FleetAgent, SwitchTarget, TaskRepo } from '@fleetwood/core';
 import { worktreeShortName } from '@fleetwood/core/naming';
-import { agentAge, renderAgentLine, statusChip } from './render.ts';
+import { agentAge, statusChip } from './render.ts';
 import { c, charWidth, clipWidth, currentPalette, pad, relativeAge, tildify, width } from './ui.ts';
 
 /*
@@ -27,23 +25,6 @@ import { c, charWidth, clipWidth, currentPalette, pad, relativeAge, tildify, wid
  * is one process rather than a shell script: the selection is acted on here,
  * with the same `actions` the app's buttons call.
  */
-
-/**
- * The temp directories are named so a previous run's can be recognised.
- *
- * The `finally` below removes this run's, and covers every ordinary exit — a
- * pick, an escape, fzf missing. What it cannot cover is the popup being closed
- * out from under it (`kill-session`, a `SIGHUP` on the client), which leaves one
- * empty directory behind; `sweepStale` is what stops those accumulating for
- * months rather than being a second cleanup path for the same case.
- */
-const PREVIEW_PREFIX = 'fw-switch-';
-
-/** Where fzf reads previews from: one file per row, named by its index. */
-interface Previews {
-  dir: string;
-  cleanup: () => Promise<void>;
-}
 
 export interface SwitchOptions {
   capture: boolean;
@@ -111,28 +92,15 @@ export async function cmdSwitch(options: SwitchOptions): Promise<void> {
     return;
   }
 
-  /*
-   * The projects browser gets no preview pane.
-   *
-   * There is nothing to put in one: a directory with no session has a path and
-   * a remote, and both fit on the row. A pane showing two lines beside a column
-   * of names is a narrower list for no information, and skipping it means
-   * skipping the files too.
-   */
-  const previews = projectsOnly ? undefined : await writePreviews(targets);
-  try {
-    const chosen = await runFzf(rows, previews?.dir, targets);
-    // Escape, or fzf not there at all: both mean "carry on where you were", and
-    // the popup closing is all the answer needed.
-    if (chosen === undefined) return;
-    const target = targets[chosen];
-    if (!target) return;
-    const result = await act(target);
-    process.stdout.write(`${result.ok ? c.ok('✓') : c.danger('✗')} ${result.detail}\n`);
-    if (!result.ok) process.exitCode = 1;
-  } finally {
-    await previews?.cleanup();
-  }
+  const chosen = await runFzf(rows, targets);
+  // Escape, or fzf not there at all: both mean "carry on where you were", and
+  // the popup closing is all the answer needed.
+  if (chosen === undefined) return;
+  const target = targets[chosen];
+  if (!target) return;
+  const result = await act(target);
+  process.stdout.write(`${result.ok ? c.ok('✓') : c.danger('✗')} ${result.detail}\n`);
+  if (!result.ok) process.exitCode = 1;
 }
 
 /** Do what the row promised. One `actions` call each, the same the panel makes. */
@@ -163,9 +131,17 @@ async function act(target: SwitchTarget): Promise<ActionResult> {
  * `receive-receive-item-into-rebin-or-mono-item` would push every status chip
  * forty characters to the right and leave the other twenty rows reading as a
  * column of names with nothing beside them. A name that does not fit is
- * clipped, and the preview pane carries the whole of it.
+ * clipped — with the preview pane gone the whole of it is nowhere else, which
+ * is exactly why this column gets the width that pane used to take first.
  */
-const NAME = 30;
+const NAME_MIN = 30;
+/**
+ * `receive-receive-item-into-rebin-or-mono-item` — the longest real slug here,
+ * and the one the cap exists because of. Past it the name stops growing: a
+ * column wide enough for every name there will ever be is a column of trailing
+ * spaces on all the rows that are not that name.
+ */
+const NAME_MAX = 44;
 /**
  * `✋ permission` at two cells for the glyph is thirteen, and this is fourteen.
  *
@@ -179,12 +155,58 @@ const COUNT = 2;
 /** `4 wt · 1d`, or an agent's age. Padded, so the tail starts in one place. */
 const META = 11;
 /**
- * The column that ends a row, capped to what the list half of the popup
- * holds — about 86 columns of an 88% popup with the preview beside it. Past
- * that fzf clips the line itself, which is fine but says nothing about which
- * part of it mattered.
+ * The column that ends a row, at the width the list is guaranteed.
+ *
+ * It used to be capped to the *half* of the popup left over beside the preview
+ * pane — about 86 columns of the 88% popup, split down the middle. The list has
+ * the whole of it now, so the cap is a floor instead: this is what a narrow
+ * terminal gets, and everything past `NARROW` is handed out by `layoutFor`.
  */
-const TAIL = 26;
+const TAIL_MIN = 26;
+
+/**
+ * The width the fixed columns need, plus the minimums, plus their separators.
+ *
+ * `mark ␣ gutter name ␣ state+count ␣ meta ␣ tail` — 34 cells of structure
+ * around the two columns that stretch. A terminal this wide or narrower gets
+ * exactly the old layout.
+ */
+const FIXED = 34;
+const NARROW = FIXED + NAME_MIN + TAIL_MIN;
+
+/**
+ * How the two elastic columns split whatever the terminal has past `NARROW`.
+ *
+ * The name goes first and the tail takes the rest, because the name is what you
+ * are typing and what you read to find the row — a slug clipped to
+ * `receive-receive-item-into-reb…` beside forty empty cells was the popup
+ * spending its width on the pane that has since been deleted. Once the name can
+ * hold the longest of them, everything further goes to the tail: repos,
+ * branches and what an agent is doing all keep saying more the more room they
+ * get.
+ */
+export interface Layout {
+  name: number;
+  tail: number;
+}
+
+export function layoutFor(columns: number): Layout {
+  const spare = Math.max(0, columns - NARROW);
+  const name = NAME_MIN + Math.min(spare, NAME_MAX - NAME_MIN);
+  return { name, tail: TAIL_MIN + (spare - (name - NAME_MIN)) };
+}
+
+/**
+ * The terminal's width, less the two cells fzf keeps for its own pointer.
+ *
+ * Not a TTY when the rows are being piped — `--list`, or a test — and then the
+ * narrow layout is the answer, so what those print does not depend on the
+ * window that happened to run them.
+ */
+function terminalColumns(): number {
+  if (!process.stdout.isTTY) return NARROW;
+  return Math.max(NARROW, (process.stdout.columns ?? NARROW) - 2);
+}
 
 /**
  * One row per target, as `<index>\t<what you read>`.
@@ -202,12 +224,16 @@ const TAIL = 26;
  * what a row can be found by is exactly what it shows, and the answer to
  * wanting the repos searchable was to give them a column (see `tail`).
  */
-export function renderRows(targets: readonly SwitchTarget[]): string[] {
+export function renderRows(
+  targets: readonly SwitchTarget[],
+  columns: number = terminalColumns(),
+): string[] {
+  const layout = layoutFor(columns);
   return targets.map((target, index) => {
     // Trailing space is padding for a column this row left empty — a branch it
     // does not need, an activity it never reported. fzf highlights the whole
     // line, so it would show as a bar of blank cells past the end of the text.
-    return `${index}\t${renderRow(target).trimEnd()}`;
+    return `${index}\t${renderRow(target, layout).trimEnd()}`;
   });
 }
 
@@ -217,8 +243,9 @@ export function renderRows(targets: readonly SwitchTarget[]): string[] {
  * The agent's own title first — it is the only label here written by the thing
  * being described, and `Chronopost Label Test` is what you would actually type
  * to find it again. `3:claude` is the fallback and says something different but
- * useful: which window picking this lands you in. Never both, because the tool
- * is already in the row's colour and the window is in the preview.
+ * useful: which window picking this lands you in. Never both: the tool is
+ * already in the row's colour, and a titled agent's window is a number you do
+ * not need in order to pick it.
  */
 function agentSlot(target: SwitchTarget): string {
   if (target.title) return target.title;
@@ -250,15 +277,15 @@ interface Cells {
   tail: string;
 }
 
-function renderRow(target: SwitchTarget): string {
+function renderRow(target: SwitchTarget, layout: Layout): string {
   const cells =
     target.kind === 'agent' && target.agent
-      ? agentCells(target, target.agent)
+      ? agentCells(target, target.agent, layout)
       : target.kind === 'project'
-        ? projectCells(target)
+        ? projectCells(target, layout)
         : target.kind === 'task'
-          ? taskCells(target)
-          : sessionCells(target);
+          ? taskCells(target, layout)
+          : sessionCells(target, layout);
   return `${cells.mark} ${gutter(cells.attention)}${cells.name} ${cells.state} ${cells.meta} ${cells.tail}`;
 }
 
@@ -269,51 +296,51 @@ function renderRow(target: SwitchTarget): string {
  * its own, and the count column it has nothing to put in is held open — that is
  * what keeps one agent's activity in line with its session's repos.
  */
-function agentCells(target: SwitchTarget, agent: FleetAgent): Cells {
+function agentCells(target: SwitchTarget, agent: FleetAgent, layout: Layout): Cells {
   return {
     mark: c.dim('↳'),
     attention: false,
-    name: c.muted(clipPad(agentSlot(target), NAME)),
+    name: c.muted(clipPad(agentSlot(target), layout.name)),
     state: `${statusChip(agent.status, STATE)}${clipPad('', COUNT)}`,
     meta: c.muted(clipPad(agentAge(agent), META)),
-    tail: agentTail(agent),
+    tail: agentTail(agent, layout),
   };
 }
 
-function sessionCells(target: SwitchTarget): Cells {
+function sessionCells(target: SwitchTarget, layout: Layout): Cells {
   return {
     mark: target.attached ? c.ok('●') : c.muted('○'),
     attention: target.needsAttention === true,
-    name: c.bold(clipPad(target.label, NAME)),
+    name: c.bold(clipPad(target.label, layout.name)),
     state: sessionState(target),
     meta: meta(target),
-    tail: tail(target),
+    tail: tail(target, layout),
   };
 }
 
-function taskCells(target: SwitchTarget): Cells {
+function taskCells(target: SwitchTarget, layout: Layout): Cells {
   return {
     mark: c.muted('◦'),
     attention: false,
-    name: c.bold(clipPad(target.label, NAME)),
+    name: c.bold(clipPad(target.label, layout.name)),
     state: c.muted(clipPad('dormant', STATE + COUNT)),
     meta: meta(target),
-    tail: tail(target),
+    tail: tail(target, layout),
   };
 }
 
-function projectCells(target: SwitchTarget): Cells {
+function projectCells(target: SwitchTarget, layout: Layout): Cells {
   return {
     mark: c.dim('+'),
     attention: false,
-    name: c.bold(clipPad(target.label, NAME)),
+    name: c.bold(clipPad(target.label, layout.name)),
     // Not a session yet, and the row says which of the two it is about to
     // become rather than leaving the `+` to carry it alone.
     state: c.muted(clipPad('new session', STATE + COUNT)),
     // Nothing has been created, so there is no age and no worktree count. The
     // column stays open: a project row sits among session rows.
     meta: clipPad('', META),
-    tail: c.muted(clip(tildify(parent(target.path ?? '')), TAIL)),
+    tail: c.muted(clip(tildify(parent(target.path ?? '')), layout.tail)),
   };
 }
 
@@ -330,13 +357,13 @@ function projectCells(target: SwitchTarget): Cells {
  * is thirty cells spent telling you an agent ran `cd`. Clipped from the middle
  * now, so the tool and the target both survive.
  */
-function agentTail(agent: FleetAgent): string {
+function agentTail(agent: FleetAgent, layout: Layout): string {
   if (agent.status === 'blocked_permission' || agent.status === 'blocked_input') {
     const question = agent.prompt?.question;
-    return question ? c.warn(clip(question, TAIL)) : '';
+    return question ? c.warn(clip(question, layout.tail)) : '';
   }
   if (!agent.activity) return '';
-  return c.dim(clipMiddle(shorten(agent.activity), TAIL));
+  return c.dim(clipMiddle(shorten(agent.activity), layout.tail));
 }
 
 /**
@@ -353,16 +380,16 @@ function agentTail(agent: FleetAgent): string {
  * What is left in the branch's own case is the branch the name does not already
  * give you: a PR session's `fix/address-validation`, or a stack layer.
  */
-function tail(target: SwitchTarget): string {
+function tail(target: SwitchTarget, layout: Layout): string {
   const branch = target.branch;
   if (branch && !branch.endsWith(`/${target.label}`) && branch !== target.label) {
-    return c.branch(clip(branch, TAIL));
+    return c.branch(clip(branch, layout.tail));
   }
   const repos = target.task?.repos ?? [];
   if (repos.length === 0) return '';
   const slug = target.task?.slug ?? '';
   const names = [...new Set(repos.map((repo) => repoName(repo, slug)).filter(Boolean))];
-  return c.dim(clip(names.join(' '), TAIL));
+  return c.dim(clip(names.join(' '), layout.tail));
 }
 
 /**
@@ -475,108 +502,6 @@ function clipPad(text: string, n: number): string {
   return pad(clip(text, n), n);
 }
 
-// --- previews ---------------------------------------------------------------
-
-/**
- * A file per row, so the preview costs nothing to show.
- *
- * The obvious `--preview 'fw switch --preview {1}'` would pay a node start and
- * a fresh `buildFleet` per keystroke, for a picture of a fleet this process
- * already has in hand. Writing the panes out once and pointing fzf at `cat` is
- * the same content, rendered from the same snapshot the rows were.
- */
-async function writePreviews(targets: readonly SwitchTarget[]): Promise<Previews> {
-  await sweepStale();
-  const dir = await mkdtemp(join(tmpdir(), PREVIEW_PREFIX));
-  await Promise.all(
-    targets.map((target, index) => writeFile(join(dir, String(index)), renderPreview(target), 'utf8')),
-  );
-  return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
-}
-
-/** Preview directories an earlier run was killed before it could remove. */
-async function sweepStale(): Promise<void> {
-  const root = tmpdir();
-  let entries: string[];
-  try {
-    entries = await readdir(root);
-  } catch {
-    return;
-  }
-  await Promise.all(
-    entries
-      .filter((entry) => entry.startsWith(PREVIEW_PREFIX))
-      .map((entry) => rm(join(root, entry), { recursive: true, force: true })),
-  );
-}
-
-/** What the row expands into: the session's agents, or the task's worktrees. */
-export function renderPreview(target: SwitchTarget): string {
-  const lines: string[] = [];
-  const task = target.task;
-
-  const heading =
-    target.kind === 'project'
-      ? `${c.bold(target.label)} ${c.muted('· no session yet')}`
-      : target.kind === 'task'
-        ? `${c.bold(target.label)} ${c.muted('· task, no session')}`
-        : `${c.bold(target.label)}${target.attached ? c.ok(' · attached') : ''}`;
-  lines.push(heading);
-  if (target.branch) lines.push(c.branch(target.branch));
-  if (target.path) lines.push(c.muted(tildify(target.path)));
-  lines.push('');
-
-  if (target.kind === 'agent' && target.agent) {
-    lines.push(
-      c.muted(`window ${target.window ? `${target.window.index}:${target.window.name}` : '—'}`),
-    );
-    lines.push(renderAgentLine(target.agent, ''));
-    // The prompt an agent is blocked on is the reason to jump to it, so it is
-    // what the preview leads with rather than a summary of it.
-    const prompt = target.agent.prompt;
-    if (prompt?.question) {
-      lines.push('');
-      lines.push(c.warn(prompt.question));
-      for (const option of prompt.options) lines.push(c.muted(`  ${option.key}  ${option.label}`));
-    }
-    lines.push('');
-  } else if (target.kind === 'session') {
-    if (target.lead) {
-      lines.push(c.muted(`${target.agentCount} agent${target.agentCount === 1 ? '' : 's'}`));
-      // Only the lead is carried on the row; the whole roster is what a preview
-      // is for. Rendered with the fleet list's own agent line, so nothing here
-      // is a second opinion about a status.
-      lines.push(renderAgentLine(target.lead, '  '));
-      lines.push('');
-    } else {
-      lines.push(c.dim(`no agents · ${target.panes} pane${target.panes === 1 ? '' : 's'}`));
-      lines.push('');
-    }
-  }
-
-  if (task) {
-    lines.push(c.muted(`${task.type} · ${task.microservice}`));
-    if (task.summary) lines.push(task.summary);
-    lines.push('');
-    for (const repo of task.repos) {
-      const dirty = repo.dirty > 0 ? c.warn(` ${repo.dirty} dirty`) : '';
-      lines.push(`  ${repo.name}${repo.branch ? c.branch(` ${repo.branch}`) : ''}${dirty}`);
-    }
-    if (task.goal) {
-      lines.push('');
-      lines.push(c.muted('goal'));
-      lines.push(task.goal);
-    }
-    if (task.notes) {
-      lines.push('');
-      lines.push(c.muted('notes'));
-      lines.push(task.notes.trim());
-    }
-  }
-
-  return `${lines.join('\n')}\n`;
-}
-
 // --- fzf --------------------------------------------------------------------
 
 /**
@@ -622,7 +547,6 @@ function fzfColors(): string {
  */
 async function runFzf(
   rows: readonly string[],
-  previewDir: string | undefined,
   targets: readonly SwitchTarget[],
 ): Promise<number | undefined> {
   const live = targets.filter((t) => t.kind === 'session').length;
@@ -672,20 +596,6 @@ async function runFzf(
     '--no-scrollbar',
     `--color=${fzfColors()}`,
   ];
-
-  if (previewDir !== undefined) {
-    args.push(
-      `--preview=cat ${previewDir}/{1}`,
-      // Beside the list, and unconditionally. fzf 0.72 honours a width
-      // condition (`right,48%,<110(down,45%)`) whether the width matches or
-      // not, so the spec meant to stack the preview under a *narrow* terminal
-      // stacked it under a 170-column one as well — and a preview is only
-      // worth having where there is room for two columns of text beside
-      // each other.
-      '--preview-window=right,48%,border-left,wrap',
-      '--bind=ctrl-/:toggle-preview',
-    );
-  }
 
   return new Promise((resolve) => {
     const child = spawn('fzf', args, { stdio: ['pipe', 'pipe', 'inherit'] });

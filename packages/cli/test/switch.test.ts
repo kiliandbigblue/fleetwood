@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { homedir } from 'node:os';
 import type { SwitchTarget } from '@fleetwood/core';
-import { renderRows } from '../src/switch.ts';
+import { layoutFor, renderRows } from '../src/switch.ts';
 import { width } from '../src/ui.ts';
 
 /**
@@ -72,9 +72,15 @@ function target(over: Partial<SwitchTarget> = {}): SwitchTarget {
   return { kind: 'session', tier: 'live', ref: 'fleetwood', label: 'fleetwood', ...over };
 }
 
-/** The text of one row, without the index field fzf is told not to display. */
-function shown(t: SwitchTarget): string {
-  return (renderRows([t])[0] as string).split('\t')[1] as string;
+/**
+ * The text of one row, without the index field fzf is told not to display.
+ *
+ * At the narrow layout, always: the two elastic columns are a function of the
+ * terminal's width, and a test that read the real one would pass or fail by the
+ * size of the window it was run in.
+ */
+function shown(t: SwitchTarget, columns = 90): string {
+  return (renderRows([t], columns)[0] as string).split('\t')[1] as string;
 }
 
 test('the index leads, and is the only thing before the first tab', () => {
@@ -170,6 +176,26 @@ test('a name too wide for its column is clipped, not allowed to shift the row', 
   const short = shown(target({ label: 'atlas', panes: 1 }));
   assert.ok(wide.includes('…'));
   assert.equal(wide.indexOf('1 pane'), short.indexOf('1 pane'));
+});
+
+test('past the narrow layout the name grows first, then the tail', () => {
+  const narrow = layoutFor(90);
+  assert.deepEqual(narrow, { name: 30, tail: 26 });
+  // Ten cells spare, and the name takes all of them: it is what you are typing.
+  assert.deepEqual(layoutFor(100), { name: 40, tail: 26 });
+  // Past the longest slug there is, the name stops and the tail takes the rest.
+  assert.deepEqual(layoutFor(120), { name: 44, tail: 42 });
+  // A terminal narrower than the fixed columns still gets the narrow layout
+  // rather than a negative one; fzf clips what does not fit.
+  assert.deepEqual(layoutFor(40), narrow);
+});
+
+test('a wider terminal spends the extra width on the name, not on padding', () => {
+  const long = 'receive-receive-item-into-rebin-or-mono-item';
+  assert.ok(shown(target({ label: long, panes: 1 })).includes('…'));
+  // The same row in a popup with room for it: whole, because the pane that used
+  // to carry the rest of the name is gone.
+  assert.ok(!shown(target({ label: long, panes: 1 }), 140).includes('…'));
 });
 
 test('an agent row is indented under its session and named by its window', () => {

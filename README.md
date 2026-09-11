@@ -346,7 +346,8 @@ fleetwood was already reading it into `PaneInfo.title` and throwing it away.
 
 The fallback is `3:claude`, which says the other useful thing — which window
 picking this lands you in — and never both, because the tool is already in the
-row's colour and the window is in the preview. What counts as *no* title is the
+row's colour and the window is what the fallback already says. What counts as
+*no* title is the
 part with teeth: each CLI parks its own product name there until the
 conversation has a subject (`✳ Claude Code`, `Cursor Agent`), tmux's default is
 the hostname, and Claude Code's pane process is a bare version number — so a row
@@ -362,7 +363,7 @@ which is what keeps this one process — the selection is acted on by the same
 them. Being a hard dependency of a key you press all day, a missing `fzf` is a
 `fw doctor` **failure** rather than a warning, unlike `difit`.
 
-Four details that are load-bearing:
+Three details that are load-bearing:
 
 - **The row is `<index>\ttext`, and there is no hidden column.** fzf displays
   and searches from field 2 on, so the index comes back exact — a pane id parsed
@@ -374,12 +375,6 @@ Four details that are load-bearing:
   the transformed line the search space too. So what a row can be found by is
   exactly what it shows — which turned out to be the better design anyway, see
   the last column below.
-- **Previews are files, written once.** The obvious `--preview 'fw switch
-  --preview {1}'` pays a node start and a fresh `buildFleet` per keystroke, for
-  a picture of a fleet the process already has in hand. They live in one
-  `mkdtemp` directory removed on the way out, plus a sweep of any left behind on
-  the next run — the popup can be closed out from under the process, and that is
-  the one exit no `finally` sees.
 - **`--gutter=' '`.** fzf fills the pointer column of every *non*-current row
   with `▌` by default, and in a single-select list there is nothing for it to
   mean: it reads as a stray glyph in front of each name, or as a second pointer.
@@ -401,10 +396,23 @@ second on branches and dirty counts before the popup could open. That was
 affordable while the callers were the panel's poll and `fw task ls`. The whole
 list now costs ~0.3s, most of it still that.
 
-Columns are capped rather than measured: one task called
+Columns are held rather than measured per row: one task called
 `receive-receive-item-into-rebin-or-mono-item` would otherwise push every status
 chip forty columns right and leave twenty rows reading as names with nothing
-beside them. What is clipped is in the preview.
+beside them. They are measured in *cells* — `✋` is one JavaScript character and
+two columns of terminal, and counting it as one is what used to put a blocked
+row's name a column right of every other name.
+
+**There was a preview pane, and there is not any more.** Half the popup showed
+the selected row expanded — its agents, its worktrees, the task's goal and
+notes. It went because nothing in it was worth the width: the row already
+carries what you are choosing between, and by the time you want a task's notes
+you are going to the session, not reading about it in a picker. What it cost was
+paid on every row instead — the list was capped to the *other* half of the
+popup, so names clipped at thirty characters beside forty empty cells. The two
+elastic columns now take the width back: the name grows first, as far as the
+longest slug, and everything past that goes to the last column. A terminal at or
+below 90 columns gets exactly the layout the split popup had.
 
 **The last column is the branch, or the repos.** A task's branch *is*
 `<type>/<slug>` by the naming convention, so beside the slug it spends the
