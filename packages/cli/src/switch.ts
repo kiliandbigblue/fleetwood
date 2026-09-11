@@ -166,8 +166,14 @@ async function act(target: SwitchTarget): Promise<ActionResult> {
  * clipped, and the preview pane carries the whole of it.
  */
 const NAME = 30;
-/** `✋ permission` at two cells for the glyph — the longest chip there is. */
-const STATE = 13;
+/**
+ * `✋ permission` at two cells for the glyph is thirteen, and this is fourteen.
+ *
+ * The extra cell is a separator the column cannot do without: sized to the
+ * longest chip exactly, the one row that fills it ran its count straight onto
+ * the end of the word — `✋ permission×3`, which reads as neither.
+ */
+const STATE = 14;
 /** `×3`, and two cells of nothing on the rows that have no more to count. */
 const COUNT = 2;
 /** `4 wt · 1d`, or an agent's age. Padded, so the tail starts in one place. */

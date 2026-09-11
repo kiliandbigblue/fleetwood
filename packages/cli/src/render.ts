@@ -157,7 +157,7 @@ export function renderAgentLine(agent: FleetAgent, indent = '    '): string {
   const style = STYLES[agent.status];
   // The chip padded whole, for the reason `statusChip` gives: a two-cell glyph
   // with a padded label is a chip whose width depends on its status.
-  const status = pad(`${style.paint(style.glyph)} ${style.paint(style.label)}`, 13);
+  const status = pad(`${style.paint(style.glyph)} ${style.paint(style.label)}`, 14);
   // "up 6h" reads as uptime; a bare "6h" would claim the agent has been in this
   // status that long, which nothing measured.
   const age = agent.ageIsUptime ? `up ${duration(agent.forSeconds)}` : duration(agent.forSeconds);
