@@ -119,7 +119,10 @@ function jsonOut(value: unknown): void {
 
 /** One place for the options the rendering commands — status, watch, agents — share. */
 async function fleet(capture: boolean): Promise<FleetState> {
-  return buildFleet({ capture });
+  // Context is read for the commands that print a fleet and nobody else: it is
+  // a file handle per agent per call, and `fw switch` wants a list of names.
+  const settings = await configModule.loadConfig();
+  return buildFleet({ capture, context: settings.context });
 }
 
 /**

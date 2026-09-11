@@ -9,10 +9,10 @@ import {
   repoIndex,
   task as taskApi,
 } from '@fleetwood/core';
-import type { ActionResult, SwitchTarget, TaskRepo } from '@fleetwood/core';
+import type { ActionResult, FleetAgent, SwitchTarget, TaskRepo } from '@fleetwood/core';
 import { worktreeShortName } from '@fleetwood/core/naming';
 import { agentAge, renderAgentLine, statusChip } from './render.ts';
-import { c, currentPalette, pad, relativeAge, tildify, width } from './ui.ts';
+import { c, charWidth, clipWidth, currentPalette, pad, relativeAge, tildify, width } from './ui.ts';
 
 /*
  * `fw switch` — what `prefix+g` runs.
@@ -165,10 +165,12 @@ async function act(target: SwitchTarget): Promise<ActionResult> {
  * column of names with nothing beside them. A name that does not fit is
  * clipped, and the preview pane carries the whole of it.
  */
-const NAME = 32;
-/** `✋ permission` — the longest status, plus the count that can follow it. */
-const STATE = 15;
-/** `4 wt · 1d`. Padded, so the branch that follows starts in one place. */
+const NAME = 30;
+/** `✋ permission` at two cells for the glyph — the longest chip there is. */
+const STATE = 13;
+/** `×3`, and two cells of nothing on the rows that have no more to count. */
+const COUNT = 2;
+/** `4 wt · 1d`, or an agent's age. Padded, so the tail starts in one place. */
 const META = 11;
 /**
  * The column that ends a row, capped to what the list half of the popup
@@ -177,7 +179,6 @@ const META = 11;
  * part of it mattered.
  */
 const TAIL = 26;
-const ACTIVITY = 28;
 
 /**
  * One row per target, as `<index>\t<what you read>`.
@@ -219,40 +220,117 @@ function agentSlot(target: SwitchTarget): string {
   return `${window}${target.agent?.tool ?? 'agent'}`;
 }
 
-function renderRow(target: SwitchTarget): string {
-  if (target.kind === 'agent' && target.agent) {
-    const agent = target.agent;
-    // Indented inside the name column rather than in front of the glyph, so an
-    // agent's status chip lines up with its session's instead of sitting two
-    // characters to the right of it.
-    const name = `${c.dim('↳')} ${c.muted(clipPad(agentSlot(target), NAME - 2))}`;
-    const state = statusChip(agent.status, 12);
-    const age = c.muted(clipPad(agentAge(agent), 6));
-    // Tildified, because an activity line is mostly path and the interesting
-    // half of it is the end: `Shell: cd ~/projects/…` says more than the same
-    // number of columns spent on /Users/<name>.
-    const activity = agent.activity ? c.dim(clip(shorten(agent.activity), ACTIVITY)) : '';
-    return `${gutter(false)}${name} ${state} ${age} ${activity}`;
-  }
+/**
+ * The five cells every row has, whatever kind of row it is.
+ *
+ * One shape for all four kinds, because the alternative is what this list had:
+ * each kind assembled its own line, and an agent row — no count column, a
+ * six-wide age where a session had an eleven-wide meta — put its last column
+ * seven cells left of the session rows either side of it. A picker is read down
+ * its columns, so the columns have to exist before the rows do.
+ *
+ * Every cell arrives clipped, padded and painted: a colour closes with a reset,
+ * so measuring one after painting it means measuring the escapes too.
+ */
+interface Cells {
+  /** The one-cell glyph: `●` attached, `○` not, `◦` dormant, `+` new, `↳` agent. */
+  mark: string;
+  /** Whether the `✋` gutter is lit — sessions only; an agent's chip says it. */
+  attention: boolean;
+  name: string;
+  /** Status chip and the `×3` count beside it, as one padded pair. */
+  state: string;
+  meta: string;
+  tail: string;
+}
 
-  if (target.kind === 'project') {
-    const name = c.bold(clipPad(target.label, NAME - 2));
+function renderRow(target: SwitchTarget): string {
+  const cells =
+    target.kind === 'agent' && target.agent
+      ? agentCells(target, target.agent)
+      : target.kind === 'project'
+        ? projectCells(target)
+        : target.kind === 'task'
+          ? taskCells(target)
+          : sessionCells(target);
+  return `${cells.mark} ${gutter(cells.attention)}${cells.name} ${cells.state} ${cells.meta} ${cells.tail}`;
+}
+
+/**
+ * An agent, under the session holding it.
+ *
+ * Its age goes in the session rows' meta column rather than a narrower one of
+ * its own, and the count column it has nothing to put in is held open — that is
+ * what keeps one agent's activity in line with its session's repos.
+ */
+function agentCells(target: SwitchTarget, agent: FleetAgent): Cells {
+  return {
+    mark: c.dim('↳'),
+    attention: false,
+    name: c.muted(clipPad(agentSlot(target), NAME)),
+    state: `${statusChip(agent.status, STATE)}${clipPad('', COUNT)}`,
+    meta: c.muted(clipPad(agentAge(agent), META)),
+    tail: agentTail(agent),
+  };
+}
+
+function sessionCells(target: SwitchTarget): Cells {
+  return {
+    mark: target.attached ? c.ok('●') : c.muted('○'),
+    attention: target.needsAttention === true,
+    name: c.bold(clipPad(target.label, NAME)),
+    state: sessionState(target),
+    meta: meta(target),
+    tail: tail(target),
+  };
+}
+
+function taskCells(target: SwitchTarget): Cells {
+  return {
+    mark: c.muted('◦'),
+    attention: false,
+    name: c.bold(clipPad(target.label, NAME)),
+    state: c.muted(clipPad('dormant', STATE + COUNT)),
+    meta: meta(target),
+    tail: tail(target),
+  };
+}
+
+function projectCells(target: SwitchTarget): Cells {
+  return {
+    mark: c.dim('+'),
+    attention: false,
+    name: c.bold(clipPad(target.label, NAME)),
     // Not a session yet, and the row says which of the two it is about to
     // become rather than leaving the `+` to carry it alone.
-    const state = c.muted(clipPad('new session', STATE));
-    const where = c.muted(tildify(parent(target.path ?? '')));
-    return `${c.dim('+')} ${gutter(false)}${name} ${state} ${where}`;
-  }
+    state: c.muted(clipPad('new session', STATE + COUNT)),
+    // Nothing has been created, so there is no age and no worktree count. The
+    // column stays open: a project row sits among session rows.
+    meta: clipPad('', META),
+    tail: c.muted(clip(tildify(parent(target.path ?? '')), TAIL)),
+  };
+}
 
-  if (target.kind === 'task') {
-    const name = c.bold(clipPad(target.label, NAME - 2));
-    const state = c.muted(clipPad('dormant', STATE));
-    return `${c.muted('◦')} ${gutter(false)}${name} ${state} ${meta(target)} ${tail(target)}`;
+/**
+ * What an agent row ends on, when it has anything to say.
+ *
+ * Two things used to land here that were not worth the widest column in the
+ * list. A blocked agent's activity is Claude Code's own notification text —
+ * `Claude needs your permission` — which is the chip two columns to the left,
+ * spelled out; what you actually want before jumping into that pane is the
+ * question, so the prompt's own text goes here and the restatement goes
+ * nowhere. And a working agent's activity is mostly a command, clipped from the
+ * right, which is the end that carries the meaning: `Bash: cd ~/projects/.age…`
+ * is thirty cells spent telling you an agent ran `cd`. Clipped from the middle
+ * now, so the tool and the target both survive.
+ */
+function agentTail(agent: FleetAgent): string {
+  if (agent.status === 'blocked_permission' || agent.status === 'blocked_input') {
+    const question = agent.prompt?.question;
+    return question ? c.warn(clip(question, TAIL)) : '';
   }
-
-  const glyph = target.attached ? c.ok('●') : c.muted('○');
-  const name = c.bold(clipPad(target.label, NAME - 2));
-  return `${glyph} ${gutter(target.needsAttention === true)}${name} ${sessionState(target)} ${meta(target)} ${tail(target)}`;
+  if (!agent.activity) return '';
+  return c.dim(clipMiddle(shorten(agent.activity), TAIL));
 }
 
 /**
@@ -289,7 +367,10 @@ function tail(target: SwitchTarget): string {
  * every row so the names stay in one column whether anything is blocked or not.
  */
 function gutter(attention: boolean): string {
-  return attention ? `${c.danger('✋')} ` : '  ';
+  // `✋` is two cells wide on its own, so it needs no space after it to match
+  // the two this returns when nothing is blocked. Adding one is what pushed
+  // every blocked session's name a column right of all the others.
+  return attention ? c.danger('✋') : '  ';
 }
 
 /**
@@ -305,10 +386,10 @@ function sessionState(target: SwitchTarget): string {
   const lead = target.lead;
   if (!lead) {
     const panes = target.panes ?? 0;
-    return c.dim(clipPad(`${panes} pane${panes === 1 ? '' : 's'}`, STATE));
+    return c.dim(clipPad(`${panes} pane${panes === 1 ? '' : 's'}`, STATE + COUNT));
   }
   const count = (target.agentCount ?? 1) > 1 ? `×${target.agentCount}` : '';
-  return `${statusChip(lead.status, 12)}${c.accent(clipPad(count, 2))}`;
+  return `${statusChip(lead.status, STATE)}${c.accent(clipPad(count, COUNT))}`;
 }
 
 /** The dim tail: how many worktrees, and how long it has been around. */
@@ -351,9 +432,36 @@ function parent(path: string): string {
   return at > 0 ? path.slice(0, at) : path;
 }
 
-/** Clip to `n` columns, marking that something was taken off. */
+/** Clip to `n` cells, marking that something was taken off. */
 function clip(text: string, n: number): string {
-  return width(text) > n ? `${text.slice(0, n - 1)}…` : text;
+  return clipWidth(text, n);
+}
+
+/**
+ * Keep both ends of a label and drop the middle.
+ *
+ * For activity lines, which are a tool name and then a command: `Bash: ` is the
+ * half you can read in one glance and the argument's own end is the half that
+ * says which command it was. Clipping from the right keeps the first of those
+ * and throws away the second, which on a row of `cd ~/projects/.agents/tasks/…`
+ * leaves nothing but boilerplate.
+ */
+function clipMiddle(text: string, n: number): string {
+  if (width(text) <= n) return text;
+  const at = text.indexOf(': ');
+  const head = at > 0 && at + 2 < n / 2 ? text.slice(0, at + 2) : '';
+  const room = n - width(head) - 1;
+  if (room <= 0) return clipWidth(text, n);
+  let out = '';
+  let used = 0;
+  // From the end, so what survives is the end.
+  for (const char of [...text.slice(head.length)].reverse()) {
+    const w = charWidth(char.codePointAt(0) ?? 0);
+    if (used + w > room) break;
+    out = char + out;
+    used += w;
+  }
+  return `${head}…${out}`;
 }
 
 /** Clip, then pad — painting happens after, since a colour closes with a reset. */

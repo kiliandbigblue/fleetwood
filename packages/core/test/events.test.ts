@@ -35,6 +35,16 @@ test('normalize maps a Claude Code tool call to a readable activity', () => {
   assert.equal(e.pane, '%3');
   assert.equal(e.cwd, '/Users/k/projects/atlas');
   assert.equal(e.activity, 'Bash: pnpm test --filter core');
+  // A command too long for the column keeps both ends: the verb, and the part
+  // that says what it is actually doing. Cutting the tail here would lose it
+  // for both front ends, which shorten this again to fit their own columns.
+  const long = claudeEvent('PreToolUse', {
+    tool_name: 'Bash',
+    tool_input: { command: `cd ${'/some/very/long/path'.repeat(4)} && pnpm -s test` },
+  });
+  assert.match(long.activity ?? '', /^Bash: cd \/some\/very/);
+  assert.match(long.activity ?? '', /&& pnpm -s test$/);
+  assert.ok((long.activity ?? '').includes('…'));
   assert.equal(e.hookPid, 4242);
 });
 

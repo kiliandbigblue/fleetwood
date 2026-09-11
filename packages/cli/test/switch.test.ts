@@ -3,6 +3,20 @@ import assert from 'node:assert/strict';
 import { homedir } from 'node:os';
 import type { SwitchTarget } from '@fleetwood/core';
 import { renderRows } from '../src/switch.ts';
+import { width } from '../src/ui.ts';
+
+/**
+ * Where a substring starts, in terminal cells rather than string indices.
+ *
+ * The distinction is the whole point of these assertions: `✋` is one JavaScript
+ * character and two columns of terminal, so a row measured by `indexOf` can be
+ * "aligned" in the string and visibly a column out — which is exactly the bug
+ * the gutter had.
+ */
+function cellOf(row: string, find: string): number {
+  const at = row.indexOf(find);
+  return at === -1 ? -1 : width(row.slice(0, at));
+}
 
 /*
  * The rows, as text. Colour is off here — `ui.ts` paints only into a TTY — so
@@ -22,6 +36,36 @@ const TASK = {
     { name: 'reflow-orders-b2b-flag-migration', path: '/w/1', repo: 'bigbluedisco/reflow', dirty: 0 },
     { name: 'proto-orders-b2b-flag-migration', path: '/w/2', repo: 'bigbluedisco/proto', dirty: 0 },
   ],
+};
+
+const AGENT = {
+  key: 'claude:%7',
+  tool: 'claude' as const,
+  pane: '%7',
+  provenance: 'hook' as const,
+  since: 0,
+  lastEventAt: 0,
+  turns: 1,
+  toolCalls: 1,
+  errorCount: 0,
+  subagents: 0,
+  alive: true,
+  nested: false,
+};
+
+const BLOCKED = {
+  ...AGENT,
+  status: 'blocked_permission' as const,
+  lastEvent: 'PermissionRequest',
+  forSeconds: 240,
+};
+
+const WORKING = {
+  ...AGENT,
+  status: 'working' as const,
+  lastEvent: 'PreToolUse',
+  forSeconds: 120,
+  activity: 'Bash: pnpm test',
 };
 
 function target(over: Partial<SwitchTarget> = {}): SwitchTarget {
@@ -54,15 +98,29 @@ test('every tier starts its name in the same column', () => {
   // whether the row is a live session, a dormant task or a bare directory.
   for (const row of rows) {
     assert.match(row.slice(0, 4), /^\S\s{3}$/);
-    assert.equal(row.indexOf('x'), 4);
+    assert.equal(cellOf(row, 'x'), 4);
   }
 });
 
 test('an attention flag takes the gutter, not the name column', () => {
   const plain = shown(target({ panes: 2 }));
   const blocked = shown(target({ panes: 2, needsAttention: true }));
-  assert.equal(plain.indexOf('fleetwood'), blocked.indexOf('fleetwood'));
+  // In cells, not characters. `✋` is one character and two columns, so the old
+  // `✋ ` — flag plus a space, to match two spaces — was three columns wide and
+  // pushed every blocked session's name one to the right of all the others.
+  assert.equal(cellOf(blocked, 'fleetwood'), cellOf(plain, 'fleetwood'));
   assert.ok(blocked.includes('✋'));
+});
+
+test('every kind of row puts its last column in the same place', () => {
+  // The columns exist before the rows do: an agent row used to skip the count
+  // column and carry a six-wide age where a session had an eleven-wide meta,
+  // which left its activity seven cells adrift of the repos above it.
+  const session = shown(target({ panes: 2, task: TASK }));
+  const agent = shown(
+    target({ kind: 'agent', ref: '%7', agent: WORKING, window: { index: 3, name: 'claude' } }),
+  );
+  assert.equal(cellOf(agent, 'Bash'), cellOf(session, 'reflow'));
 });
 
 test('a task’s branch is not printed beside the slug it repeats — the repos are', () => {
@@ -116,33 +174,46 @@ test('a name too wide for its column is clipped, not allowed to shift the row', 
 
 test('an agent row is indented under its session and named by its window', () => {
   const agent = {
-    key: 'claude:%7',
-    tool: 'claude' as const,
-    pane: '%7',
-    status: 'blocked_permission' as const,
-    provenance: 'hook' as const,
-    since: 0,
-    lastEventAt: 0,
-    lastEvent: 'PermissionRequest',
-    turns: 1,
-    toolCalls: 1,
-    errorCount: 0,
-    subagents: 0,
-    alive: true,
-    nested: false,
+    ...BLOCKED,
     forSeconds: 240,
-    // The real home, since that is the only one `shorten` rewrites — a path
-    // under somebody else's is not this machine's to abbreviate.
-    activity: `Write: ${homedir()}/projects/fleetwood/packages/cli/src/switch.ts`,
+    activity: 'Claude needs your permission to use Bash',
   };
   const row = shown(target({ kind: 'agent', ref: '%7', agent, window: { index: 3, name: 'claude' } }));
-  assert.match(row, /^\s+↳ 3:claude/);
+  // The `↳` is the row's own mark, in the column a session's `○` occupies, so
+  // the two names start together.
+  assert.match(row, /^↳\s{3}3:claude/);
   assert.ok(row.includes('permission'));
   assert.ok(row.includes('4m'));
+  // The notification text is the chip spelled out — `✋ permission` two columns
+  // to its left — so it does not also get the widest column in the list.
+  assert.ok(!row.includes('needs your permission'));
+});
+
+test('a blocked agent ends on the question, which is the reason to go there', () => {
+  const agent = {
+    ...BLOCKED,
+    activity: 'Claude needs your permission to use Bash',
+    prompt: { question: 'Run rm -rf build?', options: [] },
+  };
+  const row = shown(target({ kind: 'agent', ref: '%7', agent }));
+  assert.ok(row.includes('Run rm -rf build?'));
+  assert.ok(!row.includes('needs your permission'));
+});
+
+test('a working agent keeps both ends of its command, and loses the middle', () => {
+  const agent = {
+    ...WORKING,
+    // The real home, since that is the only one `shorten` rewrites — a path
+    // under somebody else's is not this machine's to abbreviate.
+    activity: `Bash: cd ${homedir()}/projects/.agents/tasks/print-v2 && pnpm test`,
+  };
+  const row = shown(target({ kind: 'agent', ref: '%7', agent }));
+  // The tool says what kind of thing is happening and the end says which one.
+  assert.ok(row.includes('Bash: '));
+  assert.ok(row.includes('pnpm test'));
   // $HOME written as ~ wherever it falls, since an activity line is a command
   // and the home directory turns up in the middle of one.
   assert.ok(!row.includes(homedir()));
-  assert.ok(row.includes('~/projects'));
 });
 
 test('an agent row is named by what the agent called the conversation', () => {

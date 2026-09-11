@@ -1,4 +1,5 @@
 import type { AgentStatus, CursorUsage, FleetAgent, FleetState, PlanLimits } from '@fleetwood/core';
+import { formatContextTokens } from '@fleetwood/core';
 import { agentUrgency, formatUsd, isHidden, isPinned, sessionLabel, sortSessions } from '@fleetwood/core';
 import { c, pad, relativeAge, tildify, width } from './ui.ts';
 
@@ -134,9 +135,17 @@ function provenanceMark(agent: FleetAgent): string {
  * word per status, chosen once. `pad` before painting, since every role closes
  * with a reset and padding after it would sit outside the colour.
  */
-export function statusChip(status: AgentStatus, labelWidth = 0): string {
+/**
+ * Glyph and label as one chip, padded as one thing.
+ *
+ * `chipWidth` is the whole chip, not the label: `✋` takes two cells and `○`
+ * takes one, so padding only the label left the blocked rows a column wider
+ * than every other row and moved everything after them along with it. Measured
+ * through `width`, which counts cells.
+ */
+export function statusChip(status: AgentStatus, chipWidth = 0): string {
   const style = STYLES[status];
-  return `${style.paint(style.glyph)} ${style.paint(pad(style.label, labelWidth))}`;
+  return pad(`${style.paint(style.glyph)} ${style.paint(style.label)}`, chipWidth);
 }
 
 /** How long the agent has been in that status, or its uptime when nothing timed it. */
@@ -146,7 +155,9 @@ export function agentAge(agent: FleetAgent): string {
 
 export function renderAgentLine(agent: FleetAgent, indent = '    '): string {
   const style = STYLES[agent.status];
-  const status = `${style.paint(style.glyph)} ${pad(style.paint(style.label), 11)}`;
+  // The chip padded whole, for the reason `statusChip` gives: a two-cell glyph
+  // with a padded label is a chip whose width depends on its status.
+  const status = pad(`${style.paint(style.glyph)} ${style.paint(style.label)}`, 13);
   // "up 6h" reads as uptime; a bare "6h" would claim the agent has been in this
   // status that long, which nothing measured.
   const age = agent.ageIsUptime ? `up ${duration(agent.forSeconds)}` : duration(agent.forSeconds);
@@ -156,7 +167,14 @@ export function renderAgentLine(agent: FleetAgent, indent = '    '): string {
   const subagents = agent.subagents > 0 ? c.accent(` +${agent.subagents}`) : '';
   const activity = agent.activity ? c.dim(` ${agent.activity}`) : '';
   const pane = c.muted(pad(agent.pane ?? '—', 4));
-  return `${indent}${status}${provenanceMark(agent)} ${pane} ${toolLabel(agent.tool)}${nested}${subagents} ${forTime}${activity}`;
+  // What the next turn here will re-read. Padded whether or not this agent has
+  // one, so the ages beside it stay a column — and banded at the thresholds
+  // core banded with, since a figure nobody notices is not worth the width.
+  const size = agent.contextTokens === undefined ? '' : formatContextTokens(agent.contextTokens);
+  const paint =
+    agent.contextBand === 'critical' ? c.danger : agent.contextBand === 'warn' ? c.warn : c.muted;
+  const context = paint(pad(size, 5));
+  return `${indent}${status}${provenanceMark(agent)} ${pane} ${toolLabel(agent.tool)}${nested}${subagents} ${context} ${forTime}${activity}`;
 }
 
 /**

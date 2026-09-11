@@ -78,6 +78,28 @@ function truncate(s: string, max = 72): string {
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 }
 
+/**
+ * Shorten a shell command from the middle, keeping both of its ends.
+ *
+ * Commands are the one activity whose end carries the point: a row saying
+ * `Bash: cd /Users/…/tasks/print-v2-spooler-stopped-…` has spent every column
+ * it had on the `cd` and thrown away the `&& pnpm test` that says what the
+ * agent is actually doing. Both front ends shorten this again to fit their own
+ * columns, so cutting the tail here loses it for good — which is why this is
+ * upstream of them rather than in either one.
+ *
+ * A prompt is the opposite and still uses `truncate`: what a prompt is about is
+ * in its first words.
+ */
+function elide(s: string, max: number): string {
+  const flat = s.replace(/\s+/g, ' ').trim();
+  if (flat.length <= max) return flat;
+  // The verb and its first argument, against the end that names the target.
+  const head = Math.ceil((max - 1) * 0.6);
+  const tail = max - 1 - head;
+  return `${flat.slice(0, head)}…${flat.slice(flat.length - tail)}`;
+}
+
 function basename(p: string): string {
   const parts = p.split('/');
   return parts[parts.length - 1] || p;
@@ -92,7 +114,7 @@ export function describeToolUse(toolName: string, input: unknown): string {
   switch (toolName) {
     case 'Bash': {
       const cmd = str(o.command);
-      return cmd ? `Bash: ${truncate(cmd, 60)}` : 'Bash';
+      return cmd ? `Bash: ${elide(cmd, 60)}` : 'Bash';
     }
     case 'Read':
     case 'Write':
