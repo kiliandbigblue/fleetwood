@@ -1573,8 +1573,8 @@ button {
   display: flex;
   align-items: baseline;
   /*
-   * `--s2` inside a gauge against the `--s4` between them: the four parts of
-   * `claude ▂▂ 27% 19:59` are one reading, and at 6-against-12 the halves of
+   * `--s2` inside a gauge against the `--s4` between them: the parts of
+   * `claude 27% 19:59` are one reading, and at 6-against-12 the halves of
    * that reading sat almost as far apart as the two different gauges did — a
    * right edge of loose figures rather than two clusters. Half the outer gap
    * is what makes each one read as a single object.
@@ -1604,6 +1604,20 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * The bands the rail's bar used to carry.
+ *
+ * With no meter out there the figure is the only thing left to colour, and a
+ * window about to stall the fleet has to be able to say so without being read.
+ */
+.quota-fig.warn {
+  color: var(--warn);
+}
+
+.quota-fig.critical {
+  color: var(--danger);
+}
+
 .quota-sub {
   color: var(--dim);
   font-variant-numeric: tabular-nums;
@@ -1617,10 +1631,6 @@ button {
 
 .quota-row .quota-sub {
   flex: none;
-}
-
-.quota-gauge .meter {
-  align-self: center;
 }
 
 /*
@@ -1748,21 +1758,22 @@ button {
 /*
  * A narrow panel, in the order things are worth losing.
  *
- * First the reset time, which the gauge's tooltip and the popover both still
- * carry. Then, on a tab that has something waiting on you, the inventory count —
+ * The Claude gauge's reset time is no longer on that list, and this is where
+ * that went wrong: the rule read "the popover still carries it", which was true
+ * while the popover listed every window. It lists the weekly ones now, so at
+ * 460px — the width this panel actually runs at — the session window's reset
+ * was hidden out here and absent in there, leaving a bare `claude 12%` and the
+ * tooltip as the only way to learn when it opens again. The gauge lost its bar
+ * in the same change, so there is also room for it now.
+ *
+ * Cursor's second figure is what sheds instead: `today` is one of the two rows
+ * its popover holds, so dropping it out here really does leave it somewhere.
+ * Then, on a tab that has something waiting on you, the inventory count —
  * `FLEET 5 ●2` becomes `FLEET ●2`, because between those two numbers the one you
  * would act on is not the 5. `minWidth` on the window is 380.
  */
-@media (max-width: 560px) {
-  .quota-gauge .quota-sub {
-    display: none;
-  }
-}
-
 @media (max-width: 430px) {
-  /* Scoped to the rail: the popover is where the reset times go when they cannot
-     fit out here, so hiding them in there too would drop them entirely. */
-  .quota-gauge .quota-sub {
+  .quota-gauge:has(.tool-cursor) .quota-sub {
     display: none;
   }
 

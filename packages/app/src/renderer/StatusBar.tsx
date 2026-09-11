@@ -105,8 +105,15 @@ function ClaudeQuota({ limits }: { limits: PlanLimits }): React.JSX.Element | nu
         <span className="tool tool-claude">claude</span>
         {current ? (
           <>
-            <Meter utilization={current.utilization} stale={limits.stale} />
-            <span className="quota-fig">{percent}%</span>
+            {/*
+             * No bar out here. A meter is a comparison, and there is nothing on
+             * the rail to compare this against — the popover is where the
+             * windows sit side by side and a bar earns its width. What the rail
+             * wants is the two facts: how full, and when it opens again. The
+             * band the bar used to carry moves onto the figure, so 90% still
+             * reaches you from across the room.
+             */}
+            <span className={`quota-fig ${bandOf(current.utilization)}`}>{percent}%</span>
             {clock && <span className="quota-sub">{clock}</span>}
           </>
         ) : (
