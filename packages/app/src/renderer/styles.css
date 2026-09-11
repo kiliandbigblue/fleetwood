@@ -77,12 +77,28 @@
    * where its value stopped. The affordances live in a column of their own now
    * and the values all end where it begins.
    *
-   * Sized to the widest set it ever holds, which is the two controls on a title
-   * row, and not a round number picked for comfort: at 64px the 28px nobody
-   * used read as a wide empty margin down the right of the panel rather than as
-   * a gutter, and in 738px that is width the long branch names wanted.
+   * Sized from the layout, not from the furniture in it.
+   *
+   * It claimed to be the width of the widest set it holds. It was not: the two
+   * controls on a title row measure 47px and this was 40, so they had always
+   * spilled 7px past it — while an agent row's single `×` needs 14 and a pull
+   * request's `↗` needs 8, and both were handed the full 40. One row type's
+   * furniture was setting the trailing edge for every row, and setting it
+   * wrong.
+   *
+   * At 12px a row's trailing value ends `--s4 + --act + --s3` from the card's
+   * edge, which is exactly `--indent` — the same 32px the first word starts at
+   * on the other side. The card has equal shoulders now instead of a wide empty
+   * margin down its right, and the 28px that margin was costing goes to the
+   * branch names, which is what wanted it.
+   *
+   * The controls still draw at their own size and hang leftwards out of the
+   * column, the way the marks hang leftwards out of `--indent`. They are
+   * invisible until the row is hovered, so at rest this is gutter and nothing
+   * else; on the one row whose set is wide enough to reach the value beside it,
+   * that value steps out of the way — see `.card-head:hover .repo-summary`.
    */
-  --act: 40px;
+  --act: 12px;
 
   /*
    * The gutter every row inside a card lines up on, which is where the card's
@@ -1306,6 +1322,17 @@ button {
 
 .row-act {
   flex: 0 0 var(--act);
+  /*
+   * Hold the column at `--act` even when what is in it is wider.
+   *
+   * A flex item's automatic minimum is its content, so a row whose control is
+   * bigger than the column silently widened it instead — the agent row's `×` is
+   * 14px against a 12px column, and that row's `up 3h30m` ended two pixels left
+   * of every other row's trailing value. Two pixels is not visible on its own
+   * and is exactly visible as a column that does not line up. The controls are
+   * meant to overhang; this is what lets them.
+   */
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -2323,7 +2350,22 @@ button {
  * itself, which it otherwise looks exactly like: that one is dropped below
  * 400px, where this stays put.
  */
+/*
+ * The card's metadata yields to the card's controls.
+ *
+ * `1 repo · 4 worktrees` sits immediately left of the control column, and the
+ * head is the one row whose controls — a pane button and a menu, 47px of them —
+ * are wider than that column. At rest they are not drawn and the count has the
+ * space to itself; on hover they want it, and two things in one place is worse
+ * than a count you can read again by moving the pointer away. Same duration as
+ * the controls fading in, so the swap reads as one movement rather than two.
+ */
+.card-head:hover .repo-summary {
+  opacity: 0;
+}
+
 .repo-summary {
+  transition: opacity 120ms ease;
   margin-left: auto;
   /*
    * Sans, by the panel's own rule: `2 repos · 6 worktrees · 1 dirty` is a
