@@ -7,6 +7,9 @@ import { peek } from './spool.ts';
 import { approvalKeys, readScreen } from './screen.ts';
 import type { PromptOption, ScreenRead } from './screen.ts';
 import type { AgentState } from './events.ts';
+import { readContextTokens } from './context.ts';
+import { contextBand } from './contextFormat.ts';
+import type { ContextBand, ContextThresholds } from './contextFormat.ts';
 import type {
   AgentProcess,
   AgentStatus,
@@ -17,6 +20,19 @@ import type {
 } from './types.ts';
 
 export interface FleetAgent extends AgentState {
+  /**
+   * Tokens of context this agent is carrying, off its transcript's newest turn.
+   *
+   * The one live number about an agent that has an action attached: it is what
+   * the next turn re-reads, so a pane at 400k costs several times what the same
+   * question costs in a fresh one, and `/clear` resets it. Absent unless the
+   * caller asked for it, and absent for an agent whose transcript cannot be
+   * read — the column has an empty state, and a guess here would be read as a
+   * fact.
+   */
+  contextTokens?: number;
+  /** Banded here rather than in each front end, so both draw the same line. */
+  contextBand?: ContextBand;
   /** A matching process still exists under the pane. */
   alive: boolean;
   /** Seconds in the current status. */
@@ -114,6 +130,15 @@ export interface BuildOptions {
    * capture-pane per candidate pane, so it is opt-in for cheap callers.
    */
   capture?: boolean;
+  /**
+   * Read each agent's context size, banded at these thresholds.
+   *
+   * One option carrying both the switch and the policy: passing thresholds is
+   * how you ask for the read, since a number with nowhere to be loud is not
+   * worth a file handle per agent per poll. Omitted by callers that only want
+   * status — `fw switch`, the action paths — which is most of them.
+   */
+  context?: ContextThresholds;
   now?: number;
 }
 
@@ -268,13 +293,52 @@ export async function buildFleet(options: BuildOptions = {}): Promise<FleetState
     });
   }
 
+  const everyAgent = [...fleetSessions.flatMap((s) => s.agents), ...orphans];
+  if (options.context) await fillContext(everyAgent, options.context);
+
   const counts = emptyCounts();
-  for (const agent of [...fleetSessions.flatMap((s) => s.agents), ...orphans]) {
+  for (const agent of everyAgent) {
     counts[agent.status] += 1;
     counts.total += 1;
   }
 
   return { at: now, sessions: fleetSessions, orphans, counts };
+}
+
+/**
+ * Fill in each agent's context size, in place.
+ *
+ * One pass over the finished list rather than a read at each of the four places
+ * an agent gets constructed — and it has to be last anyway, because whether an
+ * agent is `nested` is only settled by then, and that decides which of two
+ * agents sharing a transcript gets the figure.
+ *
+ * A `gone` agent is skipped: its transcript still says how big the conversation
+ * got, but there is no next turn to pay for it, and a number in that row would
+ * read as something you could still act on.
+ *
+ * Sharing happens because a spawned agent's hooks can report its parent's
+ * transcript. Printing the same figure on two rows would be wrong on one of
+ * them, so the interactive agent keeps it and the nested one shows nothing —
+ * blank being the column's honest answer for "not known here".
+ */
+async function fillContext(agents: FleetAgent[], at: ContextThresholds): Promise<void> {
+  const owner = new Map<string, FleetAgent>();
+  for (const agent of agents) {
+    if (agent.status === 'gone' || !agent.transcript) continue;
+    const held = owner.get(agent.transcript);
+    if (!held) owner.set(agent.transcript, agent);
+    else if (held.nested && !agent.nested) owner.set(agent.transcript, agent);
+  }
+
+  await Promise.all(
+    [...owner].map(async ([path, agent]) => {
+      const tokens = await readContextTokens(path);
+      if (tokens === undefined) return;
+      agent.contextTokens = tokens;
+      agent.contextBand = contextBand(tokens, at);
+    }),
+  );
 }
 
 /**

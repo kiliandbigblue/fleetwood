@@ -1,5 +1,9 @@
 import { useState } from 'react';
 import type { FleetAgent } from '@fleetwood/core';
+// The leaf module, not the barrel: importing a value from `@fleetwood/core`
+// pulls tmux, `fs` and `child_process` into the renderer bundle — which is the
+// reason the formatter lives apart from the reader in the first place.
+import { describeContext, formatContextTokens } from '@fleetwood/core/contextFormat';
 import { duration, send } from './api.ts';
 
 interface Props {
@@ -105,6 +109,22 @@ export function AgentRow({ agent, where, onResult }: Props): React.JSX.Element {
           </span>
         )}
         <span className="activity">{label}</span>
+        {/* What the next turn in this pane will re-read, and so what it will
+            cost relative to a fresh one. The only number on this row you can
+            act on without leaving the panel: `/clear` empties it. A column of
+            its own, held open across the list, because an agent whose
+            transcript we cannot read leaves it blank and the rows either side
+            still have to line up. */}
+        <span className="agent-context">
+          {agent.contextTokens !== undefined && (
+            <span
+              className={`context-fig ${agent.contextBand ?? ''}`}
+              title={describeContext(agent.contextTokens)}
+            >
+              {formatContextTokens(agent.contextTokens)}
+            </span>
+          )}
+        </span>
         {/* "up 6h" reads as uptime. A bare "6h" against a status nothing timed —
             a process we only found in `ps` — claims it has been working that long. */}
         <span

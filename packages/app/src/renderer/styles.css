@@ -1453,6 +1453,44 @@ button {
   text-align: right;
 }
 
+/*
+ * How much context the agent is dragging, in the gutter beside its age.
+ *
+ * Same treatment as `.since` and for the same reasons: mono so a column of
+ * magnitudes stacks, tabular so the digits do, right-aligned and held open at
+ * the width of `412k` whether or not this row has one — an agent whose
+ * transcript cannot be read leaves it empty, and a column that disappears on
+ * those rows is not a column.
+ *
+ * Deliberately not a bar. Runway is the panel's one proportion and its one
+ * meter; this has no ceiling fleetwood owns, so it is a figure, like every
+ * other count on a row.
+ */
+.agent-context {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+  min-width: 40px;
+  text-align: right;
+  color: var(--dim);
+}
+
+/*
+ * The bands, at the thresholds core banded with.
+ *
+ * Quiet by default: most panes sit below the line all day and a coloured figure
+ * on every row would say nothing. The same two colours the quota figure uses,
+ * because it is the same sentence — this is going to cost you.
+ */
+.context-fig.warn {
+  color: var(--warn);
+}
+
+.context-fig.critical {
+  color: var(--danger);
+}
+
 .nested {
   color: var(--dim);
   font-size: var(--fs-micro);

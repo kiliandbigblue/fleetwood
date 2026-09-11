@@ -176,6 +176,7 @@ async function buildSnapshot(): Promise<Snapshot> {
   const fleet = await buildFleet({
     states: collector?.states,
     capture: settings.capture,
+    context: settings.context,
   });
 
   // Which PR each session is working on, so the PR list can say "already open".

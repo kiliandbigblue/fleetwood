@@ -33,6 +33,14 @@ export {
 } from './taskView.ts';
 export type { Severity, StackRow } from './taskView.ts';
 export { worktreeShortName } from './naming.ts';
+// Flat, like the theme and switch helpers below, for the CLI and for core's own
+// banding pass. The renderer imports the same module by its leaf path instead —
+// a value taken off this barrel drags `fs` and `child_process` into its bundle.
+// The reader is namespaced rather than flat because it is the half that opens
+// files, and the distinction is worth seeing at the call site.
+export { contextBand, describeContext, formatContextTokens } from './contextFormat.ts';
+export type { ContextBand, ContextThresholds } from './contextFormat.ts';
+export * as agentContext from './context.ts';
 // Flat, because the CLI's picker renders these rows and the urgency order is
 // shared with the fleet list — see switchTargets.ts.
 export { agentTitle, agentUrgency, buildSwitchTargets } from './switchTargets.ts';

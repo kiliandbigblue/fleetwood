@@ -150,6 +150,24 @@ export interface Config {
     /** The window moves in hours; polling it hard would be rude and pointless. */
     pollSeconds: number;
   };
+  /**
+   * Where an agent's context stops being unremarkable and starts being loud.
+   *
+   * Settings rather than constants because the line is a judgement about your
+   * own plan and your own patience, and the cost is linear either side of it —
+   * there is no natural cliff to hardcode. The defaults come off a week of
+   * measured sessions: half of all consumption sat above 250k, and a turn at
+   * 450k cost about four times a fresh one.
+   *
+   * The other candidate ceiling, Claude Code's own auto-compact window, is
+   * deliberately not used: it lives in *its* settings and can be overridden per
+   * launch, so fleetwood would be drawing a bar against a number it does not
+   * own and cannot see.
+   */
+  context: {
+    warnTokens: number;
+    criticalTokens: number;
+  };
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -179,6 +197,7 @@ export const DEFAULT_CONFIG: Config = {
   theme: DEFAULT_THEME,
   bgOpacity: DEFAULT_BG_OPACITY,
   limits: { tokenCommand: '', cursorTokenCommand: '', pollSeconds: 300 },
+  context: { warnTokens: 250_000, criticalTokens: 450_000 },
 };
 
 /** Shallow-merge on purpose: a partial config file must not lose new defaults. */
@@ -195,6 +214,7 @@ export async function loadConfig(): Promise<Config> {
       },
       poll: { ...DEFAULT_CONFIG.poll, ...raw.poll },
       limits: { ...DEFAULT_CONFIG.limits, ...raw.limits },
+      context: { ...DEFAULT_CONFIG.context, ...raw.context },
       repoGroups: { ...DEFAULT_CONFIG.repoGroups, ...raw.repoGroups },
       // Validated rather than merged: every other field degrades legibly when
       // it's wrong, but a misspelt theme name would leave both UIs with no
