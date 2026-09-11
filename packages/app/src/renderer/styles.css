@@ -1055,11 +1055,18 @@ button {
  * attached to, and neither said whether the work was finished.
  *
  * So one channel, four rungs, and the glyph fills up as the work does: an empty
- * ring, a half-filled one, a filled one still inside its ring, and a solid disc.
- * Read down a list of twelve cards that is a progress bar per row. Colour only
- * seconds it — dim, accent, accent, green — so a card is still legible to
- * someone who cannot tell the four hues apart, which a rank drawn in colour
- * alone never was.
+ * ring, a small core, a large core, a solid disc. One property does all of it —
+ * the gap between the ring and its fill — which is what keeps every step
+ * concentric. The first attempt filled the left half of the inner disc instead,
+ * and a half-moon hugging one side of a ring 11px across does not read as "half
+ * done"; it reads as a mark that failed to render.
+ *
+ * Colour seconds the shape rather than carrying it, so a card is still legible
+ * to someone who cannot tell the hues apart — which a rank drawn in colour alone
+ * never was. Four rungs get four hues, and `--danger` is deliberately not one of
+ * them: red stays the colour of something being wrong, which is a different
+ * question from how far along this is, and it still has the PR rows and the
+ * needs-attention tint to say it on.
  *
  * Same column and same `--dot` / `--dot-mark` split as `.attached-dot`, since
  * `--indent` and every row's text rail are derived from that width.
@@ -1086,23 +1093,26 @@ button {
   background-color: transparent;
 }
 
-/* Nothing committed. The quietest thing on the card, and the only rung drawn in
-   the dim ink — an untouched task should not compete with a live one. */
+/* Nothing committed: an empty ring in the dim ink. The quietest thing on the
+   card, because an untouched task should not compete with a live one. */
 .status-dot.status-not-started {
   color: var(--dim);
 }
 
-/* Half filled, and the half is literal: a hard-edged gradient rather than a
-   second element, so the mark stays one box that cannot drift out of round. */
+/* Something is being written. A small core — the ring has started to fill — in
+   the same gold the dirty count uses, which is the fact underneath it most of
+   the time. */
 .status-dot.status-wip {
-  color: var(--accent);
+  color: var(--warn);
 }
 .status-dot.status-wip::before {
-  background-image: linear-gradient(90deg, currentColor 50%, transparent 50%);
+  background-color: currentColor;
+  padding: 2.5px;
 }
 
-/* Written, and waiting on somebody else. Filled inside its ring — the work is
-   done, the ring is the review still standing around it. */
+/* Written, and waiting on somebody else. The core grows to meet the ring, and
+   the hue changes hands: gold is work you are doing, iris is work that has left
+   you. */
 .status-dot.status-in-review {
   color: var(--accent);
 }
@@ -1110,9 +1120,9 @@ button {
   background-color: currentColor;
 }
 
-/* Landed. The ring closes: border and fill are the same ink, so this is the one
-   rung with no gap in it at all, which is what makes it read as finished across
-   a list rather than as "in review but greener". */
+/* Landed. The ring closes — border and fill are one ink, the only rung with no
+   gap in it at all — which is what makes it read as finished down a list rather
+   than as "in review but greener". */
 .status-dot.status-done {
   color: var(--ok);
 }
@@ -2786,11 +2796,19 @@ button {
   opacity: 0.55;
 }
 
+/*
+ * Not a verdict, so not in a verdict's colour.
+ *
+ * It was `--ok`, which is exactly what `approved` is set in — so a landed pull
+ * request and one still waiting to be merged said two different things in the
+ * same green, one row apart. `merged` is a record of where the work went; the
+ * neutral ink says that, and the dimmed row it sits on says the rest.
+ */
 .task-pr-merged {
   font-size: var(--fs-micro);
   white-space: nowrap;
   flex: none;
-  color: var(--ok);
+  color: var(--soft);
 }
 
 /*

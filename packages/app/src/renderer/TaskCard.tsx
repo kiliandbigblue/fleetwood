@@ -304,7 +304,10 @@ export function PrRow({
   // place — a base that has already merged — where it is the only thing here that
   // says why the row belongs to this task at all.
   const inStack = stack !== undefined && stack.of > 1;
-  const viaMark = inStack && stack.rung > 1 ? '' : VIA_MARK[pr.via];
+  const landed = isMerged(pr);
+  // A landed row says why it belongs to the task no more than a live one does,
+  // and the mark is the loudest thing left on a row that is otherwise all dim.
+  const viaMark = landed || (inStack && stack.rung > 1) ? '' : VIA_MARK[pr.via];
   const where = pr.repoName ?? pr.repo;
   const open = (): void => {
     void send({ kind: 'openExternal', url: pr.url }).then((r) => onResult(r.detail, r.ok));
@@ -312,19 +315,32 @@ export function PrRow({
 
   return (
     <div
-      className={`task-pr${isMerged(pr) ? ' task-pr-landed' : ''}`}
+      className={`task-pr${landed ? ' task-pr-landed' : ''}`}
       onClick={open}
       title={`${pr.repo}#${pr.number} · ${pr.branch}\n${VIA_LABEL[pr.via]}${where ? ` · ${where}` : ''}`}
     >
+      {/*
+       * A landed row reports no checks, whatever GitHub still has attached.
+       *
+       * Two merged pull requests came back disagreeing here — one kept a rollup
+       * on its head commit and drew a tick, the other had none and drew the
+       * neutral dot — so the leftmost column of a finished list was ragged over
+       * a fact that had stopped mattering. It is the same reason the review
+       * decision is displaced below: on a row whose work is in the trunk, last
+       * week's CI run is history, and history does not get a column that the
+       * rows still in flight are read down.
+       */}
       <span
-        className={`checks-${pr.checks ?? 'none'}`}
+        className={`checks-${landed ? 'none' : (pr.checks ?? 'none')}`}
         title={
-          pr.checksDetail
-            ? `${pr.checksDetail.passing} passing, ${pr.checksDetail.failing} failing, ${pr.checksDetail.pending} pending`
-            : 'no checks'
+          landed
+            ? 'merged — its checks are history'
+            : pr.checksDetail
+              ? `${pr.checksDetail.passing} passing, ${pr.checksDetail.failing} failing, ${pr.checksDetail.pending} pending`
+              : 'no checks'
         }
       >
-        {CHECK_GLYPH[pr.checks ?? 'none']}
+        {CHECK_GLYPH[landed ? 'none' : (pr.checks ?? 'none')]}
       </span>
       <span className="pr-number">#{pr.number}</span>
       {/* One column, held open even for a row that is in no stack — see
@@ -364,7 +380,7 @@ export function PrRow({
        * the states that ask something.
        */}
       <span className="task-pr-state">
-        {isMerged(pr) ? (
+        {landed ? (
           /* The end of the line, so it displaces both of the others: a landed
              pull request's last review decision and last check run are history,
              and drawing them would put an errand on a row with none left. */
