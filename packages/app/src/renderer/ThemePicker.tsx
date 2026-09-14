@@ -13,6 +13,15 @@ interface Props {
   open: boolean;
   onToggle: () => void;
   onClose: () => void;
+  /**
+   * Where the sync report goes.
+   *
+   * The click now rewrites Ghostty's, Neovim's and tmux's configs as well as this
+   * window's, and two of those cannot be reloaded from here — so the toast is the
+   * only place the user learns that a keystroke in Ghostty is still owed, or that
+   * a path in `themeSync` no longer exists.
+   */
+  onResult: (message: string, ok: boolean) => void;
 }
 
 /** Whole percents: the file holds 0.65, the slider speaks 65. */
@@ -34,6 +43,7 @@ export function ThemePicker({
   open,
   onToggle,
   onClose,
+  onResult,
 }: Props): React.JSX.Element {
   const wrapRef = useRef<HTMLDivElement>(null);
   /*
@@ -54,7 +64,9 @@ export function ThemePicker({
     // The snapshot is still the source of truth and will agree a moment later.
     applyTheme(name, alpha);
     onClose();
-    void send({ kind: 'setTheme', theme: name });
+    void send({ kind: 'setTheme', theme: name }).then((result) =>
+      onResult(result.detail, result.ok),
+    );
   };
 
   /*

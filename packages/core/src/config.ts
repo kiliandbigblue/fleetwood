@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { CONFIG_FILE, ensureDirs } from './paths.ts';
 import { clampBgOpacity, DEFAULT_BG_OPACITY, DEFAULT_THEME, isThemeName } from './theme.ts';
 import type { ThemeName } from './theme.ts';
+import { DEFAULT_THEME_SYNC } from './themeSync.ts';
+import type { ThemeSyncConfig } from './themeSync.ts';
 
 /**
  * How a workflow run's name is read as deploy / build / pre-flight.
@@ -135,6 +137,16 @@ export interface Config {
    */
   bgOpacity: number;
   /**
+   * Where the picked theme goes besides this window: Ghostty, Neovim, tmux.
+   *
+   * Paths rather than constants because this is the one setting that writes
+   * outside `~/.fleetwood`, into files fleetwood does not own — so a machine
+   * laid out differently can say where they are, and anyone who would rather
+   * the picker only painted the panel can set `enabled: false`. See
+   * `themeSync.ts` for what each file gets.
+   */
+  themeSync: ThemeSyncConfig;
+  /**
    * Plan quota — Claude's `/usage` windows, and Cursor's on-demand cycle / today.
    *
    * Off until the matching command is set, because reading either means handing
@@ -196,6 +208,7 @@ export const DEFAULT_CONFIG: Config = {
   editor: 'nvim',
   theme: DEFAULT_THEME,
   bgOpacity: DEFAULT_BG_OPACITY,
+  themeSync: DEFAULT_THEME_SYNC,
   limits: { tokenCommand: '', cursorTokenCommand: '', pollSeconds: 300 },
   context: { warnTokens: 250_000, criticalTokens: 450_000 },
 };
@@ -223,6 +236,7 @@ export async function loadConfig(): Promise<Config> {
       // Same reasoning, one step further: an out-of-range alpha would leave the
       // window either invisible or lying about the slider it came from.
       bgOpacity: clampBgOpacity(raw.bgOpacity),
+      themeSync: { ...DEFAULT_CONFIG.themeSync, ...raw.themeSync },
     };
   } catch {
     return DEFAULT_CONFIG;

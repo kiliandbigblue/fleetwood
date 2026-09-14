@@ -267,6 +267,7 @@ export function App(): React.JSX.Element {
               open={themeOpen}
               onToggle={() => setThemeOpen((open) => !open)}
               onClose={() => setThemeOpen(false)}
+              onResult={onResult}
             />
           )
         }

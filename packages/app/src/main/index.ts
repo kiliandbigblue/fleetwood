@@ -18,6 +18,7 @@ import {
   task as taskApi,
   taskHistory as taskHistoryApi,
   taskPrs as taskPrsApi,
+  themeSync,
   THEMES,
 } from '@fleetwood/core';
 import type {
@@ -601,7 +602,22 @@ async function handle(request: Request): Promise<Response> {
       await configModule.saveTheme(request.theme);
       await pushSnapshot();
       const theme = THEMES[request.theme];
-      return { ok: true, detail: `${theme.family} ${theme.label}` };
+      /*
+       * Then the rest of the desk. After the push, not before: the panel is the
+       * surface the user is looking at when they click, so it repaints on its own
+       * timing and Ghostty, Neovim and tmux follow a few file writes later.
+       *
+       * `syncTheme` swallows its own failures into the report, so this cannot
+       * cost the click — the worst case is a toast saying which surface did not
+       * take it.
+       */
+      const settings = await configModule.loadConfig();
+      const report = await themeSync.syncTheme(request.theme, settings.themeSync);
+      const detail = themeSync.summarise(report);
+      return {
+        ok: report.surfaces.every((surface) => !surface.error),
+        detail: `${theme.family} ${theme.label}${detail ? ` — ${detail}` : ''}`,
+      };
     }
 
     case 'setBgOpacity': {

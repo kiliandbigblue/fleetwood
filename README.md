@@ -217,10 +217,10 @@ not notarised, so it will not run as-is on anyone else's Mac.
 
 ### Themes
 
-The `◐` button in the header switches palette. Eight flavours across three
-families — Rosé Pine (main, moon), Catppuccin (mocha, macchiato, frappé) and Tokyo
-Night (night, storm, moon) — with Rosé Pine main the default, because that is what
-the tmux status line runs.
+The `◐` button in the header switches palette. Eleven flavours across four
+families — Rosé Pine (main, moon), Catppuccin (mocha, macchiato, frappé), Tokyo
+Night (night, storm, moon) and Helldivers II (terminids, automatons, illuminate) —
+with Rosé Pine main the default, because that is what the tmux status line runs.
 
 The choice is one `theme` key in `~/.fleetwood/config.json`, so **`fw` paints in it
 too**. That is the point of the setting rather than a bonus: this panel lives beside
@@ -233,6 +233,44 @@ The `background` slider at the foot of the same popover sets how much of the
 desktop shows through — 100% down to 20%, live as you drag, saved as a `bgOpacity`
 key beside `theme`. That one is the panel's alone: a terminal's transparency is the
 terminal's setting, so `fw` has no use for it.
+
+#### One click, the whole desk
+
+Picking a flavour also repaints **Ghostty, Neovim and tmux**. The panel and `fw`
+agreeing was always only half the job: the clash the setting exists to end is
+between this window and the terminal beside it, and that meant editing four config
+files by hand — or, before this, running `~/.agents/skills/switch-theme` and
+remembering to keep the two in step.
+
+`packages/core/src/themeSync.ts` does what that script did, with one difference that
+matters: **it holds no second copy of the colours.** The tmux status palette
+(`ST_BASE`, `ST_OVERLAY`, … — the hand-rolled status line's `%hidden` block) and the
+Ghostty theme files for the Helldivers flavours, which have no built-in, are both
+*derived* from `theme.ts`. So a palette edit lands on every surface at once and they
+cannot drift apart. The upstream families keep their own Ghostty and Neovim themes:
+those were drawn by the people who designed the palette, and a mapping invented here
+would be a worse Catppuccin than Catppuccin's.
+
+What each surface gets:
+
+| Surface | Change |
+|---|---|
+| ghostty | `theme = …` in the live macOS config *and* the dotfiles copy; a generated theme file for the Helldivers flavours |
+| nvim | the `vim.cmd.colorscheme("…")` call — it wins over each plugin's own `style`, so those are left alone |
+| tmux | uncomments the target family's plugin block, comments out the others, rewrites the variant line, and regenerates the `ST_*` palette |
+
+Every path is a key under `themeSync` in `config.json`, because this is the one
+setting that writes to files fleetwood does not own — so a machine laid out
+differently can say where they are, and `themeSync.enabled: false` goes back to
+painting the panel alone. Each file is copied into `~/.fleetwood/backups` before it
+is touched, written atomically, and **skipped rather than failed** when it is
+missing: picking a colour must not error because a dotfile moved.
+
+**tmux is reloaded for you** (`source-file`, since the panel drives tmux all day
+anyway); Ghostty and Neovim are not, because reloading them means a keystroke into
+whatever window is frontmost or typing into somebody's editor mid-edit. The toast
+says which surfaces moved and what is still owed — `⌘⇧,` in Ghostty,
+`:colorscheme …` in an open nvim. New instances of either pick it up on their own.
 
 Only two of the eleven roles thin out, `bg` and `panel`. Text, accents and borders
 stay solid at every setting, because the point is to see the desktop through the
