@@ -1422,6 +1422,54 @@ button {
   margin-left: 0;
 }
 
+/*
+ * A head control's target is the row it sits in, not the box it draws.
+ *
+ * The two controls on a card's title — the pane button and the menu — draw a
+ * 24px square each inside a 33px row whose every other pixel is the head's own
+ * click target, and that head *focuses the tmux session*. So a miss was never a
+ * no-op: the 4px of row above each button and the 4px below it, the 2px lane
+ * between them, and the head's whole 12px right padding all took you out to
+ * tmux and left you to come back and aim again. A 24px square is a fine target
+ * until the penalty for missing it is the screen changing under you — which is
+ * the whole of why these read as unclickable.
+ *
+ * So the drawn box stays exactly where it was — this row's rhythm is measured
+ * to the pixel elsewhere in this file — and only the target grows, on an
+ * `::after` that covers the row's full height and runs to its neighbour. The
+ * two overlap by design in the lane between them: the later element wins it,
+ * which is how the lane stops existing rather than being split down the
+ * middle. The menu takes the head's trailing padding for the same reason — it
+ * is the last thing on the row, and the 12px past it belonged to nothing.
+ *
+ * Safe while the controls are invisible at rest: `.row-act > *` fades in on
+ * hover, and a pointer that can click has already hovered.
+ */
+.pane-open,
+.menu-open {
+  position: relative;
+}
+
+.pane-open::after,
+.menu-open::after {
+  content: '';
+  position: absolute;
+  /* `--s2` is the head's own vertical padding, so this is the row, edge to edge. */
+  inset-block: calc(var(--s2) * -1);
+}
+
+/* Leftwards into `.repo-summary`, which is a caption and clicks through to the
+   head anyway — there is nothing there to take a click from. */
+.pane-open::after {
+  inset-inline: calc(var(--s3) * -1) calc(var(--s1) * -1);
+}
+
+/* `--s4` on the trailing edge: the head's right padding, which is dead space on
+   the one side of the row where the pointer arrives from the window's edge. */
+.menu-open::after {
+  inset-inline: calc(var(--s1) * -1) calc(var(--s4) * -1);
+}
+
 /* --- agent row ----------------------------------------------------------- */
 
 .agents {
@@ -3162,10 +3210,18 @@ button {
   align-self: center;
   display: grid;
   place-items: center;
-  width: 19px;
-  height: 19px;
+  /*
+   * 24px, the same square `.menu-open` draws — and for the reason given there:
+   * a control is a target and not its glyph's bounding box. At 19 it was the
+   * odd one out of the two controls that sit side by side, a shade smaller
+   * than the thing it is read alongside, and its hover fill was visibly the
+   * short one of the pair. The mark inside is still `--mark-md`, so nothing
+   * about the drawn icon changes — only the box it is centred in.
+   */
+  width: 24px;
+  height: 24px;
   margin-left: 2px;
-  border-radius: 4px;
+  border-radius: 5px;
   font-size: var(--mark-md);
   color: var(--dim);
 }
