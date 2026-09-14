@@ -1,0 +1,8 @@
+Geist Mono — Vercel, 2023.
+Licensed under the SIL Open Font License, Version 1.1.
+https://github.com/vercel/geist-font
+
+Bundled here as the latin subset of the variable font (weight 100–900), cut by
+Google Fonts. The panel ships the file rather than naming the family: a font that
+resolves on the machine it was chosen on and nowhere else is a coincidence, not
+a decision.
