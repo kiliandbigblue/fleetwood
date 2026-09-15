@@ -151,6 +151,79 @@ export function baseFor(prs: TaskPr[] | undefined, repo: TaskRepo): string | und
 }
 
 /**
+ * A task's worktrees in the order its stack reads, when it has one.
+ *
+ * The rows come off `readdir`, so their order is the directory names sorted —
+ * which is the right answer until the work is stacked. Then the convention is one
+ * directory per layer (`reflow-orders-helper`, `reflow-orders-upsert`), and
+ * alphabetical is simply a different order from the one the pull requests below
+ * are printed in: the same four branches, bottom-first in one list and by name in
+ * the other, with nothing on either saying they are the same four.
+ *
+ * So the rank comes from the list that already knows. A worktree's own pull
+ * request is the `head` one on the branch it is checked out on — the match
+ * `baseFor` makes — and `groupPrStacks` has already put those in printed order,
+ * bottom layer first, each stack contiguous. Ordering the rows by that position
+ * makes the two lists one list read twice.
+ *
+ * Only a stack reorders anything. A task holding two unrelated repos has a pull
+ * request each and no relation between them, so ranking those rows would have the
+ * card assert an order the pull requests never claimed; alphabetical is the honest
+ * answer there and it is left alone.
+ *
+ * Worktrees with no pull request of their own keep their places, and the ranked
+ * ones take the slot of the first of them — the rule `groupPrStacks` uses to emit
+ * a stack where its earliest member sat, so a repo that is no part of this does
+ * not move because its neighbours did.
+ */
+export function orderReposByStack(repos: TaskRepo[], prs: TaskPr[] | undefined): TaskRepo[] {
+  if (!prs || repos.length < 2) return repos;
+
+  const rows = groupPrStacks(splitPrs(prs).open);
+  // Keyed on the worktree *and* its branch, for the reason `baseFor` is matched on
+  // both: a stack is one repo on several branches, so neither half identifies a
+  // layer alone.
+  const layerKey = (repoName: string, branch: string): string => `${repoName} ${branch}`;
+  const rank = new Map<string, number>();
+  const inStack = new Set<string>();
+  rows.forEach((row, index) => {
+    const { via, repoName, branch } = row.pr;
+    if (via !== 'head' || repoName === undefined || branch === undefined) return;
+    const id = layerKey(repoName, branch);
+    if (rank.has(id)) return;
+    rank.set(id, index);
+    if (row.of > 1) inStack.add(id);
+  });
+
+  const rankOf = (repo: TaskRepo): number | undefined =>
+    repo.branch === undefined ? undefined : rank.get(layerKey(repo.name, repo.branch));
+
+  const ranked = repos.filter((repo) => rankOf(repo) !== undefined);
+  // Two rows to order, and at least one of them a layer: a single stacked
+  // worktree beside unrelated ones says nothing about where they belong.
+  if (ranked.length < 2) return repos;
+  if (!ranked.some((repo) => repo.branch !== undefined && inStack.has(layerKey(repo.name, repo.branch)))) {
+    return repos;
+  }
+
+  ranked.sort((a, b) => (rankOf(a) as number) - (rankOf(b) as number));
+
+  const out: TaskRepo[] = [];
+  let placed = false;
+  for (const repo of repos) {
+    if (rankOf(repo) !== undefined) {
+      if (!placed) {
+        out.push(...ranked);
+        placed = true;
+      }
+      continue;
+    }
+    out.push(repo);
+  }
+  return out;
+}
+
+/**
  * Why a branch is believed to be the task's, in words.
  *
  * Every one of these is an inference of a different strength, and the card says

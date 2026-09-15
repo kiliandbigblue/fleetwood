@@ -5,6 +5,7 @@ import type { FleetSession, Task, TaskPr } from '@fleetwood/core';
 import {
   baseFor,
   groupPrStacks,
+  orderReposByStack,
   partitionAgents,
   prRepoTags,
   prSummary,
@@ -200,7 +201,7 @@ export function TaskPane({
 
       {task.repos.length > 0 ? (
         <div className="task-repos">
-          {task.repos.map((repo) => (
+          {orderReposByStack(task.repos, prs).map((repo) => (
             <RepoRow
               key={repo.name}
               repo={repo}

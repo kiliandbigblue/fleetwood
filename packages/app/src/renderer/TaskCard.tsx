@@ -6,6 +6,7 @@ import {
   baseFor,
   groupPrStacks,
   isMerged,
+  orderReposByStack,
   partitionAgents,
   prRepoTags,
   prSummary,
@@ -637,7 +638,7 @@ export function TaskCard({
       )}
 
       <div className="task-repos">
-        {task.repos.map((repo) => (
+        {orderReposByStack(task.repos, prs).map((repo) => (
           <RepoRow
             key={repo.name}
             repo={repo}

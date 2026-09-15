@@ -10,6 +10,7 @@ import {
   cursorUsage as cursorUsageApi,
   deployMarks,
   groupPrStacks,
+  orderReposByStack,
   prSession,
   proc,
   prRepoTags,
@@ -1114,7 +1115,9 @@ async function cmdTaskList(argv: string[], json: boolean): Promise<void> {
       `${live} ${status} ${c.bold(t.slug)} ${c.warn(t.branch)} ${c.muted(repoSummary(t.repos, t.branch))}` +
         `${t.session ? c.dim(` session ${t.session}`) : ''}\n`,
     );
-    for (const repo of t.repos) {
+    // Ordered to read like the stack below, when the task is one — see
+    // `orderReposByStack`. The panel's rows do the same.
+    for (const repo of orderReposByStack(t.repos, prs?.byTask[t.slug])) {
       const dirty = repo.dirty > 0 ? c.warn(`${repo.dirty} dirty`) : c.muted('clean');
       const offBranch = repo.branch && repo.branch !== t.branch ? c.danger(` on ${repo.branch}`) : '';
       process.stdout.write(`    ${pad(repo.name, 22)} ${dirty}${offBranch}\n`);

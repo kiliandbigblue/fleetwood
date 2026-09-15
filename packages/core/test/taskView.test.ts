@@ -4,6 +4,7 @@ import {
   baseFor,
   groupPrStacks,
   isMerged,
+  orderReposByStack,
   splitPrs,
   partitionAgents,
   prRepoTags,
@@ -449,4 +450,98 @@ test('a task with nothing left open says only what landed', () => {
 
 test('a landed pull request is not an errand, so it cannot make a task urgent', () => {
   assert.equal(worstState([repo(0)], [pr({ state: 'MERGED', checks: 'failing' })], false), 'quiet');
+});
+
+/*
+ * The stack's third layer, so the rows have somewhere to move *to* — two of them
+ * could be right by accident, and alphabetical already puts `helper` first.
+ */
+const flagLayer: TaskRepo = {
+  name: 'reflow-orders-b2b-flag',
+  path: '/t/reflow-orders-b2b-flag',
+  repo: 'bigbluedisco/reflow',
+  branch: 'fix/orders-b2b-flag',
+  dirty: 0,
+};
+
+/** The three layers' pull requests: helper on the trunk, upsert on helper, flag on upsert. */
+const stackPrs = [
+  pr({ number: 10427, branch: helperLayer.branch, base: 'dev', repoName: helperLayer.name, ahead: 3 }),
+  pr({
+    number: 10428,
+    branch: upsertLayer.branch,
+    base: helperLayer.branch,
+    repoName: upsertLayer.name,
+    ahead: 9,
+  }),
+  pr({
+    number: 10429,
+    branch: flagLayer.branch,
+    base: upsertLayer.branch,
+    repoName: flagLayer.name,
+    ahead: 14,
+  }),
+];
+
+test('a stacked task lists its worktrees bottom layer first, as the pull requests read', () => {
+  // `readdir` order — alphabetical, which puts the top layer first and says nothing.
+  const rows = orderReposByStack([flagLayer, helperLayer, upsertLayer], stackPrs);
+  assert.deepEqual(
+    rows.map((r) => r.name),
+    [helperLayer.name, upsertLayer.name, flagLayer.name],
+  );
+});
+
+test('a worktree with no pull request of its own is not sorted into the stack', () => {
+  // `proto` is nowhere in the stack, so nothing has been said about where it goes.
+  // The layers gather at the slot of the first of them and it keeps the rest —
+  // last here, after a block that grew, but never interleaved with the rungs.
+  const proto: TaskRepo = { name: 'proto', path: '/t/proto', branch: 'fix/orders', dirty: 0 };
+  const rows = orderReposByStack([flagLayer, helperLayer, proto, upsertLayer], stackPrs);
+  assert.deepEqual(
+    rows.map((r) => r.name),
+    [helperLayer.name, upsertLayer.name, flagLayer.name, 'proto'],
+  );
+});
+
+test('unstacked repos are left alone — their pull requests claim no order', () => {
+  const graphy: TaskRepo = { name: 'graphy', path: '/t/graphy', branch: 'fix/labels', dirty: 0 };
+  const atlas: TaskRepo = { name: 'atlas', path: '/t/atlas', branch: 'fix/labels', dirty: 0 };
+  const prs = [
+    pr({ number: 88, repo: 'bigbluedisco/graphy', branch: 'fix/labels', base: 'dev', repoName: 'graphy' }),
+    pr({ number: 4, repo: 'bigbluedisco/atlas', branch: 'fix/labels', base: 'dev', repoName: 'atlas' }),
+  ];
+  assert.deepEqual(
+    orderReposByStack([graphy, atlas], prs).map((r) => r.name),
+    ['graphy', 'atlas'],
+  );
+});
+
+test('only the branch a worktree is on ranks it — a merged layer moves nothing', () => {
+  // The bottom layer landed, so it is out of the open list `groupPrStacks` runs on
+  // and the two above it are the whole stack. Unranked, the merged worktree is not
+  // part of the block that moves.
+  const merged = stackPrs.map((p) =>
+    p.repoName === helperLayer.name ? ({ ...p, state: 'MERGED' } as TaskPr) : p,
+  );
+  assert.deepEqual(
+    orderReposByStack([flagLayer, helperLayer, upsertLayer], merged).map((r) => r.name),
+    [upsertLayer.name, flagLayer.name, helperLayer.name],
+  );
+});
+
+test('a search still out leaves the rows as they came off disk', () => {
+  const asRead = [flagLayer, helperLayer, upsertLayer];
+  assert.deepEqual(orderReposByStack(asRead, undefined), asRead);
+  assert.deepEqual(orderReposByStack(asRead, []), asRead);
+});
+
+test('a pull request found some other way does not rank a worktree', () => {
+  // `stack`, `history` and `task` name branches this worktree is not on — the
+  // reason `baseFor` reads `head` alone.
+  const viaStack = stackPrs.map((p) => ({ ...p, via: 'stack' }) as TaskPr);
+  assert.deepEqual(
+    orderReposByStack([flagLayer, helperLayer, upsertLayer], viaStack).map((r) => r.name),
+    [flagLayer.name, helperLayer.name, upsertLayer.name],
+  );
 });

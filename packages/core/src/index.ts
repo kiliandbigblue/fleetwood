@@ -27,6 +27,7 @@ export * as taskHistory from './taskHistory.ts';
 export {
   groupPrStacks,
   isMerged,
+  orderReposByStack,
   partitionAgents,
   prRepoTags,
   prSummary,
