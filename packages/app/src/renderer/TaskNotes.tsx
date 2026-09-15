@@ -7,28 +7,19 @@ interface Props {
   onOpen: () => void;
   onCancel: () => void;
   onSave: () => void;
-  /**
-   * What to draw in place of a note there isn't one of.
-   *
-   * The card passes none: a task with no notes shows nothing, because a list of
-   * twelve cards each carrying an empty box is twelve rows of nothing. The pane
-   * passes one, because a section that vanishes from a page about a single task
-   * reads as a section that doesn't exist.
-   */
-  placeholder?: string;
 }
 
 /**
- * Your own notes on a task, in the two places a task is drawn.
+ * Your own notes on a task.
  *
- * Shared rather than written twice because the editing rules are the fiddly part
- * — ⌘↵ saves and a bare Enter must stay a newline, escape cancels, and the value
- * is held apart from the snapshot so a poll cannot replace what you are typing.
- * Which of those is wrong is not a thing you would notice twice.
+ * Its own component rather than inline because the editing rules are the fiddly
+ * part — ⌘↵ saves and a bare Enter must stay a newline, escape cancels, and the
+ * value is held apart from the snapshot so a poll cannot replace what you are
+ * typing. Which of those is wrong is not a thing you would notice.
  *
- * The state lives in the parent, not here: both call sites open this from
- * their menu, and a component that owns its own `editing` flag cannot be
- * opened from outside it.
+ * The state lives in the parent, not here: the card opens this from its menu,
+ * and a component that owns its own `editing` flag cannot be opened from
+ * outside it.
  */
 export function TaskNotes({
   notes,
@@ -38,7 +29,6 @@ export function TaskNotes({
   onOpen,
   onCancel,
   onSave,
-  placeholder,
 }: Props): React.JSX.Element | null {
   if (editing) {
     return (
@@ -52,7 +42,8 @@ export function TaskNotes({
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
               // Closes the editor and stops there: escape means the innermost
-              // thing open, and in the pane the next one out is the pane itself.
+              // thing open, and on an opened task the next one out is the task
+              // itself — which `App` would otherwise close behind this one.
               event.stopPropagation();
               onCancel();
               return;
@@ -87,27 +78,17 @@ export function TaskNotes({
    * rather than as the one part a person wrote. The heading is the same micro
    * label the pull requests already use, in the same place.
    */
-  if (notes) {
-    return (
-      <div className="task-notes-block">
-        <div className="task-notes-label">note</div>
-        <div className="task-notes" onClick={onOpen} title="click to edit · kept in NOTES.md">
-          {notes.trim()}
-        </div>
-      </div>
-    );
-  }
+  // Nothing at all for a task nobody has written a note on: the block is the
+  // note, and an empty box under every card is what the label was added to
+  // stop. `add a note` in the menu is the way in.
+  if (!notes) return null;
 
-  return placeholder ? (
+  return (
     <div className="task-notes-block">
       <div className="task-notes-label">note</div>
-      <div
-        className="task-notes empty"
-        onClick={onOpen}
-        title="click to write one · kept in NOTES.md"
-      >
-        {placeholder}
+      <div className="task-notes" onClick={onOpen} title="click to edit · kept in NOTES.md">
+        {notes.trim()}
       </div>
     </div>
-  ) : null;
+  );
 }

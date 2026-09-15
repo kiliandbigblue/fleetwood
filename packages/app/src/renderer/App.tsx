@@ -7,7 +7,6 @@ import { PrList } from './PrList.tsx';
 import { Icon } from './Icon.tsx';
 import { HistoryList } from './HistoryList.tsx';
 import { TaskCard } from './TaskCard.tsx';
-import { TaskPane } from './TaskPane.tsx';
 import { NewTask } from './NewTask.tsx';
 import { Palette } from './Palette.tsx';
 import { StatusBar } from './StatusBar.tsx';
@@ -291,16 +290,19 @@ export function App(): React.JSX.Element {
         {!snapshot && <div className="empty">connecting to tmux…</div>}
 
         {/* One task, and nothing else. Ahead of both lists rather than as a third
-            tab: it is one of them, opened. */}
+            tab: it is one of them, opened — and it is literally the same card,
+            because a second rendering of a task was a second thing to keep true
+            and the one that was always a step behind. No `onFocus`: you are
+            already here, so the card draws no button back to where you are. */}
         {snapshot && focused && (
-          <TaskPane
+          <TaskCard
             task={focused.task}
             prs={snapshot.taskPrs?.byTask[focused.task.slug]}
             prsStale={snapshot.taskPrs?.degraded}
             session={focused.session}
             editor={snapshot.editor}
             onResult={onResult}
-            onBack={() => setFocusedSlug(undefined)}
+            onArchive={() => setFocusedSlug(undefined)}
           />
         )}
 

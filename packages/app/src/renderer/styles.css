@@ -2694,23 +2694,6 @@ button {
   min-width: 0;
 }
 
-/*
- * The checkout, in full, under the row that names it.
- *
- * Only the focused pane asks for this: the list has no room, and the short
- * worktree name is enough there. `--indent` so it starts on the same rail as
- * the name above it.
- */
-.task-repo-path {
-  padding: 0 var(--s4) var(--s2) var(--row-indent);
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  color: var(--dim);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .clean {
   color: var(--dim);
   font-size: var(--fs-micro);
@@ -2764,16 +2747,13 @@ button {
   transition: opacity 90ms ease-out;
 }
 .task-repo:hover .chip,
-.task-repo-block:hover .chip,
 .task-repo .chip:focus-visible,
 /* The whole set on any one of them, so tabbing along a row does not make the
    chips wink in and out one at a time. */
 .task-repo:focus-within .chip,
-.task-repo-block:focus-within .chip,
 /* A `remove — sure?` is a live four-second window: it must not fade out from
    under the pointer, and the two chips beside it must not collapse around it. */
-.task-repo:has(.chip.confirming) .chip,
-.task-repo-block:has(.chip.confirming) .chip {
+.task-repo:has(.chip.confirming) .chip {
   opacity: 1;
 }
 .task-repo .chip:hover {
@@ -3083,17 +3063,6 @@ button {
   color: var(--text);
 }
 
-/*
- * A note you have not written yet.
- *
- * Only the focused pane draws this: a list of twelve empty boxes is what the
- * pane exists to get away from. Dim, not dashed — the hairline above already
- * says where the notes sit.
- */
-.task-notes.empty {
-  color: var(--dim);
-}
-
 /* The same bracket the written note gets, so opening the editor moves nothing. */
 .task-notes-edit {
   border-left: 1px solid var(--edge);
@@ -3279,48 +3248,10 @@ button {
 }
 
 /*
- * The focused task is a card that is the whole of the body.
- *
- * `.card` already is that sheet — hairline groups, the same rows — so the pane
- * only adds the two facts the list has nowhere to put.
+ * An opened task is the same card, alone in the body — there is no `.pane`
+ * class and nothing scoped to one. What the opened view adds over the list is
+ * the rail above it: a way back where the tabs were, and the slug beside it.
  */
-
-/*
- * The task folder, in full, on the same rail as every other row's first word.
- *
- * The card has nowhere to put this at all. It is the string you paste into a
- * terminal, so it is shown rather than left in a tooltip.
- */
-.pane-dir {
-  padding: 0 var(--s4) var(--s3) var(--indent);
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  color: var(--dim);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/*
- * A section with nothing in it yet.
- *
- * Kept rather than hidden: a page about one task must not change shape as the
- * task progresses, and the empty state is usually the one carrying the next
- * thing to do. Quiet rather than dashed: the list already taught that silence
- * is how this panel reports "nothing".
- */
-.pane-quiet {
-  padding: var(--s2) var(--s4) var(--s2) var(--indent);
-  font-size: var(--fs-body);
-  line-height: 1.5;
-  color: var(--dim);
-  min-height: 28px;
-}
-
-/* Notes on a page get the height a list of twelve cards could not spare. */
-.pane .task-notes {
-  max-height: 220px;
-}
 
 /* --- modal (new task) ---------------------------------------------------- */
 

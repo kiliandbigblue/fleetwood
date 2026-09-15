@@ -25,7 +25,7 @@ import { CardMenu } from './CardMenu.tsx';
 import type { MenuItem } from './CardMenu.tsx';
 import { Slug } from './Slug.tsx';
 import { TaskNotes } from './TaskNotes.tsx';
-import { send, tildify } from './api.ts';
+import { send } from './api.ts';
 
 interface Props {
   task: Task;
@@ -68,8 +68,21 @@ interface Props {
    * the way to the tmux session. Focusing the pane and focusing the terminal are
    * the two things you do with a task all day, and quietly swapping which one the
    * card head means would retrain a habit to buy nothing.
+   *
+   * Absent when this card *is* the opened one: the same card is what the panel
+   * draws in both places, and a button to open what you are already looking at
+   * is the one control that would have nothing to do.
    */
-  onFocus: () => void;
+  onFocus?: () => void;
+  /**
+   * The card is about to archive itself, and it is the whole of the view.
+   *
+   * Only the opened card passes this. The snapshot would get there on its own —
+   * the task leaves the list, `resolveFocus` stops finding it, and the fleet
+   * comes back — but that is a poll away, and a second spent looking at a page
+   * about a folder that is already gone reads as the archive having failed.
+   */
+  onArchive?: () => void;
 }
 
 /** `nvim -u NONE` is a legal editor setting; only the command itself names the button. */
@@ -79,12 +92,7 @@ export function editorLabel(editor: string): string {
   return editor.trim().split(/\s+/)[0] || 'editor';
 }
 
-/**
- * One worktree row.
- *
- * Shared with `TaskPane`, which draws the same chips and the same dirty token
- * and then, with room the list does not have, the path underneath.
- */
+/** One worktree row. */
 export function RepoRow({
   repo,
   slug,
@@ -92,7 +100,6 @@ export function RepoRow({
   session,
   editor,
   base,
-  path,
   onResult,
 }: {
   repo: TaskRepo;
@@ -110,14 +117,6 @@ export function RepoRow({
    * Absent (no pull request yet, or the search hasn't landed) main uses the trunk.
    */
   base?: string;
-  /**
-   * The checkout, shown in full under the row.
-   *
-   * The card elides this; the pane does not, because "which of the four
-   * checkouts of this repo am I looking at" is the question the page exists to
-   * answer without a tooltip.
-   */
-  path?: string;
   onResult: Props['onResult'];
 }): React.JSX.Element {
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -127,7 +126,7 @@ export function RepoRow({
     onResult(result.detail, result.ok);
   };
 
-  const row = (
+  return (
     <div className="task-repo">
       {/* Shortened for display only, and inline for a reason: the raw name is
           what `hasDriftedOffBranch` below reasons about, what `repoSummary`
@@ -217,17 +216,6 @@ export function RepoRow({
       )}
     </div>
   );
-
-  if (!path) return row;
-
-  return (
-    <div className="task-repo-block">
-      {row}
-      <div className="task-repo-path" title={path}>
-        {tildify(path)}
-      </div>
-    </div>
-  );
 }
 
 /**
@@ -268,9 +256,6 @@ export function dotNote(status: TaskStatus, attached: boolean, hasSession: boole
  * Flatter than the PR tab's row on purpose — it sits inside a card, and a second
  * bordered surface nested in the first reads as a different kind of object. The
  * facts are the same ones, in the same colours.
- *
- * Exported for `TaskPane`, which draws the same rows: a pull request has to read
- * identically in both, down to the marks.
  */
 export function PrRow({
   pr,
@@ -439,12 +424,21 @@ export function numColStyle(prs: TaskPr[]): React.CSSProperties {
 }
 
 /**
- * One task, as a card in the fleet list.
+ * One task — in the fleet list, and opened on its own.
  *
  * This is a session card that knows what its session *is* — same shape, same
  * header, plus the things only a task has: the agents running in it, the
  * worktrees under it, and the notes. It replaces the pair of cards a live task
  * used to get, one per tab, each missing half the controls.
+ *
+ * It is also the whole of the opened view. There was a second component for
+ * that, drawing the same rows from the same helpers with a folder path, three
+ * placeholder sentences and a notes box of its own — and the arrangement it
+ * bought was not worth the two of them drifting: the answer to "why does the
+ * opened task not have the thing I just added" was always that it is a
+ * different file. So there is one task view, and opening a task puts it alone
+ * in the body. `onFocus` and `onArchive` are the whole of the difference: which
+ * of the two places this card is standing in.
  */
 export function TaskCard({
   task,
@@ -455,6 +449,7 @@ export function TaskCard({
   editor,
   onResult,
   onFocus,
+  onArchive,
 }: Props): React.JSX.Element {
   const [addingRepo, setAddingRepo] = useState(false);
   const [editingNotes, setEditingNotes] = useState(false);
@@ -555,7 +550,11 @@ export function TaskCard({
       title: 'remove every worktree in this task and kill its session',
       danger: true,
       confirm: true,
-      onClick: () => void act({ kind: 'archiveTask', slug: task.slug }),
+      onClick: () => {
+        // Nothing left to be opened on once the folder is gone; a no-op in the list.
+        onArchive?.();
+        void act({ kind: 'archiveTask', slug: task.slug });
+      },
     },
   ];
 
@@ -598,30 +597,32 @@ export function TaskCard({
             codepoint means this and `⤢` renders as a different weight in every
             face. */}
         <span className="row-act">
-        <button
-          className="pane-open"
-          title={`open ${task.slug} on its own`}
-          onClick={(event) => {
-            event.stopPropagation();
-            onFocus();
-          }}
-        >
-          <svg
-            className="icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.9}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
+        {onFocus && (
+          <button
+            className="pane-open"
+            title={`open ${task.slug} on its own`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onFocus();
+            }}
           >
-            <path d="M14 4.5h5.5V10" />
-            <path d="M10 19.5H4.5V14" />
-            <path d="M19.5 4.5 13 11" />
-            <path d="M4.5 19.5 11 13" />
-          </svg>
-        </button>
+            <svg
+              className="icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.9}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M14 4.5h5.5V10" />
+              <path d="M10 19.5H4.5V14" />
+              <path d="M19.5 4.5 13 11" />
+              <path d="M4.5 19.5 11 13" />
+            </svg>
+          </button>
+        )}
         {/* Last, on the trailing edge, as on a session card. The slug is already
             the session's name minus its slot, so nothing here needs relabelling —
             only moving. */}
