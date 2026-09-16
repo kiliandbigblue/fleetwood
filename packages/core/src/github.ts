@@ -285,6 +285,74 @@ export async function enrichPr(pr: PullRequest): Promise<PullRequest> {
   }
 }
 
+/** The identity fields a search supplies, for the one path that has no search. */
+interface LookupResult extends ViewResult {
+  title?: string;
+  url?: string;
+  updatedAt?: string;
+  isDraft?: boolean;
+  author?: { login?: string };
+  state?: string;
+  mergedAt?: string;
+}
+
+/**
+ * One pull request by name, whether or not it is in any of your lists.
+ *
+ * The lists are searches — yours, and the ones asking for your review — so a
+ * pull request that is neither cannot be found by looking through them. This
+ * asks GitHub for it directly, which is what makes "here is a URL, open it"
+ * possible at all.
+ *
+ * Everything in one `gh pr view`, unlike the search path's row-then-`enrichPr`:
+ * with no search to start from there is no first half to enrich, and the field
+ * set is a superset of the one `enrichPr` asks for.
+ */
+export async function fetchPr(repo: string, number: number): Promise<PullRequest | undefined> {
+  const config = await loadConfig();
+  const { code, stdout } = await run(
+    'gh',
+    [
+      'pr',
+      'view',
+      String(number),
+      '-R',
+      repo,
+      '--json',
+      'title,url,updatedAt,isDraft,author,state,mergedAt,headRefName,baseRefName,reviewDecision,latestReviews,additions,deletions,statusCheckRollup',
+    ],
+    { timeoutMs: 20_000 },
+  );
+  if (code !== 0) return undefined;
+  try {
+    const view = JSON.parse(stdout) as LookupResult;
+    const checks = summariseChecks(view.statusCheckRollup, config.github.ignoreChecksPattern);
+    return {
+      repo,
+      number,
+      title: view.title ?? `#${number}`,
+      url: view.url ?? `https://github.com/${repo}/pull/${number}`,
+      updatedAt: view.updatedAt ?? '',
+      isDraft: view.isDraft ?? false,
+      author: view.author?.login,
+      // Neither list: it came from a URL you pasted, and saying otherwise would
+      // put it in a section it does not belong to.
+      roles: [],
+      branch: view.headRefName,
+      base: view.baseRefName,
+      state: view.state as PrState | undefined,
+      mergedAt: view.mergedAt,
+      reviewDecision: effectiveReviewDecision(view.reviewDecision, view.latestReviews),
+      additions: view.additions,
+      deletions: view.deletions,
+      checks: checks.state,
+      checksDetail: checks.detail,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 /** Bounded concurrency: `gh` spawns a process per call and we may have dozens. */
 export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);

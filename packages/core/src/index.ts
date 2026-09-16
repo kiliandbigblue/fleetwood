@@ -42,6 +42,11 @@ export type { Severity, StackRow } from './taskView.ts';
 export { STATUS_LABEL, prStatus, repoStatus, taskStatus } from './taskStatus.ts';
 export type { TaskStatus } from './taskStatus.ts';
 export { worktreeShortName } from './naming.ts';
+// Flat, and a leaf: the palette tests what you typed as you type it, so the
+// renderer takes `parsePrRef` off `@fleetwood/core/prRef` rather than this
+// barrel — which would drag tmux and process scanning into its bundle.
+export { parsePrRef } from './prRef.ts';
+export type { PrRef } from './prRef.ts';
 // Flat, like the theme and switch helpers below, for the CLI and for core's own
 // banding pass. The renderer imports the same module by its leaf path instead —
 // a value taken off this barrel drags `fs` and `child_process` into its bundle.

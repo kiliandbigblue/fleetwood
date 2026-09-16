@@ -575,46 +575,16 @@ async function cmdPrs(json: boolean): Promise<void> {
   process.stdout.write(`\n${c.dim('open one with: fw open-pr <repo>#<number>')}\n`);
 }
 
-/** Accepts `owner/repo#123`, a full PR URL, or `#123` inside a stamped session. */
-function parsePrRef(ref: string): { repo: string; number: number } | undefined {
-  const url = /github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)/.exec(ref);
-  if (url?.[1] && url[2]) return { repo: url[1], number: Number.parseInt(url[2], 10) };
-  const short = /^([^#\s]+\/[^#\s]+)#(\d+)$/.exec(ref);
-  if (short?.[1] && short[2]) return { repo: short[1], number: Number.parseInt(short[2], 10) };
-  return undefined;
-}
-
 async function cmdOpenPr(ref: string | undefined, background: boolean): Promise<void> {
   if (!ref) {
     process.stderr.write(`${c.danger('usage')} fw open-pr <owner/repo#number | pr-url>\n`);
     process.exitCode = 2;
     return;
   }
-  const parsed = parsePrRef(ref);
-  if (!parsed) {
-    process.stderr.write(`${c.danger('could not parse')} ${ref}\n`);
-    process.exitCode = 2;
-    return;
-  }
 
-  // Look the PR up so we get its head branch; without it we'd guess the ref.
-  const lists = await github.fetchPrs();
-  const found = [...lists.reviewRequested, ...lists.mine].find(
-    (p) => p.repo === parsed.repo && p.number === parsed.number,
-  );
-  const pr: PullRequest =
-    found ??
-    ({
-      repo: parsed.repo,
-      number: parsed.number,
-      title: `#${parsed.number}`,
-      url: `https://github.com/${parsed.repo}/pull/${parsed.number}`,
-      updatedAt: '',
-      isDraft: false,
-      roles: [],
-    } satisfies PullRequest);
-
-  const result = await prSession.openPr(pr, { background });
+  // Parsing, the lookup and the session all live in core, because the app's ⌘K
+  // does the same thing and the two must not drift.
+  const result = await prSession.openPrRef(ref, { background });
   process.stdout.write(`${result.ok ? c.ok('✓') : c.danger('✗')} ${result.detail}\n`);
   if (!result.ok) process.exitCode = 1;
 }

@@ -156,6 +156,11 @@ guessed onto the wrong terminal. `fw doctor` reports both numbers.
 - **PR → session in one click.** Find-or-create: an existing session for that PR is
   focused, otherwise a dedicated git worktree and tmux session are built and stamped.
   Clicking twice never gives you two sessions.
+- **Any PR, not just the listed ones.** The PR tab is two searches — yours, and the
+  ones asking for your review — so a pull request somebody links you in Slack was
+  in neither, and there was nowhere in the app to put it. Paste its URL into ⌘K and
+  the palette's first row opens it, through the same find-or-create as a click on a
+  row. `owner/repo#123` works too, and so does `fw open-pr` with either.
 - **Background and nested agents are found too.** Their hooks run without
   `$TMUX_PANE`, so fleetwood traces them to their pane through the process tree and
   marks them `⤶`.
@@ -207,7 +212,7 @@ pnpm --filter @fleetwood/app dev
 ```
 
 ⌥⇧F toggles the window, ⌘K opens the palette (jump to a session, open a project,
-start a task), ⌘R refreshes. The tray title shows the fleet summary (`✋1`, `▶3`) so
+start a task, or paste a pull request URL), ⌘R refreshes. The tray title shows the fleet summary (`✋1`, `▶3`) so
 you can leave the window closed. To have it start with your machine: System
 Settings → General → Login Items → add Fleetwood.
 
@@ -808,7 +813,9 @@ fw sessions | panes | repos | doctor | install-hooks
 them too. The counts in the header and the quota gauge always speak for the whole
 fleet: a session nobody is looking at still spends tokens and still gets stuck.
 
-`fw open-pr` takes `owner/repo#123` or a full PR URL.
+`fw open-pr` takes `owner/repo#123` or a full PR URL, and so does the app's ⌘K —
+the same parser and the same lookup, in core. The pull request does not have to be
+in any list: it is read straight off GitHub by name.
 
 `fw switch` is what `prefix+g` runs and `fw switch --projects` what `prefix+G`
 does (see **prefix+g**); both need `fzf`. `--json` prints the rows it would

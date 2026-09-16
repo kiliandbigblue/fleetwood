@@ -450,6 +450,12 @@ async function handle(request: Request): Promise<Response> {
       return { ok: result.ok, detail: result.detail };
     }
 
+    case 'openPrRef': {
+      const result = await prSession.openPrRef(request.ref);
+      await pushSnapshot();
+      return { ok: result.ok, detail: result.detail };
+    }
+
     case 'answerPrompt': {
       const result = await actions.answerPrompt(request.pane, request.key);
       // The agent moves on immediately; re-read so the UI doesn't lag behind.

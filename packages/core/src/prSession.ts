@@ -1,7 +1,8 @@
 import { basename } from 'node:path';
 import { focusSession } from './actions.ts';
-import { prKey } from './github.ts';
+import { fetchPr, prKey } from './github.ts';
 import type { PullRequest } from './github.ts';
+import { parsePrRef } from './prRef.ts';
 import { resolveRepo } from './repoIndex.ts';
 import { sameSession } from './sessionOrder.ts';
 import * as tmux from './tmux.ts';
@@ -133,6 +134,36 @@ export async function openPr(pr: PullRequest, options: OpenPrOptions = {}): Prom
     created: true,
     detail: `created and focused ${name} — ${worktree.detail}${focus.ok ? '' : ` (focus failed: ${focus.detail})`}`,
   };
+}
+
+/**
+ * Open a pull request named by a URL or `owner/repo#123`, listed or not.
+ *
+ * The lists fleetwood draws are two searches — yours, and the ones asking for
+ * your review — so every pull request outside them was unreachable from the
+ * app: someone links you one in Slack, and there was nowhere to put it. This is
+ * the door for that, and both front ends go through it so a URL means the same
+ * thing in the palette as it does in `fw open-pr`.
+ */
+export async function openPrRef(ref: string, options: OpenPrOptions = {}): Promise<OpenPrResult> {
+  const parsed = parsePrRef(ref);
+  if (!parsed) {
+    return { ok: false, created: false, detail: `could not read a pull request out of "${ref.trim()}"` };
+  }
+
+  // Looked up rather than opened straight from the number, for the head branch.
+  // Without one `ensureWorktreeForPr` falls back to fetching `pull/N/head` into
+  // a local `pr-N`, which reads fine but is not the branch the pull request is
+  // on — so nothing could be pushed back from the review.
+  const pr = await fetchPr(parsed.repo, parsed.number);
+  if (!pr) {
+    return {
+      ok: false,
+      created: false,
+      detail: `gh could not read ${prKey(parsed.repo, parsed.number)} — check the link, and \`gh auth status\``,
+    };
+  }
+  return openPr(pr, options);
 }
 
 /**

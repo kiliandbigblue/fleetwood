@@ -129,6 +129,14 @@ export type Request =
    */
   | { kind: 'setSessionHidden'; session: string; hidden: boolean }
   | { kind: 'openPr'; repo: string; number: number; branch?: string }
+  /**
+   * The same thing for a pull request no list holds — ⌘K on a pasted URL.
+   *
+   * A ref rather than a parsed repo and number, so the one parser in core is
+   * what decides what a pull request URL is; the renderer only tests whether it
+   * has one in hand, to know whether to offer the row.
+   */
+  | { kind: 'openPrRef'; ref: string }
   | { kind: 'answerPrompt'; pane: string; key: string }
   | { kind: 'interrupt'; pane: string }
   | { kind: 'sendPrompt'; pane: string; text: string }

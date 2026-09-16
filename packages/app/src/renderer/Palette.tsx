@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isHidden, sameSession, sessionLabel } from '@fleetwood/core/sessionOrder';
+// The leaf module, not the barrel: anything off `@fleetwood/core` reaches tmux
+// and process scanning, and would fail the bundle.
+import { parsePrRef } from '@fleetwood/core/prRef';
 import { send, tildify } from './api.ts';
 
 interface Project {
@@ -17,7 +20,7 @@ interface Props {
 }
 
 interface Item {
-  kind: 'session' | 'project' | 'new-task';
+  kind: 'session' | 'project' | 'new-task' | 'pr';
   /** What to act on: a real tmux session name, order prefix and all. */
   name: string;
   /** What to show and search on — the name without its order prefix. */
@@ -26,7 +29,21 @@ interface Item {
 }
 
 /**
- * ⌘K entry point: jump to a session, open a project, or start a task.
+ * The tag in front of a row, coloured by what choosing it does.
+ *
+ * A session already exists and is where you were going, so it is `ok`; the two
+ * that make something — a task, a review worktree — are `accent`; a project is
+ * neither, and stays quiet.
+ */
+const KIND_COLOUR: Record<Item['kind'], string> = {
+  session: 'var(--ok)',
+  project: 'var(--dim)',
+  'new-task': 'var(--accent)',
+  pr: 'var(--accent)',
+};
+
+/**
+ * ⌘K entry point: jump to a session, open a project, start a task, or review a PR.
  *
  * Projects come from the same roots the existing tmux-sessionizer scans, and
  * opening one is find-or-create by the same session name — so this and
@@ -69,6 +86,19 @@ export function Palette({ open, onClose, sessions, onNewTask, onResult }: Props)
             .filter((i) => i.label.toLowerCase().includes(needle) || i.path.toLowerCase().includes(needle))
             .slice(0, 40);
     /*
+     * A pasted pull request URL, first and selected.
+     *
+     * The PRs tab only ever lists two searches — yours, and the ones asking for
+     * your review — so a pull request someone links you in Slack was not
+     * reachable from the app at all. Here it is, and first rather than last
+     * like the new-task row: a URL matches no session and no project, so there
+     * is no jump underneath it for Enter to steal.
+     */
+    const pr = parsePrRef(query);
+    const prItem: Item[] = pr
+      ? [{ kind: 'pr', name: `${pr.repo}#${pr.number}`, label: `${pr.repo}#${pr.number}`, path: '' }]
+      : [];
+    /*
      * Every list here is of things that already exist, which dead-ends at exactly
      * the moment worth catching: you typed the name of the work, nothing matched,
      * and what you actually wanted was to start it. So the action is always
@@ -77,7 +107,11 @@ export function Palette({ open, onClose, sessions, onNewTask, onResult }: Props)
      * Last rather than first, because Enter on a match has to stay a jump — that
      * is what the palette is opened for the other ninety-nine times.
      */
-    return [...found, { kind: 'new-task', name: query.trim(), label: query.trim(), path: '' }];
+    return [
+      ...prItem,
+      ...found,
+      { kind: 'new-task', name: query.trim(), label: query.trim(), path: '' },
+    ];
   }, [query, projects, sessions]);
 
   if (!open) return null;
@@ -90,6 +124,14 @@ export function Palette({ open, onClose, sessions, onNewTask, onResult }: Props)
       // Handed to the form rather than created here: a task needs a microservice
       // and a repo set, and neither is guessable from a palette query.
       onNewTask(item.name);
+      return;
+    }
+    if (item.kind === 'pr') {
+      // Said before it is done, unlike the other two: this one fetches a branch
+      // and adds a worktree, which is seconds of nothing if it stays silent.
+      onResult(`opening ${item.label}…`, true);
+      const result = await send({ kind: 'openPrRef', ref: item.name });
+      onResult(result.detail, result.ok);
       return;
     }
     const result =
@@ -125,7 +167,7 @@ export function Palette({ open, onClose, sessions, onNewTask, onResult }: Props)
         <input
           ref={inputRef}
           value={query}
-          placeholder="jump to a session, open a project, start a task…"
+          placeholder="a session, a project, a new task, or a PR URL…"
           onChange={(event) => {
             setQuery(event.target.value);
             setCursor(0);
@@ -161,17 +203,7 @@ export function Palette({ open, onClose, sessions, onNewTask, onResult }: Props)
                 cursor: 'pointer',
               }}
             >
-              <span
-                style={{
-                  color:
-                    item.kind === 'session'
-                      ? 'var(--ok)'
-                      : item.kind === 'new-task'
-                        ? 'var(--accent)'
-                        : 'var(--dim)',
-                  fontSize: 10,
-                }}
-              >
+              <span style={{ color: KIND_COLOUR[item.kind], fontSize: 10 }}>
                 {item.kind === 'new-task' ? 'task' : item.kind}
               </span>
               <span>
@@ -179,7 +211,9 @@ export function Palette({ open, onClose, sessions, onNewTask, onResult }: Props)
                   ? item.label.length > 0
                     ? `new task: ${item.label}`
                     : 'new task…'
-                  : item.label}
+                  : item.kind === 'pr'
+                    ? `open ${item.label}`
+                    : item.label}
               </span>
               {/* Hidden sessions are still offered here: out of the way is not
                   the same as unreachable, and ⌘K is how you get back to one
