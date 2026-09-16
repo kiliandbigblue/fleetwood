@@ -17,6 +17,7 @@ import { ThemePicker } from './ThemePicker.tsx';
 // the renderer bundle on `node:child_process`.
 import { needsDeploy } from '@fleetwood/core/deployState';
 import { isHidden, sortSessions } from '@fleetwood/core/sessionOrder';
+import { isWorkSession } from '@fleetwood/core/fleetList';
 import { resolveFocus } from './focus.ts';
 import { applyTheme } from './theme.ts';
 import { watchZoom } from './zoom.ts';
@@ -150,13 +151,25 @@ export function App(): React.JSX.Element {
    */
   const ranked = snapshot ? sortSessions(snapshot.fleet.sessions) : [];
   /*
+   * Then down to the sessions the list is about — a task or a pull request, see
+   * `fleetList.ts`. The shell in `~`, the one you spawned to try a command, every
+   * project you have ever attached to: tmux has them and the fleet is not about
+   * them, and they were pushing the rows that are down the page.
+   *
+   * Dropped outright rather than folded: the fold below is a decision you made
+   * about a session that belongs here, and these never did. They still reach the
+   * header, which is read off `fleet.counts` — every session, these included.
+   */
+  const offList = ranked.filter((session) => !isWorkSession(session.meta));
+  const fleet = ranked.filter((session) => isWorkSession(session.meta));
+  /*
    * Split off the sessions marked hidden — a dash on the front of the tmux name,
    * see `sessionOrder.ts`. Only the list is split: the fleet's counts and the
    * status bar still speak for every session, because an agent nobody is looking
    * at is still spending a token and still capable of getting stuck.
    */
-  const sessions = ranked.filter((session) => !isHidden(session.name));
-  const hidden = ranked.filter((session) => isHidden(session.name));
+  const sessions = fleet.filter((session) => !isHidden(session.name));
+  const hidden = fleet.filter((session) => isHidden(session.name));
   const hiddenAttention = hidden.filter((session) => session.needsAttention).length;
   /** What a reorder click is relative to: the order actually on screen. */
   const order = sessions.map((session) => session.name);
@@ -314,7 +327,16 @@ export function App(): React.JSX.Element {
               // point at, the one thing you can do comes to the middle of the
               // panel rather than staying a 24px glyph up in the rail.
               <div className="empty">
-                <span>{hidden.length > 0 ? 'every session is hidden' : 'no tmux sessions'}</span>
+                <span>
+                  {hidden.length > 0
+                    ? 'every session is hidden'
+                    : offList.length > 0
+                      ? // Said rather than left out: with tmux plainly busy, an
+                        // empty panel over "no tmux sessions" would read as
+                        // fleetwood having lost the lot.
+                        `no tasks running — ${offList.length} other tmux session${offList.length === 1 ? '' : 's'}, not the fleet's`
+                      : 'no tmux sessions'}
+                </span>
                 <button
                   className="button"
                   onClick={() => {
@@ -447,6 +469,9 @@ export function App(): React.JSX.Element {
       <Palette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
+        /* Every session tmux has, not the list above: the palette is the way
+           back to one the fleet leaves out, so it is the one place that must
+           not be filtered. */
         sessions={snapshot?.fleet.sessions.map((s) => s.name) ?? []}
         /* The palette can only carry the summary; the form asks for the rest.
            Forcing the fleet tab first so the card it creates is in view. */
