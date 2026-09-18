@@ -94,6 +94,26 @@ export {
   withAlpha,
 } from './theme.ts';
 
+// Flat, like the theme: the panel's power tab draws the countdown off these and
+// must not import this barrel to get them.
+export {
+  DEFAULT_SHUTDOWN,
+  MAX_WARN_MINUTES,
+  MIN_WARN_MINUTES,
+  MISSED_GRACE_MS,
+  clampWarnMinutes,
+  describeShutdown,
+  formatClock,
+  formatCountdown,
+  hasMissed,
+  nextShutdownAt,
+  normaliseShutdown,
+  parseClock,
+  shutdownPhase,
+  shutdownState,
+} from './shutdown.ts';
+export type { Clock, ShutdownConfig, ShutdownPhase, ShutdownState } from './shutdown.ts';
+
 // Types consumers need by name (namespace re-exports don't surface them).
 export type { PullRequest, ChecksState, PrLists } from './github.ts';
 // Flat, because the renderer needs these as values and must not import the

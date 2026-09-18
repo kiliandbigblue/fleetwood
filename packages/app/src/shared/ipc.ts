@@ -6,6 +6,8 @@ import type {
   CursorUsage,
   PlanLimits,
   PrLists,
+  ShutdownConfig,
+  ShutdownState,
   Task,
   TaskPrs,
   ThemeName,
@@ -58,6 +60,15 @@ export interface Snapshot {
   limits?: PlanLimits;
   /** Cursor included / seat / today. Absent unless `limits.cursorTokenCommand` is set. */
   cursorUsage?: CursorUsage;
+  /**
+   * The end-of-day shutdown: the schedule, and how close it is.
+   *
+   * Always present, off or on — the power tab is a form, and a form whose fields
+   * appear only once something is scheduled has nothing to schedule it with. The
+   * countdown in it is drawn from `at` against the renderer's own clock rather
+   * than from `msLeft`, which is only ever as fresh as the last snapshot.
+   */
+  shutdown: ShutdownState;
   /**
    * Tasks that have been archived, most recent first.
    *
@@ -191,7 +202,23 @@ export type Request =
   /** Repaint, and remember it: written to the config the CLI reads too. */
   | { kind: 'setTheme'; theme: ThemeName }
   /** How much of the desktop shows through. App-only — `fw` has no window. */
-  | { kind: 'setBgOpacity'; value: number };
+  | { kind: 'setBgOpacity'; value: number }
+  /**
+   * Set the end-of-day shutdown — the opt-in, the time, and the warning.
+   *
+   * Whole rather than per-field, because the three are one decision and a
+   * half-applied one would arm a shutdown for a time you were still typing. Main
+   * re-arms from it immediately, so the answer already carries the new schedule.
+   */
+  | { kind: 'setShutdown'; shutdown: ShutdownConfig }
+  /**
+   * Take the full-screen warning down. The shutdown still happens.
+   *
+   * Sent by the warning window itself, which is the only place it can be sent
+   * from — it is the thing on screen. "I know", not "not tonight": opting out is
+   * the power tab, deliberately somewhere else.
+   */
+  | { kind: 'dismissShutdownWarning' };
 
 export type Response =
   | ({ ok: boolean; detail: string } & Partial<ActionResult>)

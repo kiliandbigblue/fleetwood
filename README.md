@@ -161,6 +161,12 @@ guessed onto the wrong terminal. `fw doctor` reports both numbers.
   in neither, and there was nowhere in the app to put it. Paste its URL into ⌘K and
   the palette's first row opens it, through the same find-or-create as a click on a
   row. `owner/repo#123` works too, and so does `fw open-pr` with either.
+- **An end of day that happens.** The `power` tab schedules a shutdown of *this
+  machine* — one time of day, opted in or out with a button. Fifteen minutes
+  before it the whole screen goes red over whatever you were doing, with a
+  countdown; one key puts it away and the shutdown still stands. At the time,
+  fleetwood closes and the machine goes down. It needs one line in
+  `/etc/sudoers.d` and says so on the tab until it has it. See **End of day**.
 - **Background and nested agents are found too.** Their hooks run without
   `$TMUX_PANE`, so fleetwood traces them to their pane through the process tree and
   marks them `⤶`.
@@ -332,6 +338,48 @@ printf 'Electron.app/Contents/MacOS/Electron' > path.txt
 
 Also note pnpm 10 blocks postinstall scripts, so Electron's download is gated behind
 `onlyBuiltDependencies` in `pnpm-workspace.yaml`.
+
+### End of day
+
+The `power` tab turns this machine off at a time you set. Three fields, because it
+is one decision: the hour, how long the warning stands, and whether it is on at
+all. They are one `shutdown` key in `~/.fleetwood/config.json` —
+`{ "enabled": true, "time": "19:00", "warnMinutes": 15 }` — editable by hand like
+the rest, and an unreadable time turns the schedule **off** rather than guessing an
+hour nobody wrote.
+
+Off by default, and the opt-in is its own boolean rather than an empty time meaning
+"never": you set the hour once and spend the rest of its life switching it on and
+off, and no default changing under you can start turning your computer off.
+
+At `time - warnMinutes` the primary display goes red with a countdown — a second
+`BrowserWindow` above even a fullscreen app, which takes focus and covers what you
+were doing. That is the job: the day is ending and you have to notice. Then
+`esc`, `return` or the button takes it away and you carry on.
+
+Dismissing is **"I know", not "not tonight"**: the machine still goes down at the
+hour, the rail keeps counting it, and the warning does not come back for that
+shutdown. Calling the evening off is a separate act in a separate place — the
+opt-out on this tab — which is what makes the big button safe to hit without
+reading it.
+
+The scheduler keeps its own clock in the main process, independent of the window —
+the panel spends most of the day hidden behind `alt+shift+f`, and an evening
+shutdown conditional on you looking at it would be no shutdown at all.
+
+**It needs sudo.** `shutdown -h now` is root's, and a GUI app has no terminal to
+type a password into — so fleetwood runs it as `sudo -n`, non-interactively, and a
+sudo that decided to ask would hang forever holding a shutdown nobody can see.
+Grant it once:
+
+```sh
+sudo visudo -f /etc/sudoers.d/fleetwood-shutdown
+# %admin ALL=(root) NOPASSWD: /sbin/shutdown -h now
+```
+
+Until that line exists the tab says so, in the warning colour, next to the time it
+would otherwise have fired at — because the alternative is finding out at 19:00,
+when nothing happens.
 
 ## prefix+g
 
@@ -833,6 +881,11 @@ packages/hooks    the sh scripts installed into agent configs
 packages/cli      the fw command
 packages/app      Electron: main (which is also the collector) + React renderer
 ```
+
+The renderer is one bundle and two screens: the panel, and the shutdown warning,
+which main loads from the same `index.html` with `#shutdown-warning` on it. A
+second vite entry would have been the theme, the fonts and the snapshot feed to
+keep in step in two places.
 
 The Electron main process **is** the collector — there is no separate daemon to
 babysit. Hook events accumulate in the spool while the app is closed and are folded

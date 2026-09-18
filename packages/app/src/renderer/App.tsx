@@ -8,6 +8,7 @@ import { Icon } from './Icon.tsx';
 import { HistoryList } from './HistoryList.tsx';
 import { TaskCard } from './TaskCard.tsx';
 import { NewTask } from './NewTask.tsx';
+import { Power } from './Power.tsx';
 import { Palette } from './Palette.tsx';
 import { StatusBar } from './StatusBar.tsx';
 import { TopBar } from './TopBar.tsx';
@@ -144,6 +145,20 @@ export function App(): React.JSX.Element {
   const toDeploy = merged.filter((pr) => needsDeploy(pr)).length;
 
   /*
+   * What the power tab says in the rail, and when it says it loudly.
+   *
+   * The label is the schedule itself rather than a count, and the alert is the
+   * minutes left once the warning is up — see `TopBar`. Rounded up, so the last
+   * minute reads `1` rather than `0` while the machine is still on.
+   */
+  const shutdown = snapshot?.shutdown;
+  const shutdownLabel = shutdown?.enabled ? shutdown.time : 'off';
+  const shutdownAlert =
+    shutdown?.phase === 'warning' && shutdown.at !== undefined
+      ? Math.max(1, Math.ceil((shutdown.at - Date.now()) / 60_000))
+      : 0;
+
+  /*
    * Numbered sessions sit where you put them; the rest are ranked by what they
    * are doing — attention first, then sessions with agents, then tmux's order.
    * Both halves of that rule live in `sortSessions`, so `fw status` draws the
@@ -256,6 +271,8 @@ export function App(): React.JSX.Element {
         fleetCount={sessions.length + dormantTasks.length}
         prCount={prCount}
         historyCount={snapshot?.history.length ?? 0}
+        shutdownLabel={shutdownLabel}
+        shutdownAlert={shutdownAlert}
         toDeploy={toDeploy}
         pinned={pinned}
         onPin={() => {
@@ -452,6 +469,10 @@ export function App(): React.JSX.Element {
 
         {snapshot && !focused && tab === 'history' && (
           <HistoryList history={snapshot.history} onResult={onResult} />
+        )}
+
+        {snapshot && !focused && tab === 'power' && (
+          <Power shutdown={snapshot.shutdown} onResult={onResult} />
         )}
       </div>
 

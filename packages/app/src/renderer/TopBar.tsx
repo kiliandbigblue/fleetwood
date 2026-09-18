@@ -2,19 +2,25 @@ import type { FleetState } from '@fleetwood/core';
 import { Icon } from './Icon.tsx';
 
 /**
- * The two lists.
+ * The two lists, and the tab that is not one.
  *
- * Tasks used to be a third: a task with a session was rendered twice — once in the
+ * Tasks used to be a third list: a task with a session was rendered twice — once in the
  * fleet as a bare session card with half its controls missing, once under its own
  * tab as a task card that knew nothing about the agents running in it. They are the
  * same object, so they are now one card in one list, and `TaskCard` is what a
  * session card becomes when we know it is working a task.
  *
- * The type lives here because this is what a tab *is* — a label, a count, and the
+ * The type lives here because this is what a tab *is* — a label, a value, and the
  * one number that would make you come over. `App` only needs the name of the one
  * that is showing.
+ *
+ * `power` is the odd one and is last for it: the other three are lists of work,
+ * and that one is a setting about the machine the work happens on. It is a tab
+ * rather than a corner of the theme popover because it is the only thing here
+ * that acts on the machine, and a control that turns your computer off should be
+ * somewhere you can see it from across the room.
  */
-export type Tab = 'fleet' | 'prs' | 'history';
+export type Tab = 'fleet' | 'prs' | 'history' | 'power';
 
 interface Props {
   tab: Tab;
@@ -27,6 +33,16 @@ interface Props {
   prCount?: number;
   /** Archived tasks. Read from a file, so it is never pending. */
   historyCount: number;
+  /** The end-of-day shutdown, as the rail says it: a time, or `off`. */
+  shutdownLabel: string;
+  /**
+   * Minutes until the machine goes down, once the warning is up.
+   *
+   * The rail's alert is a count everywhere else, and here it is a countdown — the
+   * same shape for the same reason: it is the number that would make you come
+   * over, and on this tab it is the only one that ever could.
+   */
+  shutdownAlert: number;
   toDeploy: number;
   pinned: boolean;
   onPin: () => void;
@@ -60,7 +76,13 @@ interface Props {
 interface Entry {
   id: Tab;
   label: string;
-  total: number | undefined;
+  /**
+   * How much is over there — a count on the lists, a time on `power`.
+   *
+   * A string is allowed because `power` holds one thing and counting it would say
+   * `1`, which is true and useless. `19:00` in the rail is the setting itself.
+   */
+  total: number | string | undefined;
   alert: number;
   /** The status role the dot paints in — `danger`, `warn`, or `accent`. */
   tone: string;
@@ -74,6 +96,8 @@ export function TopBar({
   fleetCount,
   prCount,
   historyCount,
+  shutdownLabel,
+  shutdownAlert,
   toDeploy,
   pinned,
   onPin,
@@ -147,6 +171,19 @@ export function TopBar({
       alert: 0,
       tone: 'accent',
       title: 'tasks you archived — what they were, and where the work landed',
+    },
+    {
+      id: 'power',
+      label: 'power',
+      total: shutdownLabel,
+      alert: shutdownAlert,
+      // `danger`, like a permission prompt: both are a thing about to stop, and
+      // this is the only one that takes the machine with it.
+      tone: 'danger',
+      title:
+        shutdownAlert > 0
+          ? `this machine shuts down in ${shutdownAlert} minute${shutdownAlert === 1 ? '' : 's'}`
+          : 'when this machine shuts down at the end of the day',
     },
   ];
 

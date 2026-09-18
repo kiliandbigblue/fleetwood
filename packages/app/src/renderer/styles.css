@@ -3578,3 +3578,236 @@ button {
 .theme-alpha input[type='range']:focus-visible::-webkit-slider-thumb {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
 }
+
+/* --- power: the end-of-day shutdown -------------------------------------- */
+
+/*
+ * One card, on a tab that holds nothing else, so it can afford the room the
+ * list's rows cannot: `--s4` between the fields rather than the `--s3` a group
+ * of rows uses. Nothing here is scanned in a column — each line is read once,
+ * when you change it.
+ */
+.card.power {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  padding: var(--s4);
+}
+
+.power-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+
+.power-when {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  min-width: 0;
+}
+
+/* The state, in the head's own size: on this tab it is the one fact, and every
+   other card gives that line to the name of the thing. */
+.power-state {
+  font-family: var(--mono-display);
+  font-size: var(--fs-head);
+  font-weight: 500;
+  color: var(--dim);
+}
+/* Armed. Not `danger`, which is reserved here for the warning and the failure:
+   a shutdown you asked for and is hours off is simply in force. */
+.power-state.on {
+  color: var(--text);
+}
+
+.power-left {
+  font-size: var(--fs-body);
+  /* Measured, and it changes every second: tabular, or the line jitters. */
+  font-variant-numeric: tabular-nums;
+  color: var(--soft);
+}
+
+.power-field {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
+.power-label {
+  font-size: var(--fs-body);
+  color: var(--soft);
+}
+
+/* Both fields sized to their content and no wider: a time input stretched across
+   the panel reads as a text box you are expected to write a sentence in. */
+.power-time {
+  width: 92px;
+  font-variant-numeric: tabular-nums;
+}
+.power-warn {
+  width: 56px;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The schedule is armed and cannot fire.
+ *
+ * Kept in the card and in `warn` rather than `danger`: nothing is broken, a
+ * machine that stays on is the safe failure — but it is the difference between
+ * the tab meaning what it says and not, so it does not get to be a footnote.
+ */
+.power-blocked {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3);
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+  border-radius: 5px;
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  color: var(--soft);
+}
+
+.power-blocked code {
+  font-family: var(--mono);
+  color: var(--text);
+}
+
+/* The line you paste. Selectable and on its own row, because it is the whole
+   point of the block above it. */
+.power-sudoers {
+  user-select: all;
+  padding: var(--s2) var(--s3);
+  background: var(--bg);
+  border-radius: 4px;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.power-error {
+  font-size: var(--fs-body);
+  color: var(--danger);
+}
+
+/* --- the fifteen-minute warning ------------------------------------------ */
+
+/*
+ * The warning's window has no panel in it, so it has no window fill either.
+ *
+ * `body` paints `--bg` for the panel, which is right there and wrong here: this
+ * window covers the whole display, and an opaque background would black out the
+ * screen for fifteen minutes rather than tinting it. Selected on the child
+ * because both screens are the same document — see `main.tsx`.
+ */
+body:has(.warning) {
+  background: transparent;
+}
+
+/*
+ * A whole display, in the theme's own danger colour.
+ *
+ * Its own window (see `main/shutdown.ts`), which is why this is the root element
+ * rather than an overlay inside the panel — and why it is allowed to be this
+ * loud. Opaque rather than tinted: it is here to stop you, and a wash you can
+ * read your editor through is a thing you look past. It costs nothing to be this
+ * blunt, because one key takes it away.
+ *
+ * The danger role mixed into the window's own background rather than laid over
+ * it, so it is the current theme's red on the current theme's dark and not a
+ * colour this file chose.
+ */
+.warning {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100vw;
+  height: 100vh;
+  background: color-mix(in srgb, var(--danger) 26%, var(--bg));
+  user-select: none;
+}
+
+.warning-sheet {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s3);
+  padding: 48px 72px;
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  border: 2px solid var(--danger);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 55%);
+  text-align: center;
+}
+
+.warning-kicker {
+  font-family: var(--mono-display);
+  font-size: 18px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--danger);
+}
+
+/*
+ * The one number, at the size the whole window exists to carry it.
+ *
+ * Tabular and in the display cut: it is a clock, it changes every second, and a
+ * countdown whose digits shift width as they fall is a countdown you stop
+ * trusting.
+ */
+.warning-countdown {
+  font-family: var(--mono-display);
+  font-size: 156px;
+  font-weight: 500;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.warning-line {
+  font-size: 22px;
+  color: var(--text);
+}
+
+.warning-note {
+  font-size: 15px;
+  color: var(--soft);
+}
+
+/*
+ * The way out, at the size of the thing it dismisses.
+ *
+ * `.button` is 11px furniture on a panel 460px wide; this one is across the room
+ * from you and is the only target on the screen, so it is sized to be found
+ * rather than to fit.
+ */
+.warning-dismiss {
+  margin-top: var(--s3);
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: 10px 28px;
+  border-radius: 999px;
+  border: 1px solid var(--danger);
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+  font-size: 17px;
+  color: var(--text);
+}
+.warning-dismiss:hover {
+  background: color-mix(in srgb, var(--danger) 30%, transparent);
+}
+
+.warning-dismiss .key {
+  /* The panel's key cap, at this window's scale. */
+  font-size: 13px;
+  color: var(--soft);
+}
+
+/* Under the button, and quiet: it is the sentence that stops "got it" from
+   reading as "cancelled", which only matters to whoever pauses to read it. */
+.warning-fine {
+  font-size: 13px;
+  color: var(--dim);
+}

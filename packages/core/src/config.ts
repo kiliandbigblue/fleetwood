@@ -6,6 +6,8 @@ import { clampBgOpacity, DEFAULT_BG_OPACITY, DEFAULT_THEME, isThemeName } from '
 import type { ThemeName } from './theme.ts';
 import { DEFAULT_THEME_SYNC } from './themeSync.ts';
 import type { ThemeSyncConfig } from './themeSync.ts';
+import { DEFAULT_SHUTDOWN, normaliseShutdown } from './shutdown.ts';
+import type { ShutdownConfig } from './shutdown.ts';
 
 /**
  * How a workflow run's name is read as deploy / build / pre-flight.
@@ -180,6 +182,14 @@ export interface Config {
     warnTokens: number;
     criticalTokens: number;
   };
+  /**
+   * The end-of-day shutdown — see `shutdown.ts`.
+   *
+   * The one setting here that acts on the machine rather than on what fleetwood
+   * draws, which is why it is off until you turn it on and why an unreadable
+   * time turns it back off rather than guessing an hour.
+   */
+  shutdown: ShutdownConfig;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -211,6 +221,7 @@ export const DEFAULT_CONFIG: Config = {
   themeSync: DEFAULT_THEME_SYNC,
   limits: { tokenCommand: '', cursorTokenCommand: '', pollSeconds: 300 },
   context: { warnTokens: 250_000, criticalTokens: 450_000 },
+  shutdown: DEFAULT_SHUTDOWN,
 };
 
 /** Shallow-merge on purpose: a partial config file must not lose new defaults. */
@@ -237,6 +248,10 @@ export async function loadConfig(): Promise<Config> {
       // window either invisible or lying about the slider it came from.
       bgOpacity: clampBgOpacity(raw.bgOpacity),
       themeSync: { ...DEFAULT_CONFIG.themeSync, ...raw.themeSync },
+      // Validated rather than merged, like the theme above and for a louder
+      // reason: `19:0` or a warning of -5 minutes must leave the machine alone,
+      // not fire at an hour nobody wrote down.
+      shutdown: normaliseShutdown(raw.shutdown),
     };
   } catch {
     return DEFAULT_CONFIG;
@@ -278,4 +293,16 @@ export async function saveTheme(theme: ThemeName): Promise<void> {
  *  the slider could never produce. */
 export async function saveBgOpacity(bgOpacity: number): Promise<void> {
   await patchConfig({ bgOpacity: clampBgOpacity(bgOpacity) });
+}
+
+/**
+ * Persist the shutdown schedule, normalised.
+ *
+ * Whole rather than per-key: the three fields are one decision — "off at 19:00,
+ * shout at 18:45" — and a patch that could write the time without the opt-in
+ * would let a half-applied change arm a shutdown for an hour you were still
+ * typing.
+ */
+export async function saveShutdown(shutdown: ShutdownConfig): Promise<void> {
+  await patchConfig({ shutdown: normaliseShutdown(shutdown) });
 }

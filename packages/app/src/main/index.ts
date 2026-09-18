@@ -32,6 +32,8 @@ import type {
   TaskPrs,
 } from '@fleetwood/core';
 import { repairPath } from './path.ts';
+import { startShutdown } from './shutdown.ts';
+import type { ShutdownScheduler } from './shutdown.ts';
 import { CHANNELS } from '../shared/ipc.ts';
 import type { Request, Response, Snapshot } from '../shared/ipc.ts';
 
@@ -48,6 +50,9 @@ const BUNDLE_DIR = __dirname;
 process.env.FLEETWOOD_HOOKS_DIR ??= join(BUNDLE_DIR, '..', 'hooks');
 
 const WINDOW_STATE = join(paths.FW_HOME, 'window.json');
+/** The one renderer bundle. The panel loads it, and so does the shutdown overlay. */
+const RENDERER_INDEX = join(BUNDLE_DIR, '..', 'renderer', 'index.html');
+const PRELOAD = join(BUNDLE_DIR, '..', 'preload', 'index.cjs');
 
 let win: BrowserWindow | undefined;
 let tray: Tray | undefined;
@@ -87,6 +92,14 @@ let taskCache: { at: number; tasks: Task[] } = { at: 0, tasks: [] };
 let planLimits: PlanLimits | undefined;
 let cursorUsage: CursorUsage | undefined;
 let limitsAt = 0;
+/**
+ * The end-of-day shutdown — see `shutdown.ts`.
+ *
+ * It keeps its own clock and its own window, so the only things it needs from
+ * here are a way to say the schedule moved and somewhere to be read for the
+ * snapshot.
+ */
+let shutdown: ShutdownScheduler | undefined;
 let fleetTimer: NodeJS.Timeout | undefined;
 let prTimer: NodeJS.Timeout | undefined;
 let mergedTimer: NodeJS.Timeout | undefined;
@@ -200,6 +213,9 @@ async function buildSnapshot(): Promise<Snapshot> {
     bgOpacity: settings.bgOpacity,
     limits: planLimits,
     cursorUsage,
+    // Off until the scheduler is up, which is a few milliseconds at boot — and
+    // "no shutdown scheduled" is the truth during them.
+    shutdown: shutdown?.state() ?? { ...settings.shutdown, phase: 'off' },
     history,
   };
 }
@@ -215,7 +231,9 @@ function summarise(snapshot: Snapshot): string {
 
 async function pushSnapshot(): Promise<void> {
   const snapshot = await buildSnapshot();
-  win?.webContents.send(CHANNELS.snapshot, snapshot);
+  // Every window, not just the panel: the shutdown overlay is a second one, and
+  // it draws its countdown from this same snapshot.
+  for (const open of BrowserWindow.getAllWindows()) open.webContents.send(CHANNELS.snapshot, snapshot);
   tray?.setTitle(summarise(snapshot));
 }
 
@@ -635,6 +653,19 @@ async function handle(request: Request): Promise<Response> {
       return { ok: true, detail: `background ${Math.round(request.value * 100)}%` };
     }
 
+    case 'setShutdown': {
+      // Only before the window exists, which is also before anything can click.
+      if (!shutdown) return { ok: false, detail: 'the scheduler is still starting' };
+      const next = await shutdown.set(request.shutdown);
+      await pushSnapshot();
+      if (!next.enabled) return { ok: true, detail: 'end-of-day shutdown off' };
+      return { ok: true, detail: `shutting down at ${next.time}` };
+    }
+
+    case 'dismissShutdownWarning':
+      shutdown?.dismiss();
+      return { ok: true, detail: 'warning dismissed — the shutdown still stands' };
+
     case 'setAlwaysOnTop':
       win?.setAlwaysOnTop(request.value);
       await saveWindowState();
@@ -669,13 +700,13 @@ async function createWindow(): Promise<void> {
     backgroundColor: '#00000000',
     alwaysOnTop: state.alwaysOnTop,
     webPreferences: {
-      preload: join(BUNDLE_DIR, '..', 'preload', 'index.cjs'),
+      preload: PRELOAD,
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
 
-  await win.loadFile(join(BUNDLE_DIR, '..', 'renderer', 'index.html'));
+  await win.loadFile(RENDERER_INDEX);
   win.once('ready-to-show', () => win?.show());
   win.on('moved', () => void saveWindowState());
   win.on('resized', () => void saveWindowState());
@@ -706,6 +737,15 @@ app.whenReady().then(async () => {
 
   // The collector keeps folding hook events whether or not the window is open.
   collector = await spool.Collector.start({ onUpdate: () => void pushSnapshot() });
+
+  // Before the window, and independent of it: the panel spends most of the day
+  // hidden behind its hotkey, and the evening's shutdown is not conditional on
+  // it being up.
+  shutdown = startShutdown({
+    rendererIndex: RENDERER_INDEX,
+    preload: PRELOAD,
+    onChange: () => void pushSnapshot(),
+  });
 
   const settings = await configModule.loadConfig();
 
@@ -756,6 +796,7 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   collector?.stop();
+  shutdown?.stop();
   if (fleetTimer) clearInterval(fleetTimer);
   if (prTimer) clearInterval(prTimer);
   if (mergedTimer) clearInterval(mergedTimer);
