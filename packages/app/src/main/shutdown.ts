@@ -6,6 +6,7 @@ import {
   nextShutdownAt,
   run,
   shutdownState,
+  sudoReachedShutdown,
 } from '@fleetwood/core';
 import type { ShutdownConfig, ShutdownState } from '@fleetwood/core';
 
@@ -43,6 +44,15 @@ const TICK_MS = 5_000;
  * before the evening rather than at the end of it — see `probePermitted`.
  */
 const SUDO_SHUTDOWN = ['-n', '/sbin/shutdown', '-h', 'now'];
+
+/**
+ * The same binary with nothing to do: the permission check.
+ *
+ * `shutdown` needs a time and prints its usage without one, so this changes
+ * nothing about the machine — but sudo has already decided by the time it runs,
+ * and that decision is the whole question. See `probePermitted`.
+ */
+const SUDO_PROBE = ['-n', '/sbin/shutdown'];
 
 interface Options {
   /** `index.html` in the built renderer — the overlay is the same bundle. */
@@ -93,16 +103,25 @@ export function startShutdown({ rendererIndex, preload, onChange }: Options): Sh
   /**
    * Whether `sudo` will run the shutdown without asking for a password.
    *
-   * `sudo -l <command>` is the question "may I", asked without doing it. Probed
-   * rather than assumed because the answer needs a line in `/etc/sudoers.d` that
-   * fleetwood cannot write for you, and a schedule that silently cannot fire is
-   * the one failure this feature must not have. See the README.
+   * Probed rather than assumed because the answer needs a line in
+   * `/etc/sudoers.d` that fleetwood cannot write for you, and a schedule that
+   * silently cannot fire is the one failure this feature must not have.
+   *
+   * Asked by doing the harmless half rather than with `sudo -l`, which was the
+   * first attempt and was wrong on every machine: listing your own privileges
+   * needs a password of its own on a stock macOS — `listpw` defaults to `any`,
+   * and the admin group's ordinary `ALL=(ALL) ALL` is an entry that requires
+   * one — so it reported "no" for correctly configured machines too.
+   *
+   * So: run `shutdown` with no arguments. It needs a time, prints its usage
+   * without one, and changes nothing either way; sudo has already decided by
+   * then. This is also why the documented sudoers rule names no arguments —
+   * the exact-argument form cannot be verified without shutting the machine
+   * down to find out.
    */
   async function probePermitted(): Promise<void> {
-    const { code } = await run('sudo', ['-n', '-l', '/sbin/shutdown', '-h', 'now'], {
-      timeoutMs: 5_000,
-    });
-    permitted = code === 0;
+    const { stdout, stderr } = await run('sudo', SUDO_PROBE, { timeoutMs: 5_000 });
+    permitted = sudoReachedShutdown(`${stdout}${stderr}`);
   }
 
   function openOverlay(): void {

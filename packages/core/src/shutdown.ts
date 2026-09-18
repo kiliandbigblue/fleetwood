@@ -144,6 +144,27 @@ export function shutdownPhase(at: number | undefined, warnMinutes: number, now: 
   return at - now <= clampWarnMinutes(warnMinutes) * 60_000 ? 'warning' : 'armed';
 }
 
+/**
+ * Whether the permission probe actually reached `shutdown`.
+ *
+ * The probe runs `sudo -n /sbin/shutdown` with no time after it, so the whole
+ * question is which of the two programs answered. This looks for the usage text
+ * `shutdown` prints when it is given nothing to do — a positive signal, rather
+ * than a list of the ways sudo says no.
+ *
+ * That direction is deliberate. sudo's refusals are several and not all alike:
+ * `sudo: a password is required` carries its prefix, `Sorry, user … is not
+ * allowed to execute` does not, the wording moves between versions, and missing
+ * one would mean reporting a schedule as armed that can never fire. The success
+ * is one string from a BSD tool that does not translate it. So an answer
+ * fleetwood cannot read comes out as "no", and the cost of being wrong is the
+ * tab nagging about a rule that is already there rather than an evening that
+ * silently does nothing.
+ */
+export function sudoReachedShutdown(output: string): boolean {
+  return /usage:\s*shutdown/i.test(output);
+}
+
 /** What the renderer is told about the schedule — the whole of it. */
 export interface ShutdownState extends ShutdownConfig {
   /** Epoch ms the machine goes down at. Absent while opted out. */

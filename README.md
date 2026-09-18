@@ -370,16 +370,38 @@ shutdown conditional on you looking at it would be no shutdown at all.
 **It needs sudo.** `shutdown -h now` is root's, and a GUI app has no terminal to
 type a password into — so fleetwood runs it as `sudo -n`, non-interactively, and a
 sudo that decided to ask would hang forever holding a shutdown nobody can see.
-Grant it once:
+Grant it once, with `sudo visudo -f /etc/sudoers.d/fleetwood-shutdown` holding one
+line:
 
-```sh
-sudo visudo -f /etc/sudoers.d/fleetwood-shutdown
-# %admin ALL=(root) NOPASSWD: /sbin/shutdown -h now
+```
+%admin ALL=(root) NOPASSWD: /sbin/shutdown
 ```
 
-Until that line exists the tab says so, in the warning colour, next to the time it
-would otherwise have fired at — because the alternative is finding out at 19:00,
-when nothing happens.
+Until that line is there the tab says so, in the warning colour, next to the time
+it would otherwise have fired at — because the alternative is finding out at
+19:00, when nothing happens.
+
+**The rule names no arguments on purpose**, rather than the tighter
+`/sbin/shutdown -h now`. That is what makes it checkable: fleetwood asks whether
+sudo will have it by running `sudo -n /sbin/shutdown` with nothing after it, which
+needs a time, prints its usage and changes nothing — but sudo has already decided
+by then, and the check reads which of the two programs answered. Pinned to the
+exact arguments, the only way to find out would be to shut the machine down. The
+widening is one class of command either way: `shutdown` can halt, reboot or boot
+single-user, and it runs no code of yours.
+
+It reads the check off the *success* — the usage text — rather than off a list of
+sudo's refusals, because those are several and not all alike (`sudo: a password is
+required` carries sudo's prefix, `Sorry, user … is not allowed to execute` does
+not) and missing one would mean reporting a schedule as armed that can never fire.
+An answer it cannot read comes out as "not permitted", so the failure is the tab
+nagging about a rule that is already there.
+
+Not `sudo -l`, which was the first attempt and was wrong on every machine: listing
+your own privileges needs a password of its own on a stock macOS — `listpw`
+defaults to `any`, and the admin group's ordinary `ALL=(ALL) ALL` is an entry that
+requires one — so it reported "no" for a correctly configured machine as readily
+as for an unconfigured one.
 
 ## prefix+g
 

@@ -111,6 +111,7 @@ export {
   parseClock,
   shutdownPhase,
   shutdownState,
+  sudoReachedShutdown,
 } from './shutdown.ts';
 export type { Clock, ShutdownConfig, ShutdownPhase, ShutdownState } from './shutdown.ts';
 

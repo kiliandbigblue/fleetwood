@@ -10,7 +10,7 @@ import { duration, send } from './api.ts';
 import { useNow } from './useNow.ts';
 
 /** The sudoers line that lets the schedule actually fire — see the README. */
-const SUDOERS_LINE = '%admin ALL=(root) NOPASSWD: /sbin/shutdown -h now';
+const SUDOERS_LINE = '%admin ALL=(root) NOPASSWD: /sbin/shutdown';
 
 interface Props {
   shutdown: ShutdownState;

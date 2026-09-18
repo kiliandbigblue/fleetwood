@@ -15,6 +15,7 @@ import {
   parseClock,
   shutdownPhase,
   shutdownState,
+  sudoReachedShutdown,
 } from '../src/shutdown.ts';
 
 /** A local wall clock, which is what every value in this module is stated in. */
@@ -78,6 +79,25 @@ test('a shutdown slept through is missed, not fired late', () => {
   assert.equal(hasMissed(when, when + MISSED_GRACE_MS), false);
   // The lid opening the next morning is not.
   assert.equal(hasMissed(when, at(2026, 3, 11, 8, 12)), true);
+});
+
+test('the permission probe reads shutdown answering, not sudo refusing', () => {
+  // What `shutdown` prints as root with no time after it: the rule is in place.
+  assert.equal(
+    sudoReachedShutdown('usage: shutdown [-] [-h [-u | -n] | -r | -s | -k] time [warning-message ...]\n'),
+    true,
+  );
+  // Every way sudo says no, including the ones that carry no `sudo:` prefix —
+  // which is exactly why this is matched on the success instead.
+  assert.equal(sudoReachedShutdown('sudo: a password is required\n'), false);
+  assert.equal(
+    sudoReachedShutdown("Sorry, user kilian is not allowed to execute '/sbin/shutdown' as root on host.\n"),
+    false,
+  );
+  assert.equal(sudoReachedShutdown('kilian is not in the sudoers file.\n'), false);
+  assert.equal(sudoReachedShutdown('sudo: a terminal is required to read the password\n'), false);
+  // Nothing said at all — no `sudo` on `PATH`. An unanswered question is a no.
+  assert.equal(sudoReachedShutdown(''), false);
 });
 
 test('warn minutes are clamped to something a person can read and survive', () => {
