@@ -670,6 +670,11 @@ async function handle(request: Request): Promise<Response> {
       return notesApi.writeNotes(request.notes);
     }
 
+    case 'openNotesInEditor': {
+      const settings = await configModule.loadConfig();
+      return actions.openNotes(settings.editor);
+    }
+
     case 'dismissShutdownWarning':
       shutdown?.dismiss();
       return { ok: true, detail: 'warning dismissed — the shutdown still stands' };

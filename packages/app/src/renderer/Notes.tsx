@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { describeNotes } from '@fleetwood/core/notesFormat';
 import { Drawer } from './Drawer.tsx';
 import { send } from './api.ts';
+import { editorLabel } from './TaskCard.tsx';
 
 /** How long after the last keystroke the file is written. */
 const SAVE_AFTER_MS = 500;
@@ -9,6 +10,8 @@ const SAVE_AFTER_MS = 500;
 interface Props {
   /** What is on disk. The textarea reads `draft`, never this — see below. */
   notes: string;
+  /** The editor `openNotesInEditor` will run, so the chip says what it does. */
+  editor: string;
   open: boolean;
   onToggle: () => void;
   onResult: (message: string, ok: boolean) => void;
@@ -35,7 +38,7 @@ interface Props {
  * you are not typing and no save is still out — which is what lets a line
  * added in an editor land without a relaunch.
  */
-export function Notes({ notes, open, onToggle, onResult }: Props): React.JSX.Element {
+export function Notes({ notes, editor, open, onToggle, onResult }: Props): React.JSX.Element {
   const [draft, setDraft] = useState(notes);
   const [focused, setFocused] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -122,7 +125,7 @@ export function Notes({ notes, open, onToggle, onResult }: Props): React.JSX.Ele
             {lines > 1 && <span className="notes-count">+{lines - 1}</span>}
           </>
         ) : (
-          <span className="notes-head empty">where you are, for tomorrow</span>
+          <span className="notes-head blank">where you are, for tomorrow</span>
         )
       }
       trailing={<span className="key">⌘N</span>}
@@ -149,7 +152,24 @@ export function Notes({ notes, open, onToggle, onResult }: Props): React.JSX.Ele
           }
         }}
       />
-      <div className="notes-hint">saved as you type · ~/.fleetwood/notes.md · esc closes</div>
+      <div className="notes-hint">
+        <span>saved as you type · ~/.fleetwood/notes.md · esc closes</span>
+        {/* The same chip a worktree row has, for the same reason: a line goes in
+            the box, a paragraph goes in the editor you live in. It opens in a
+            window of the session you are at — the note has no session of its
+            own — and what you typed here is flushed on the way, so the editor
+            opens on the file as you left it. */}
+        <button
+          className="chip"
+          title={`open the notes in ${editorLabel(editor)}, in a new window of the tmux session you are in`}
+          onClick={() => {
+            flush();
+            void send({ kind: 'openNotesInEditor' }).then((result) => onResult(result.detail, result.ok));
+          }}
+        >
+          + {editorLabel(editor)}
+        </button>
+      </div>
     </Drawer>
   );
 }

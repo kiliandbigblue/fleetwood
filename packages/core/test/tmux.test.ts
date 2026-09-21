@@ -5,6 +5,7 @@ import {
   findTaskSession,
   parsePanes,
   parseSessions,
+  pickCurrentClient,
   planSessionKill,
   tmuxEnv,
   windowsUnderPath,
@@ -341,4 +342,22 @@ test('the windows sitting in a doomed worktree are named once each, on a path bo
   // A split with one pane outside still goes: the window's directory is the one
   // git is removing.
   assert.deepEqual(windowsUnderPath(panes, 'order-type', `${task}/nothing-here`), []);
+});
+
+test('the client you are at is the focused one, else the one you typed in last', () => {
+  const at = (session: string, activity: number, focused = false): ClientInfo => ({
+    tty: `/dev/ttys${activity}`,
+    session,
+    termName: 'xterm-ghostty',
+    activity,
+    focused,
+  });
+
+  assert.equal(pickCurrentClient([]), undefined);
+  // Focus wins over recency: the panel was just used, but the terminal has the keyboard.
+  assert.equal(pickCurrentClient([at('HOME', 200), at('atlas-pr-1', 100, true)])?.session, 'atlas-pr-1');
+  // No terminal reports focus (older tmux, or the panel itself has it): most recent keystroke.
+  assert.equal(pickCurrentClient([at('HOME', 200), at('atlas-pr-1', 100)])?.session, 'HOME');
+  // A client with no activity at all still counts when it is the only one.
+  assert.equal(pickCurrentClient([{ tty: '/dev/ttys0', session: 'HOME', termName: '' }])?.session, 'HOME');
 });

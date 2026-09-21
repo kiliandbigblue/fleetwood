@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { basename } from 'node:path';
+import { FW_HOME, NOTES_FILE, ensureDirs } from './paths.ts';
 import { run } from './exec.ts';
 import { looksLikeClaude } from './claudeDaemon.ts';
 import { classify, scanProcesses } from './procScan.ts';
@@ -188,10 +189,12 @@ export interface OpenEditorOptions {
   cwd: string;
   /** The command to run — whatever `editor` is configured to, `nvim` by default. */
   editor: string;
-  /** tmux window name. Defaults to the directory's own name. */
+  /** tmux window name. Defaults to the directory's own name, or the file's. */
   name?: string;
   /** Split the current window instead of opening one of its own. */
   split?: boolean;
+  /** A file to open rather than the directory — typed after the editor, quoted. */
+  file?: string;
 }
 
 /**
@@ -210,16 +213,20 @@ export async function openEditor(options: OpenEditorOptions): Promise<ActionResu
     return { ok: false, detail: `no tmux session named ${options.session}` };
   }
 
+  const target = options.file ?? options.cwd;
   const paneId = options.split
     ? await tmux.splitWindow(`=${options.session}:`, { cwd: options.cwd })
     : await tmux.newWindow(options.session, {
         cwd: options.cwd,
-        name: options.name ?? basename(options.cwd),
+        name: options.name ?? basename(target),
         select: true,
       });
   if (!paneId) return { ok: false, detail: 'could not create a pane' };
 
-  if (!(await tmux.sendText(paneId, editor))) {
+  // Single-quoted, because it is typed into a shell: a `~/.fleetwood` that the
+  // shell expands is fine, a path with a space in it split in two is not.
+  const command = options.file ? `${editor} '${options.file.replaceAll("'", "'\\''")}'` : editor;
+  if (!(await tmux.sendText(paneId, command))) {
     return { ok: false, detail: `created ${paneId} but could not type ${editor}` };
   }
 
@@ -227,8 +234,25 @@ export async function openEditor(options: OpenEditorOptions): Promise<ActionResu
   const focus = await focusSession(options.session);
   return {
     ok: true,
-    detail: `${editor} in ${paneId} on ${basename(options.cwd)}${focus.ok ? '' : ` — ${focus.detail}`}`,
+    detail: `${editor} in ${paneId} on ${basename(target)}${focus.ok ? '' : ` — ${focus.detail}`}`,
   };
+}
+
+/**
+ * Your notes, in the editor, in the session you are at.
+ *
+ * The drawer is where a line gets added; a paragraph wants the editor you live
+ * in. The note has no task, so there is no session of its own to open the
+ * window in — it goes in whichever one you are looking at, which is the one
+ * you will be back in when you quit. No terminal attached, and it is the first
+ * session tmux has: `focusSession` then opens one on it. Rooted at
+ * `~/.fleetwood`, so quitting leaves a prompt beside the file.
+ */
+export async function openNotes(editor: string): Promise<ActionResult> {
+  const session = (await tmux.currentSession()) ?? (await tmux.listSessions())[0]?.name;
+  if (!session) return { ok: false, detail: 'tmux has no session to open the editor in' };
+  await ensureDirs();
+  return openEditor({ session, cwd: FW_HOME, editor, file: NOTES_FILE, name: 'notes' });
 }
 
 const DIFIT = 'difit';

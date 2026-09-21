@@ -448,9 +448,17 @@ file, the same rule the task notes follow, so "nothing written" is one state on
 disk. Folded, the bar shows the note's first line and how many more there are —
 enough to know whether tonight's is written without opening it.
 
+**`+ nvim` on the drawer opens the file in the editor**, in a new window of the
+tmux session you are at — the one whose terminal has focus, else the one you
+typed in last. A line goes in the box; a paragraph goes in the editor you live
+in. The note has no task, so there is no session of its own to open the window
+in, and the one you are looking at is the one you will be back in when you
+quit. The window is rooted at `~/.fleetwood`, so quitting leaves a prompt
+beside the file, and the drawer picks the edit up on the next poll.
+
 ```sh
 fw notes          # print them
-fw notes edit     # the same file, in $EDITOR
+fw notes edit     # the same file, in $EDITOR, right here
 ```
 
 ## prefix+g

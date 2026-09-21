@@ -228,7 +228,9 @@ export type Request =
    */
   | { kind: 'dismissShutdownWarning' }
   /** Replace the notes. Sent half a second after every keystroke — see `Notes`. */
-  | { kind: 'setNotes'; notes: string };
+  | { kind: 'setNotes'; notes: string }
+  /** The notes in the configured editor, in a window of the session you are at. */
+  | { kind: 'openNotesInEditor' };
 
 export type Response =
   | ({ ok: boolean; detail: string } & Partial<ActionResult>)

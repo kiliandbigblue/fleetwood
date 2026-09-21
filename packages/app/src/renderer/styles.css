@@ -3712,7 +3712,7 @@ button {
   white-space: nowrap;
   color: var(--dim);
 }
-.notes-head.empty {
+.notes-head.blank {
   font-style: italic;
 }
 .notes-count {
@@ -3754,9 +3754,16 @@ button {
 }
 
 .notes-hint {
-  padding: 0 var(--s4) var(--s3) calc(var(--s4) + 7px);
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  /* `--s2` below rather than `--s3`: the chip's own padding makes up the rest. */
+  padding: 0 var(--s4) var(--s2) calc(var(--s4) + 7px);
   color: var(--dim);
   font-size: var(--fs-micro);
+}
+.notes-hint > span {
+  margin-right: auto;
 }
 
 /* --- the fifteen-minute warning ------------------------------------------ */

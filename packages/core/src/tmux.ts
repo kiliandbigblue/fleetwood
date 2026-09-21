@@ -440,13 +440,19 @@ export interface ClientInfo {
   tty: string;
   session: string;
   termName: string;
+  /** Epoch seconds of the client's last keystroke. */
+  activity?: number;
+  /** Whether this client's terminal is the one with keyboard focus — tmux ≥ 3.2. */
+  focused?: boolean;
 }
 
 export async function listClients(): Promise<ClientInfo[]> {
   const { ok, stdout } = await tmux([
     'list-clients',
     '-F',
-    ['#{client_tty}', '#{client_session}', '#{client_termname}'].join(SEP),
+    ['#{client_tty}', '#{client_session}', '#{client_termname}', '#{client_activity}', '#{client_flags}'].join(
+      SEP,
+    ),
   ]);
   if (!ok) return [];
   return stdout
@@ -454,8 +460,39 @@ export async function listClients(): Promise<ClientInfo[]> {
     .filter(Boolean)
     .map((line) => {
       const f = line.split(SEP);
-      return { tty: f[0] ?? '', session: f[1] ?? '', termName: f[2] ?? '' };
+      const activity = Number.parseInt(f[3] ?? '', 10);
+      return {
+        tty: f[0] ?? '',
+        session: f[1] ?? '',
+        termName: f[2] ?? '',
+        activity: Number.isFinite(activity) ? activity : undefined,
+        focused: (f[4] ?? '').split(',').includes('focused'),
+      };
     });
+}
+
+/**
+ * The client you are at: the one whose terminal has focus, else the one you
+ * typed in last.
+ *
+ * "Whatever session I'm in" is a question about a client, not a session — the
+ * same session can be attached in two windows, and a session with nobody
+ * attached is not one you are in. Focus is tmux's own answer where the terminal
+ * reports it; activity is the fallback for one that does not, and for the
+ * moment the panel itself has focus and no terminal does.
+ */
+export function pickCurrentClient(clients: ClientInfo[]): ClientInfo | undefined {
+  const focused = clients.find((c) => c.focused);
+  if (focused) return focused;
+  return clients.reduce<ClientInfo | undefined>(
+    (best, c) => (best === undefined || (c.activity ?? 0) > (best.activity ?? 0) ? c : best),
+    undefined,
+  );
+}
+
+/** The session of the client you are at, or nothing when no terminal is attached. */
+export async function currentSession(): Promise<string | undefined> {
+  return pickCurrentClient(await listClients())?.session;
 }
 
 /** Point every attached client at `session`. No-op when nothing is attached. */

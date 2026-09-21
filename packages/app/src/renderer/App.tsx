@@ -504,6 +504,7 @@ export function App(): React.JSX.Element {
       {snapshot && (
         <Notes
           notes={snapshot.notes}
+          editor={snapshot.editor}
           open={notesOpen}
           onToggle={() => setNotesOpen((open) => !open)}
           onResult={onResult}
