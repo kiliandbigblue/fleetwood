@@ -24,6 +24,10 @@ export * as task from './task.ts';
 export { findTrackedSessionId, findCursorChatId, resumeArgsFor } from './resume.ts';
 export * as taskPrs from './taskPrs.ts';
 export * as taskHistory from './taskHistory.ts';
+export * as notes from './notes.ts';
+// Flat, and a leaf: the panel's notes drawer folds the text with it and must not
+// import this barrel to get it.
+export { describeNotes } from './notesFormat.ts';
 export {
   groupPrStacks,
   isMerged,

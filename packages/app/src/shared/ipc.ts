@@ -77,6 +77,14 @@ export interface Snapshot {
    * `taskPrs` nothing about it can go stale: the rows are frozen snapshots.
    */
   history: ArchivedTask[];
+  /**
+   * Your notes, as they are on disk — see `core/notes.ts`.
+   *
+   * On the snapshot rather than fetched when the drawer opens, so a line added
+   * with an editor lands in the panel on the next poll, the same way a hand
+   * edit of the config does.
+   */
+  notes: string;
 }
 
 export const CHANNELS = {
@@ -218,7 +226,9 @@ export type Request =
    * from — it is the thing on screen. "I know", not "not tonight": opting out is
    * the power tab, deliberately somewhere else.
    */
-  | { kind: 'dismissShutdownWarning' };
+  | { kind: 'dismissShutdownWarning' }
+  /** Replace the notes. Sent half a second after every keystroke — see `Notes`. */
+  | { kind: 'setNotes'; notes: string };
 
 export type Response =
   | ({ ok: boolean; detail: string } & Partial<ActionResult>)

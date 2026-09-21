@@ -167,6 +167,11 @@ guessed onto the wrong terminal. `fw doctor` reports both numbers.
   countdown; one key puts it away and the shutdown still stands. At the time,
   fleetwood closes and the machine goes down. It needs one line in
   `/etc/sudoers.d` and says so on the tab until it has it. See **End of day**.
+- **Somewhere to write where you are.** A `notes` drawer under the list, on every
+  tab — `⌘N` — saved as you type to `~/.fleetwood/notes.md`. It is the end-of-day
+  brain dump, kept under the fleet rather than in a tab of its own so the tasks
+  you are writing about stay in view, and the shutdown warning opens it. See
+  **Notes**.
 - **Background and nested agents are found too.** Their hooks run without
   `$TMUX_PANE`, so fleetwood traces them to their pane through the process tree and
   marks them `⤶`.
@@ -402,6 +407,51 @@ your own privileges needs a password of its own on a stock macOS — `listpw`
 defaults to `any`, and the admin group's ordinary `ALL=(ALL) ALL` is an entry that
 requires one — so it reported "no" for a correctly configured machine as readily
 as for an unconfigured one.
+
+### Notes
+
+The `notes` drawer is where the day ends: what each task is waiting on, what to
+say to whom tomorrow, the thing you nearly forgot. It was a Raycast note, and
+the trouble with that was not the note but the window — the fleet in one, the
+account of it in another, and the account written from memory. `⌘N` opens it
+under whichever list you are reading, and the list stays put while you write.
+
+**Not a tab, and not on the power tab.** A tab replaces the fleet with a box,
+which is the one arrangement that cannot work for a note *about* the fleet: the
+first line you write is a task's name, and you want the card in front of you
+while you write it. The power tab was the first guess because the note belongs
+to the same moment as the shutdown, and that is exactly why the shutdown
+warning opens the drawer instead — the moment is shared, the place is not. The
+power tab is one card about the machine, and it stays that.
+
+**Not a task's `NOTES.md` either.** That file sits beside a task's worktrees so
+an agent working the task finds it, and it is about that task. This one is
+yours, about the whole desk, and nothing reads it but you and `fw notes`. Keep
+using the card's note for what tomorrow's agent should know; this is for what
+tomorrow's you should.
+
+**Saved as you type**, unlike the card's note, which saves on `⌘↵`. That one is
+a field you open and close; this is a scratchpad you leave open — and a
+scratchpad with a save button is one you lose an evening's worth of when the
+machine goes down at 19:00, which is the exact thing this panel does. The file
+is written half a second after the last keystroke and again on the way out, and
+the drawer holds what you typed rather than reading the snapshot back while you
+are in it: a poll lands every second, and a textarea bound to it would put the
+cursor at the end each time. Disk wins only when nothing is pending — no
+keystroke, no save still out — so a line added with an editor lands on the next
+poll, the way a hand edit of the config does.
+
+One file, not one per day. What you want back in the morning is where you left
+off, not a calendar of where you had been; and a note that is always *the*
+note can be kept open all day rather than found at 18:55. Blank removes the
+file, the same rule the task notes follow, so "nothing written" is one state on
+disk. Folded, the bar shows the note's first line and how many more there are —
+enough to know whether tonight's is written without opening it.
+
+```sh
+fw notes          # print them
+fw notes edit     # the same file, in $EDITOR
+```
 
 ## prefix+g
 

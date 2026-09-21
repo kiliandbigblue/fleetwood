@@ -9,6 +9,7 @@ import { HistoryList } from './HistoryList.tsx';
 import { TaskCard } from './TaskCard.tsx';
 import { NewTask } from './NewTask.tsx';
 import { Power } from './Power.tsx';
+import { Notes } from './Notes.tsx';
 import { Palette } from './Palette.tsx';
 import { StatusBar } from './StatusBar.tsx';
 import { TopBar } from './TopBar.tsx';
@@ -56,6 +57,11 @@ export function App(): React.JSX.Element {
    * `focus.ts`, which turns it back into the pair the pane needs.
    */
   const [focusedSlug, setFocusedSlug] = useState<string | undefined>();
+  /*
+   * Whether the notes drawer is up. Window state, like the hidden group: the
+   * note itself is on disk and outlives the window; "I had it open" does not.
+   */
+  const [notesOpen, setNotesOpen] = useState(false);
 
   useEffect(() => api.onSnapshot(setSnapshot), []);
   // Before the first paint of anything in the rails: the top one's inset into the
@@ -111,6 +117,9 @@ export function App(): React.JSX.Element {
       } else if ((event.metaKey || event.ctrlKey) && event.key === 'r') {
         event.preventDefault();
         refresh();
+      } else if ((event.metaKey || event.ctrlKey) && event.key === 'n') {
+        event.preventDefault();
+        setNotesOpen((open) => !open);
       } else if (event.key === 'Escape' && !paletteOpen && !newTaskOpen && !themeOpen) {
         /*
          * The way out of the pane.
@@ -153,6 +162,19 @@ export function App(): React.JSX.Element {
    */
   const shutdown = snapshot?.shutdown;
   const shutdownLabel = shutdown?.enabled ? shutdown.time : 'off';
+  /*
+   * The warning opens the notes.
+   *
+   * Fifteen minutes before the machine goes down is what the drawer is for, and
+   * the overlay that says so is on another window: when you put it away and
+   * come to the panel, the place to write where you are is already open. Keyed
+   * on the phase, so it opens once per warning and not on every poll during it
+   * — closing it again is allowed to stick.
+   */
+  const shutdownPhase = shutdown?.phase;
+  useEffect(() => {
+    if (shutdownPhase === 'warning') setNotesOpen(true);
+  }, [shutdownPhase]);
   const shutdownAlert =
     shutdown?.phase === 'warning' && shutdown.at !== undefined
       ? Math.max(1, Math.ceil((shutdown.at - Date.now()) / 60_000))
@@ -475,6 +497,18 @@ export function App(): React.JSX.Element {
           <Power shutdown={snapshot.shutdown} onResult={onResult} />
         )}
       </div>
+
+      {/* Between the list and the rail, on every tab: the one thing here you
+          write rather than read, kept under whatever you are looking at while
+          you write it — see `Notes`. */}
+      {snapshot && (
+        <Notes
+          notes={snapshot.notes}
+          open={notesOpen}
+          onToggle={() => setNotesOpen((open) => !open)}
+          onResult={onResult}
+        />
+      )}
 
       {/* Pinned below the scrolling body: everything down there is ambient
           context rather than something you act on — see `StatusBar`. */}

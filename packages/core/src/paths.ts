@@ -31,6 +31,8 @@ export const MERGED_FILE = join(FW_HOME, 'merged.json');
 export const BACKUP_DIR = join(FW_HOME, 'backups');
 export const HOOK_DIR = join(FW_HOME, 'hooks');
 export const LOG_FILE = join(FW_HOME, 'fleetwood.log');
+/** Your end-of-day brain dump — see `notes.ts`. */
+export const NOTES_FILE = join(FW_HOME, 'notes.md');
 
 export async function ensureDirs(): Promise<void> {
   await Promise.all([

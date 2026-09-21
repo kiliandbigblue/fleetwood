@@ -8,6 +8,8 @@ import {
   hooks,
   limits as limitsApi,
   cursorUsage as cursorUsageApi,
+  describeNotes,
+  notes as notesApi,
   deployMarks,
   groupPrStacks,
   orderReposByStack,
@@ -69,6 +71,8 @@ ${c.bold('commands')}
   task archive <slug> [--force]         remove every worktree and the session
                     ${c.dim('the description and its PRs are kept — see task history')}
   task history [--limit n]              tasks you archived, newest first
+  notes             your notes — the end-of-day brain dump the panel's drawer holds
+  notes edit        the same, in $EDITOR ${c.dim('(~/.fleetwood/notes.md, saved as you type in the panel)')}
 
   prs               pull requests awaiting your review, and your own
   open-pr <ref>     focus the session for a PR, or build one on a fresh worktree
@@ -1173,6 +1177,36 @@ async function cmdTaskArchive(argv: string[], json: boolean): Promise<void> {
  * The read side of what `task archive` writes: a task's folder is deleted, so
  * this log is the only place its description and pull requests survive.
  */
+/**
+ * `fw notes` prints them, `fw notes edit` opens them.
+ *
+ * Parity with the drawer and nothing more: the panel is where they are typed,
+ * and the file is plain markdown beside the config, so there is no `fw notes
+ * set` — the editor is the command line's way of writing a paragraph.
+ */
+async function cmdNotes(argv: string[], json: boolean): Promise<void> {
+  const text = await notesApi.readNotes();
+  const positional = positionalArgs(argv);
+
+  if (positional[1] === 'edit') {
+    const editor = process.env.EDITOR?.trim() || 'nvim';
+    await new Promise<void>((resolve) => {
+      const child = spawn(editor, [notesApi.NOTES_FILE], { stdio: 'inherit' });
+      child.on('exit', () => resolve());
+      child.on('error', () => resolve());
+    });
+    return;
+  }
+
+  if (json) return jsonOut({ ok: true, path: notesApi.NOTES_FILE, notes: text, ...describeNotes(text) });
+
+  if (text.trim().length === 0) {
+    process.stdout.write(`${c.dim(`no notes — the panel's drawer (⌘N) writes ${tildify(notesApi.NOTES_FILE)}`)}\n`);
+    return;
+  }
+  process.stdout.write(text.endsWith('\n') ? text : `${text}\n`);
+}
+
 async function cmdTaskHistory(argv: string[], json: boolean): Promise<void> {
   const history = await taskHistoryApi.loadHistory();
   const parsed = Number.parseInt(flagValue(argv, '--limit') ?? '', 10);
@@ -1278,6 +1312,9 @@ async function main(): Promise<void> {
       break;
     case 'prs':
       await cmdPrs(json);
+      break;
+    case 'notes':
+      await cmdNotes(argv, json);
       break;
     case 'open-pr':
       await cmdOpenPr(arg, background);

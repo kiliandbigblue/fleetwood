@@ -9,6 +9,7 @@ import {
   hooks,
   cursorUsage as cursorUsageApi,
   limits as limitsApi,
+  notes as notesApi,
   paths,
   deployMarks,
   planReorder,
@@ -217,6 +218,7 @@ async function buildSnapshot(): Promise<Snapshot> {
     // "no shutdown scheduled" is the truth during them.
     shutdown: shutdown?.state() ?? { ...settings.shutdown, phase: 'off' },
     history,
+    notes: await notesApi.readNotes(),
   };
 }
 
@@ -660,6 +662,12 @@ async function handle(request: Request): Promise<Response> {
       await pushSnapshot();
       if (!next.enabled) return { ok: true, detail: 'end-of-day shutdown off' };
       return { ok: true, detail: `shutting down at ${next.time}` };
+    }
+
+    case 'setNotes': {
+      // No push: the drawer holds what you typed, and the next poll agrees with
+      // it. Pushing here would answer every keystroke's save with a repaint.
+      return notesApi.writeNotes(request.notes);
     }
 
     case 'dismissShutdownWarning':
