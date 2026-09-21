@@ -407,7 +407,7 @@ button {
    * `--s4` put `2 working` at the window's padding, 20px left of where every
    * task title above it starts, so the one line summarising the list did not
    * line up with the list. The dot hangs in the mark column, exactly as it does
-   * on a row — `--indent` minus `--mark-col`, the arrangement `.hidden-toggle`
+   * on a row — `--indent` minus `--mark-col`, the arrangement `.drawer-toggle`
    * and `.agent` already use.
    */
   padding: 0 var(--s4) 0 calc(var(--indent) - var(--mark-col));
@@ -1663,7 +1663,7 @@ button {
   /* The reveals themselves stay — they are what make the actions reachable.
      Only the 90ms they fade over goes. */
   .task-repo .chip,
-  .hidden-caret,
+  .drawer-caret,
   .hidden-group > *,
   .row-act > * {
     transition: none;
@@ -2496,76 +2496,9 @@ button {
 /* --- hidden sessions ----------------------------------------------------- */
 
 /*
- * The drawer's door.
- *
- * It was a `.section-title` — micro caps at hairline value, the same type as
- * `3 OPEN · STACK OF 2` — so the one heading in this list you are meant to
- * press looked exactly like the ones you cannot, and the target was the width
- * of its own words. It is a row now, at the list's pitch and full width.
+ * The door is a `.drawer-toggle` now — see the foot of the panel, below. What
+ * is left here is what the door says and how the cards behind it are drawn.
  */
-/*
- * The drawer sits at the foot of the list, not wherever the list stopped.
- *
- * On a tall window the fleet ends halfway up and everything below it was empty:
- * the last thing on screen was a half-lit row floating in the middle of a black
- * field, with the status rail alone at the bottom edge. `margin-top: auto` in
- * the body's column costs nothing when the list overflows — there is no free
- * space to claim — and when there is room it puts the one row that is deliberately
- * out of the way at the bottom, where out of the way is. The void goes above it,
- * between the fleet and its drawer, which is where an empty list belongs.
- */
-.hidden-toggle {
-  margin-top: auto;
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  width: 100%;
-  min-height: 28px;
-  /* The caret hangs in the mark column, so `hidden` starts on `--indent` — the
-     rail every other row's first word starts on, which is most of why this now
-     reads as one of them. Same arrangement as `.pr-top`. */
-  padding: 0 var(--s4) 0 calc(var(--indent) - var(--mark-col));
-  /* The seam every other group in this list is separated by — inset to the same
-     margin, see `.card::before`. Drawn as a background rather than a border so
-     the inset does not need a pseudo-element the caret would have to dodge. */
-  background:
-    linear-gradient(var(--edge), var(--edge)) var(--s4) 0 / calc(100% - 2 * var(--s4)) 1px no-repeat;
-  color: var(--soft);
-  font-size: var(--fs-body);
-  text-align: left;
-}
-.hidden-toggle:hover {
-  /* The row hover this list already uses — see `.pr:hover`, with the seam kept
-     on top of it: the fill is the row's, the hairline belongs to the list. */
-  background:
-    linear-gradient(var(--edge), var(--edge)) var(--s4) 0 / calc(100% - 2 * var(--s4)) 1px no-repeat,
-    linear-gradient(color-mix(in srgb, var(--text) 5%, transparent), color-mix(in srgb, var(--text) 5%, transparent));
-  color: var(--text);
-}
-
-/* Its own fixed width, so the label does not shift when the caret turns. */
-.hidden-caret {
-  flex: none;
-  width: calc(var(--mark-col) - var(--s3));
-  display: grid;
-  place-items: center;
-  /* The chevron draws at `1em`. The small mark step, like every other glyph in
-     a leading column — it is a drawn shape now, so it is legible at that size in
-     a way the `▸` it replaces was not. */
-  font-size: var(--mark-sm);
-  color: var(--dim);
-  transition: transform 120ms ease-out;
-}
-
-.hidden-toggle:hover .hidden-caret {
-  color: inherit;
-}
-
-/* A quarter turn, which is the disclosure saying which way it goes rather than
-   swapping one character for another. */
-.hidden-toggle[aria-expanded='true'] .hidden-caret {
-  transform: rotate(90deg);
-}
 
 /*
  * The count, and then how many of them want you.
@@ -2580,7 +2513,7 @@ button {
   font-size: var(--fs-body);
   color: var(--dim);
 }
-.hidden-toggle:hover .hidden-count {
+.drawer-toggle:hover .hidden-count {
   color: var(--soft);
 }
 
@@ -3692,17 +3625,18 @@ button {
   color: var(--danger);
 }
 
-/* --- notes: the drawer under the list ------------------------------------ */
+/* --- the foot: drawers under the list ------------------------------------ */
 
 /*
  * Between the list and the bottom rail, on every tab.
  *
- * A strip of the rail's own colour, so it reads as chrome the way the rails do
- * and not as one more card that happens to be pinned. It does not scroll with
+ * Strips of the rail's own colour, so they read as chrome the way the rails do
+ * and not as one more card that happens to be pinned. They do not scroll with
  * the list, which is the whole arrangement: the fleet stays where it is above
- * while you write about it below.
+ * while you open what is below it. Two of them — the hidden sessions and the
+ * notes — and one component draws both, see `Drawer.tsx`.
  */
-.notes {
+.drawer {
   flex: none;
   display: flex;
   flex-direction: column;
@@ -3710,10 +3644,10 @@ button {
   border-top: 1px solid var(--rail-line);
 }
 
-/* The hidden group's disclosure, verbatim — the first word on `--indent`, the
-   caret hanging in the mark column — because it is the same control: a fold,
-   with what is folded said beside the name. */
-.notes-toggle {
+/* The door. The first word on `--indent`, the caret hanging in the mark column
+   — the arrangement every row in the list above already has, which is most of
+   why this reads as one of them rather than as a button. */
+.drawer-toggle {
   display: flex;
   align-items: center;
   gap: var(--s3);
@@ -3724,29 +3658,50 @@ button {
   font-size: var(--fs-body);
   text-align: left;
 }
-.notes-toggle:hover {
+.drawer-toggle:hover {
+  /* The row hover the list already uses — see `.pr:hover`. */
   background: color-mix(in srgb, var(--text) 5%, transparent);
   color: var(--text);
 }
-.notes-toggle .key {
+.drawer-trailing {
   margin-left: auto;
+  display: flex;
+  align-items: center;
 }
 
-.notes-caret {
+/* Its own fixed width, so the label does not shift when the caret turns. */
+.drawer-caret {
   flex: none;
   width: calc(var(--mark-col) - var(--s3));
   display: grid;
   place-items: center;
+  /* The chevron draws at `1em`. The small mark step, like every other glyph in
+     a leading column — it is a drawn shape, so it is legible at that size in a
+     way a `▸` was not. */
   font-size: var(--mark-sm);
   color: var(--dim);
-  transition: transform 120ms ease;
+  transition: transform 120ms ease-out;
 }
-.notes-toggle:hover .notes-caret {
+.drawer-toggle:hover .drawer-caret {
   color: inherit;
 }
-/* Open, it points down at the box it opened; the hidden group turns the same way. */
-.notes-toggle[aria-expanded='true'] .notes-caret {
+/* A quarter turn, which is the disclosure saying which way it goes rather than
+   swapping one character for another. */
+.drawer-toggle[aria-expanded='true'] .drawer-caret {
   transform: rotate(90deg);
+}
+
+/*
+ * What a drawer holds, when it holds a list.
+ *
+ * Capped to under half the window and scrolling on its own, for the reason the
+ * notes box is: the list above keeps the rest of the height. The padding is the
+ * body's, so a card in here sits on the same margins as one up there.
+ */
+.drawer-body {
+  max-height: 45vh;
+  overflow-y: auto;
+  padding: 0 var(--s3) var(--s3);
 }
 
 /* The note's first line, folded: enough to know whether tonight's is written. */

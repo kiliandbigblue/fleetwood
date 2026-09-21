@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { describeNotes } from '@fleetwood/core/notesFormat';
-import { Icon } from './Icon.tsx';
+import { Drawer } from './Drawer.tsx';
 import { send } from './api.ts';
 
 /** How long after the last keystroke the file is written. */
@@ -15,7 +15,7 @@ interface Props {
 }
 
 /**
- * Your notes: a drawer at the foot of the panel, on every tab.
+ * Your notes: a drawer at the foot of the panel, on every tab — see `Drawer`.
  *
  * This is the end-of-day brain dump. It was a Raycast note, and the reason it
  * moved is that writing "where am I on each thing" needs the things in view —
@@ -108,56 +108,48 @@ export function Notes({ notes, open, onToggle, onResult }: Props): React.JSX.Ele
   const { head, lines } = describeNotes(draft);
 
   return (
-    <div className={`notes${open ? ' open' : ''}`}>
-      <button
-        className="notes-toggle"
-        aria-expanded={open}
-        onClick={onToggle}
-        title={open ? 'fold the notes away (⌘N)' : 'your notes — kept in ~/.fleetwood/notes.md (⌘N)'}
-      >
-        <span className="notes-caret" aria-hidden="true">
-          <Icon name="chevron" />
-        </span>
-        notes
-        {/* Folded, the bar says what is in the note; opened, the note is right
-            below it and the bar says only what it is. */}
-        {!open && lines > 0 && (
+    <Drawer
+      open={open}
+      onToggle={onToggle}
+      label="notes"
+      title={open ? 'fold the notes away (⌘N)' : 'your notes — kept in ~/.fleetwood/notes.md (⌘N)'}
+      /* Folded, the door says what is in the note; opened, the note is right
+         below it and the door says only what it is. */
+      summary={
+        open ? undefined : lines > 0 ? (
           <>
             <span className="notes-head">{head}</span>
             {lines > 1 && <span className="notes-count">+{lines - 1}</span>}
           </>
-        )}
-        {!open && lines === 0 && <span className="notes-head empty">where you are, for tomorrow</span>}
-        <span className="key">⌘N</span>
-      </button>
-
-      {open && (
-        <>
-          <textarea
-            ref={field}
-            className="notes-field"
-            value={draft}
-            spellCheck={false}
-            placeholder={'where you are, for tomorrow —\nwhat each task is waiting on, what to say to whom, what you nearly forgot'}
-            onChange={(event) => onChange(event.target.value)}
-            onFocus={() => setFocused(true)}
-            onBlur={() => {
-              setFocused(false);
-              flush();
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') {
-                // Closes the drawer and stops there: escape means the innermost
-                // thing open, and `App` would otherwise also close a focused
-                // task behind it.
-                event.stopPropagation();
-                onToggle();
-              }
-            }}
-          />
-          <div className="notes-hint">saved as you type · ~/.fleetwood/notes.md · esc closes</div>
-        </>
-      )}
-    </div>
+        ) : (
+          <span className="notes-head empty">where you are, for tomorrow</span>
+        )
+      }
+      trailing={<span className="key">⌘N</span>}
+    >
+      <textarea
+        ref={field}
+        className="notes-field"
+        value={draft}
+        spellCheck={false}
+        placeholder={'where you are, for tomorrow —\nwhat each task is waiting on, what to say to whom, what you nearly forgot'}
+        onChange={(event) => onChange(event.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => {
+          setFocused(false);
+          flush();
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            // Closes the drawer and stops there: escape means the innermost
+            // thing open, and `App` would otherwise also close a focused
+            // task behind it.
+            event.stopPropagation();
+            onToggle();
+          }
+        }}
+      />
+      <div className="notes-hint">saved as you type · ~/.fleetwood/notes.md · esc closes</div>
+    </Drawer>
   );
 }

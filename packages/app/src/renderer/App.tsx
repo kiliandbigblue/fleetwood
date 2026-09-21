@@ -4,12 +4,12 @@ import type { Snapshot } from '../shared/ipc.ts';
 import { SessionCard } from './SessionCard.tsx';
 import { AgentRow } from './AgentRow.tsx';
 import { PrList } from './PrList.tsx';
-import { Icon } from './Icon.tsx';
 import { HistoryList } from './HistoryList.tsx';
 import { TaskCard } from './TaskCard.tsx';
 import { NewTask } from './NewTask.tsx';
 import { Power } from './Power.tsx';
 import { Notes } from './Notes.tsx';
+import { Drawer } from './Drawer.tsx';
 import { Palette } from './Palette.tsx';
 import { StatusBar } from './StatusBar.tsx';
 import { TopBar } from './TopBar.tsx';
@@ -435,47 +435,6 @@ export function App(): React.JSX.Element {
                 </div>
               );
             })}
-            {/* Below everything, including the two orphan groups: this is the one
-                section that is here because you asked for it to be out of the
-                way. The count of what needs you rides on the heading rather than
-                lifting the card back into the list — hiding a session that is
-                blocked is a thing you are allowed to do, and being told about it
-                is not the same as having it put back. */}
-            {hidden.length > 0 && (
-              <>
-                <button
-                  className="hidden-toggle"
-                  aria-expanded={hiddenOpen}
-                  title={
-                    hiddenOpen
-                      ? 'fold the hidden sessions away'
-                      : 'sessions marked hidden — a dash on the front of the tmux name. Unhide one from its own ⋮ menu.'
-                  }
-                  onClick={() => setHiddenOpen((open) => !open)}
-                >
-                  <span className="hidden-caret" aria-hidden="true">
-                    <Icon name="chevron" />
-                  </span>
-                  hidden
-                  <span className="hidden-count">{hidden.length}</span>
-                  {/* The rail's own alert, not a sentence: a dot and a number is
-                      how this panel says "some of these want you" everywhere
-                      else, and the drawer is the one place it had been spelling
-                      it out in words instead. */}
-                  {hiddenAttention > 0 && (
-                    <span className="hidden-attention" title={`${hiddenAttention} of them is waiting on you`}>
-                      <span className="dot" />
-                      {hiddenAttention}
-                    </span>
-                  )}
-                </button>
-                {hiddenOpen && (
-                  <div className="hidden-group">
-                    {hidden.map((session) => sessionRow(session, hiddenOrder))}
-                  </div>
-                )}
-              </>
-            )}
           </>
         )}
 
@@ -498,9 +457,50 @@ export function App(): React.JSX.Element {
         )}
       </div>
 
-      {/* Between the list and the rail, on every tab: the one thing here you
-          write rather than read, kept under whatever you are looking at while
-          you write it — see `Notes`. */}
+      {/* The foot of the panel: two drawers between the list and the rail, drawn
+          by one component so they are one kind of thing — see `Drawer`. */}
+
+      {/* The sessions you asked to have out of the way. A drawer under the list
+          rather than a row at the end of it, which is where it used to be: out
+          of the way is the same place whether the list above is three cards or
+          thirty. The count of what needs you rides on the door rather than
+          lifting the card back into the list — hiding a session that is
+          blocked is a thing you are allowed to do, and being told about it is
+          not the same as having it put back. */}
+      {snapshot && !focused && tab === 'fleet' && hidden.length > 0 && (
+        <Drawer
+          open={hiddenOpen}
+          onToggle={() => setHiddenOpen((open) => !open)}
+          label="hidden"
+          title={
+            hiddenOpen
+              ? 'fold the hidden sessions away'
+              : 'sessions marked hidden — a dash on the front of the tmux name. Unhide one from its own ⋮ menu.'
+          }
+          summary={
+            <>
+              <span className="hidden-count">{hidden.length}</span>
+              {/* The rail's own alert, not a sentence: a dot and a number is
+                  how this panel says "some of these want you" everywhere
+                  else, and the drawer is the one place it had been spelling
+                  it out in words instead. */}
+              {hiddenAttention > 0 && (
+                <span className="hidden-attention" title={`${hiddenAttention} of them is waiting on you`}>
+                  <span className="dot" />
+                  {hiddenAttention}
+                </span>
+              )}
+            </>
+          }
+        >
+          <div className="drawer-body hidden-group">
+            {hidden.map((session) => sessionRow(session, hiddenOrder))}
+          </div>
+        </Drawer>
+      )}
+
+      {/* On every tab: the one thing here you write rather than read, kept
+          under whatever you are looking at while you write it — see `Notes`. */}
       {snapshot && (
         <Notes
           notes={snapshot.notes}
