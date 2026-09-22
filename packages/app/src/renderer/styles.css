@@ -2986,8 +2986,6 @@ button {
   font-size: var(--fs-body);
   line-height: 1.5;
   color: var(--soft);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
   max-height: 116px;
   overflow-y: auto;
   cursor: pointer;
@@ -3764,6 +3762,183 @@ button {
 }
 .notes-hint > span {
   margin-right: auto;
+}
+
+/*
+ * The drawn note, in the bracket the textarea sits in — same margins, same
+ * border, same padding, same cap — so the two faces swap under a click without
+ * the drawer moving. `cursor: text` says what a click does here.
+ */
+.notes-view {
+  margin: 0 var(--s4) var(--s2);
+  background: var(--bg);
+  border: 1px solid var(--edge);
+  border-radius: 5px;
+  padding: 5px 7px;
+  min-height: calc(6 * 1.5em + 12px);
+  max-height: 45vh;
+  overflow-y: auto;
+  color: var(--text);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  cursor: text;
+}
+.notes-view:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--edge));
+}
+
+.md-empty {
+  color: var(--dim);
+  font-style: italic;
+}
+
+/* --- a note, drawn as markdown ------------------------------------------- */
+
+/*
+ * One block per source line, its depth as padding — see `NotesView.tsx`.
+ *
+ * `--md-step` is how far in a level goes, and it is also the marker column, so
+ * a bare line under a bullet starts where the bullet's text does, and a nested
+ * bullet's marker hangs in the column its parent's text begins in — the shape
+ * four spaces make in a mono editor, kept in a sans. The step is in `em`, so
+ * it follows the note's own size and nothing else.
+ *
+ * Grid rather than a bullet glyph in the text, because the point is the hang:
+ * a wrapped line continues under its own first word, not under the bullet,
+ * which is most of what makes a nested list legible at 11px.
+ */
+.md {
+  --md-step: 1.5em;
+  color: inherit;
+}
+.md-item {
+  display: grid;
+  grid-template-columns: var(--md-step) minmax(0, 1fr);
+  padding-left: calc(var(--level) * var(--md-step));
+}
+/* Air before each top-level thing, and none inside one: the groups are what
+   you scan for, the lines under them are what you read once you have found it. */
+.md-item[data-level='0']:not(:first-child) {
+  margin-top: var(--s2);
+}
+.md-p {
+  padding-left: calc(var(--level) * var(--md-step));
+}
+.md-body,
+.md-p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.md-blank {
+  height: var(--s3);
+}
+
+/* The marker column: a drawn dot, a number, or the box. Top-aligned to the
+   first line of the text beside it, so a wrapped item keeps its mark on its
+   first line. */
+.md-marker {
+  display: flex;
+  align-items: center;
+  height: 1.5em;
+  color: var(--dim);
+}
+.md-bullet::before {
+  content: '';
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--soft);
+}
+.md-num {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+}
+
+/*
+ * The box. Drawn, not `☐`: a glyph box in this face is a hairline at a size
+ * where it needs to read as a control. The tick is in `--ok`, the colour a
+ * passing check already means here.
+ */
+.md-box {
+  width: 11px;
+  height: 11px;
+  /* Centred on the first line of text beside it. */
+  margin-top: calc((1.5em - 11px) / 2);
+  padding: 0;
+  border: 1px solid var(--soft);
+  border-radius: 3px;
+  display: grid;
+  place-items: center;
+  color: var(--ok);
+}
+.md-box:hover {
+  border-color: var(--accent);
+}
+.md-box:disabled {
+  cursor: default;
+}
+.md-box svg {
+  width: 9px;
+  height: 9px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* Done is quiet: dimmed and struck faintly, still legible — you read a ticked
+   line to remember what it was, not to do it. */
+.md-item.done .md-box {
+  border-color: var(--dim);
+}
+.md-item.done .md-body {
+  color: var(--dim);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--dim) 55%, transparent);
+}
+
+/* Headings: the same size as the lines under them — the scale has no step
+   between body and title that a note could use — and weight and air do the
+   ranking instead. `#` is the day; `##` and below are its parts. */
+.md-h {
+  font-weight: 600;
+  color: var(--text);
+  padding-bottom: var(--s1);
+}
+.md-h:not(:first-child) {
+  margin-top: var(--s3);
+}
+.md-h2,
+.md-h3,
+.md-h4,
+.md-h5,
+.md-h6 {
+  color: var(--soft);
+}
+
+.md code {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--edge);
+  color: var(--text);
+}
+.md strong {
+  font-weight: 600;
+  color: var(--text);
+}
+.md a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.md a:hover {
+  text-decoration: underline;
+}
+
+/* Where a click writes: the line under the pointer, lit the way a row is. */
+.md-live [data-line]:hover {
+  background: color-mix(in srgb, var(--text) 5%, transparent);
 }
 
 /* --- the fifteen-minute warning ------------------------------------------ */

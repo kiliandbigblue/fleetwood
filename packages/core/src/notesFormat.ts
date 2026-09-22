@@ -13,7 +13,11 @@ export function describeNotes(text: string): { head: string; lines: number } {
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
-  // A markdown heading is the note's own title; the marker is noise in one line.
-  const head = (lines[0] ?? '').replace(/^#+\s*/, '').replace(/^[-*]\s+/, '');
+  // A markdown heading is the note's own title; the marker is noise in one
+  // line, and so is the box on a first line that is a thing to do.
+  const head = (lines[0] ?? '')
+    .replace(/^#+\s*/, '')
+    .replace(/^[-*]\s+/, '')
+    .replace(/^\[( |x|X)\]\s*/, '');
   return { head, lines: lines.length };
 }

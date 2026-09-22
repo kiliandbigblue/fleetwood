@@ -713,6 +713,7 @@ export function TaskCard({
         onOpen={openNotes}
         onCancel={() => setEditingNotes(false)}
         onSave={saveNotes}
+        onNotes={(text) => void act({ kind: 'setTaskNotes', slug: task.slug, notes: text })}
       />
 
       {addingRepo && (

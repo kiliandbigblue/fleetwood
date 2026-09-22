@@ -1,3 +1,6 @@
+import { toggleCheckbox } from '@fleetwood/core/notesMarkdown';
+import { NotesView } from './NotesView.tsx';
+
 interface Props {
   /** What is on disk. The textarea reads `draft`, never this — see `TaskCard`. */
   notes?: string;
@@ -7,6 +10,8 @@ interface Props {
   onOpen: () => void;
   onCancel: () => void;
   onSave: () => void;
+  /** A box ticked on the drawn note: the whole text, edited, to save as it is. */
+  onNotes: (text: string) => void;
 }
 
 /**
@@ -29,6 +34,7 @@ export function TaskNotes({
   onOpen,
   onCancel,
   onSave,
+  onNotes,
 }: Props): React.JSX.Element | null {
   if (editing) {
     return (
@@ -83,11 +89,14 @@ export function TaskNotes({
   // stop. `add a note` in the menu is the way in.
   if (!notes) return null;
 
+  // Drawn as the markdown it is, the same way the drawer draws yours — see
+  // `NotesView`. A tick on a box is saved on the spot, without opening the
+  // editor: it is the one edit that does not need the keyboard.
   return (
     <div className="task-notes-block">
       <div className="task-notes-label">note</div>
       <div className="task-notes" onClick={onOpen} title="click to edit · kept in NOTES.md">
-        {notes.trim()}
+        <NotesView text={notes} onToggle={(index) => onNotes(toggleCheckbox(notes, index))} />
       </div>
     </div>
   );

@@ -28,6 +28,10 @@ export * as notes from './notes.ts';
 // Flat, and a leaf: the panel's notes drawer folds the text with it and must not
 // import this barrel to get it.
 export { describeNotes } from './notesFormat.ts';
+// Flat and a leaf for the same reason: the drawer and a task's card draw the
+// note as the markdown it is written in, off this module and not the barrel.
+export { offsetOfLine, parseInline, parseNotes, toggleCheckbox } from './notesMarkdown.ts';
+export type { NoteLine, NoteSpan } from './notesMarkdown.ts';
 export {
   groupPrStacks,
   isMerged,

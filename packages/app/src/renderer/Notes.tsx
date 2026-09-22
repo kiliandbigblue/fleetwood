@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { describeNotes } from '@fleetwood/core/notesFormat';
+import { offsetOfLine, toggleCheckbox } from '@fleetwood/core/notesMarkdown';
 import { Drawer } from './Drawer.tsx';
+import { NotesView } from './NotesView.tsx';
 import { send } from './api.ts';
 import { editorLabel } from './TaskCard.tsx';
 
@@ -32,6 +34,17 @@ interface Props {
  * a scratchpad with a save button is one you lose an evening's worth of when
  * the machine goes down at 19:00 — which is the exact thing this panel does.
  *
+ * Two faces, one text. While you are in it, it is the textarea — the source,
+ * because that is what you type. The moment you click away it is drawn as the
+ * markdown it is written in (`NotesView`): the boxes are boxes, the nesting is
+ * indentation you can see, and a wrapped line hangs under its own first word.
+ * The note is read far more than it is written, all day between glances at
+ * the fleet, and the raw source at 11px was the least readable thing on the
+ * screen. Opening the drawer puts you in the textarea, cursor at the end,
+ * because opening it means you have something to write; clicking a drawn line
+ * puts the cursor on that line. Ticking a box edits the text, so it is saved
+ * like a keystroke.
+ *
  * The text is held here and not read off the snapshot while you are in it: a
  * snapshot lands every second, and a textarea bound to it would have the
  * cursor jump to the end each time. Disk wins only when nothing is pending —
@@ -41,6 +54,10 @@ interface Props {
 export function Notes({ notes, editor, open, onToggle, onResult }: Props): React.JSX.Element {
   const [draft, setDraft] = useState(notes);
   const [focused, setFocused] = useState(false);
+  /** Textarea up, or the drawn note. Opening the drawer starts in the textarea. */
+  const [editing, setEditing] = useState(true);
+  /** Where the cursor goes when the textarea next comes up. */
+  const caret = useRef<number | 'end'>('end');
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /** Saves still out. A poll answered before one lands would show stale text. */
   const inFlight = useRef(0);
@@ -89,15 +106,25 @@ export function Notes({ notes, editor, open, onToggle, onResult }: Props): React
     setDraft(notes);
   }, [notes, focused]);
 
-  // The cursor goes to the end, where the next line is written — not to the
-  // start, which is where a fresh textarea puts it and where yesterday's note is.
+  // Opened, the drawer is for writing: the textarea, cursor at the end, where
+  // the next line goes — not at the start, which is where a fresh textarea puts
+  // it and where yesterday's note is.
   useEffect(() => {
     if (!open) return;
+    caret.current = 'end';
+    setEditing(true);
+  }, [open]);
+
+  // The textarea comes and goes with `editing`; each time it comes, the cursor
+  // goes where the last click asked.
+  useEffect(() => {
+    if (!open || !editing) return;
     const element = field.current;
     if (!element) return;
     element.focus();
-    element.setSelectionRange(element.value.length, element.value.length);
-  }, [open]);
+    const at = caret.current === 'end' ? element.value.length : Math.min(caret.current, element.value.length);
+    element.setSelectionRange(at, at);
+  }, [open, editing]);
 
   // Closing is not cancelling: whatever was typed goes to disk on the way out.
   // The textarea leaves with the drawer, and a blur on an element being removed
@@ -109,6 +136,15 @@ export function Notes({ notes, editor, open, onToggle, onResult }: Props): React
   }, [open, flush]);
 
   const { head, lines } = describeNotes(draft);
+
+  /** A click on line `index` of the drawn note: the textarea, cursor at that line's end. */
+  const writeAt = (index: number): void => {
+    // The end of the clicked line, not its start — you click a line to add to
+    // it. Past the last line is the end of the note.
+    const next = offsetOfLine(draft, index + 1);
+    caret.current = next >= draft.length ? 'end' : next - 1;
+    setEditing(true);
+  };
 
   return (
     <Drawer
@@ -130,30 +166,50 @@ export function Notes({ notes, editor, open, onToggle, onResult }: Props): React
       }
       trailing={<span className="key">⌘N</span>}
     >
-      <textarea
-        ref={field}
-        className="notes-field"
-        value={draft}
-        spellCheck={false}
-        placeholder={'where you are, for tomorrow —\nwhat each task is waiting on, what to say to whom, what you nearly forgot'}
-        onChange={(event) => onChange(event.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => {
-          setFocused(false);
-          flush();
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            // Closes the drawer and stops there: escape means the innermost
-            // thing open, and `App` would otherwise also close a focused
-            // task behind it.
-            event.stopPropagation();
-            onToggle();
-          }
-        }}
-      />
+      {editing ? (
+        <textarea
+          ref={field}
+          className="notes-field"
+          value={draft}
+          spellCheck={false}
+          placeholder={'where you are, for tomorrow —\nwhat each task is waiting on, what to say to whom, what you nearly forgot'}
+          onChange={(event) => onChange(event.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => {
+            setFocused(false);
+            flush();
+            // Clicking elsewhere in the panel is done writing, so the note is
+            // drawn. Switching to another app is not: the textarea stays, and
+            // you come back to the cursor where you left it.
+            if (document.hasFocus()) setEditing(false);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              // Closes the drawer and stops there: escape means the innermost
+              // thing open, and `App` would otherwise also close a focused
+              // task behind it.
+              event.stopPropagation();
+              onToggle();
+            }
+          }}
+        />
+      ) : (
+        <div className="notes-view" title="click a line to write there">
+          {draft.trim().length > 0 ? (
+            <NotesView text={draft} onLine={writeAt} onToggle={(index) => onChange(toggleCheckbox(draft, index))} />
+          ) : (
+            <div className="md-empty" onClick={() => writeAt(Number.MAX_SAFE_INTEGER)}>
+              where you are, for tomorrow — click to write
+            </div>
+          )}
+        </div>
+      )}
       <div className="notes-hint">
-        <span>saved as you type · ~/.fleetwood/notes.md · esc closes</span>
+        <span>
+          {editing
+            ? 'saved as you type · ~/.fleetwood/notes.md · esc closes'
+            : 'markdown · click a line to write · tick a box to edit it · ~/.fleetwood/notes.md'}
+        </span>
         {/* The same chip a worktree row has, for the same reason: a line goes in
             the box, a paragraph goes in the editor you live in. It opens in a
             window of the session you are at — the note has no session of its
