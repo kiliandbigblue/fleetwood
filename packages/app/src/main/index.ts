@@ -216,7 +216,7 @@ async function buildSnapshot(): Promise<Snapshot> {
     cursorUsage,
     // Off until the scheduler is up, which is a few milliseconds at boot — and
     // "no shutdown scheduled" is the truth during them.
-    shutdown: shutdown?.state() ?? { ...settings.shutdown, phase: 'off' },
+    shutdown: shutdown?.state() ?? { ...settings.shutdown, phase: 'off', locked: false },
     history,
     notes: await notesApi.readNotes(),
   };
@@ -658,10 +658,13 @@ async function handle(request: Request): Promise<Response> {
     case 'setShutdown': {
       // Only before the window exists, which is also before anything can click.
       if (!shutdown) return { ok: false, detail: 'the scheduler is still starting' };
-      const next = await shutdown.set(request.shutdown);
+      const result = await shutdown.set(request.shutdown);
+      // Refused: nothing changed, so nothing to push — and the tab walks its
+      // own fields back off the detail. See `Power`.
+      if (!result.ok) return { ok: false, detail: result.reason };
       await pushSnapshot();
-      if (!next.enabled) return { ok: true, detail: 'end-of-day shutdown off' };
-      return { ok: true, detail: `shutting down at ${next.time}` };
+      if (!result.state.enabled) return { ok: true, detail: 'end-of-day shutdown off' };
+      return { ok: true, detail: `shutting down at ${result.state.time}` };
     }
 
     case 'setNotes': {

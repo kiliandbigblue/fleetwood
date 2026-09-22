@@ -4,6 +4,7 @@ import {
   config as configModule,
   hasMissed,
   nextShutdownAt,
+  refuseShutdownChange,
   run,
   shutdownState,
   sudoReachedShutdown,
@@ -62,11 +63,14 @@ interface Options {
   onChange: () => void;
 }
 
+/** What `set` came back with: the schedule as it became, or why it did not. */
+export type SetResult = { ok: true; state: ShutdownState } | { ok: false; reason: string };
+
 export interface ShutdownScheduler {
   /** The schedule as it stands, for the snapshot. Synchronous: it is all in hand. */
   state: (now?: number) => ShutdownState;
-  /** Write a new schedule, re-arm from it, and hand back what it became. */
-  set: (next: ShutdownConfig) => Promise<ShutdownState>;
+  /** Write a new schedule, re-arm from it, and hand back what it became — or the refusal. */
+  set: (next: ShutdownConfig) => Promise<SetResult>;
   /** Take the warning off the screen. The shutdown still happens. */
   dismiss: () => void;
   stop: () => void;
@@ -126,12 +130,36 @@ export function startShutdown({ rendererIndex, preload, onChange }: Options): Sh
 
   function openOverlay(): void {
     if (overlay) return;
+    /*
+     * Out of the window manager's hands.
+     *
+     * A tiling manager — AeroSpace, here — reads a frameless Electron window as
+     * one more window of the app: filed under the app's workspace, tiled or
+     * floated there, and moved off-screen with it the moment you look at
+     * another workspace, which is every workspace you actually work in.
+     * `setVisibleOnAllWorkspaces` below speaks to macOS Spaces, which such a
+     * manager does not use, so it does not help.
+     *
+     * The one kind of window AeroSpace's heuristic leaves entirely alone is a
+     * window with no close button belonging to an app with no Dock icon: it
+     * files it with the tooltips and context menus and never touches it again.
+     * So for as long as the warning is up, fleetwood is that app — the Dock
+     * icon goes with the policy, and comes back in `closed` — and the overlay
+     * is that window: `roundedCorners: false` is the option that makes a
+     * frameless window truly borderless, buttons included, and unlike
+     * `closable: false` it leaves `close()` working. Read off AeroSpace's own
+     * `isWindowHeuristic` (0.20) and checked against a running one. Under plain
+     * macOS the only visible effect is the Dock icon's absence for the length
+     * of the warning.
+     */
+    app.setActivationPolicy('accessory');
     // The display the menu bar is on: this is a "look up from what you are doing"
     // notice, and on a second screen it would be behind the thing you are doing.
     const { bounds } = screen.getPrimaryDisplay();
     overlay = new BrowserWindow({
       ...bounds,
       frame: false,
+      roundedCorners: false,
       transparent: true,
       resizable: false,
       movable: false,
@@ -155,12 +183,18 @@ export function startShutdown({ rendererIndex, preload, onChange }: Options): Sh
     overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     overlay.on('closed', () => {
       overlay = undefined;
+      app.setActivationPolicy('regular');
     });
     // The same bundle, told which of the two screens it is. See `main.tsx`.
     void overlay.loadFile(rendererIndex, { hash: 'shutdown-warning' });
     // In front of whatever had focus, or the one key that dismisses it would go
-    // to the editor underneath instead.
-    overlay.once('ready-to-show', () => overlay?.focus());
+    // to the editor underneath instead. `steal`, because whatever had focus is
+    // by definition not this app, and a polite request to become active is
+    // declined for exactly that reason.
+    overlay.once('ready-to-show', () => {
+      app.focus({ steal: true });
+      overlay?.focus();
+    });
   }
 
   function closeOverlay(): void {
@@ -256,7 +290,17 @@ export function startShutdown({ rendererIndex, preload, onChange }: Options): Sh
     closeOverlay();
   }
 
-  async function set(next: ShutdownConfig): Promise<ShutdownState> {
+  /**
+   * Write a new schedule, or say why not.
+   *
+   * The lock — see `refuseShutdownChange` — is checked against what is armed
+   * *now*, before anything reaches the disk: a refusal leaves the file as it
+   * was, so the next tick changes nothing and the tab snaps back to the
+   * schedule that stands.
+   */
+  async function set(next: ShutdownConfig): Promise<SetResult> {
+    const reason = refuseShutdownChange({ current: { config, at: armedAt }, next, now: Date.now() });
+    if (reason) return { ok: false, reason };
     await configModule.saveShutdown(next);
     // Straight to the clock rather than waiting out the tick: the tab you just
     // typed a time into has to agree with you at once.
@@ -264,7 +308,7 @@ export function startShutdown({ rendererIndex, preload, onChange }: Options): Sh
     // The sudoers rule may have been added since the last probe, and this is the
     // click that would have been made right after adding it.
     if (permitted !== true) await probePermitted();
-    return state();
+    return { ok: true, state: state() };
   }
 
   const timer = setInterval(() => void tick(), TICK_MS);

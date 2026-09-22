@@ -3632,6 +3632,23 @@ button {
   color: var(--danger);
 }
 
+/*
+ * Inside the lock. `danger`, like the overlay: this is the one moment on the
+ * tab when the machine is going down and nothing on the tab can stop it.
+ */
+.power-locked {
+  font-size: var(--fs-body);
+  color: var(--danger);
+}
+
+/* Refused before the click: the lock, or an hour too close to opt into. Plainly
+   inert, and the tooltip says which. */
+.power .button:disabled,
+.power .field:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
 /* --- the foot: drawers under the list ------------------------------------ */
 
 /*

@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DEFAULT_SHUTDOWN,
+  LOCK_MINUTES,
+  LOCK_MS,
   MAX_WARN_MINUTES,
   MIN_WARN_MINUTES,
   clampWarnMinutes,
@@ -10,9 +12,11 @@ import {
   formatClock,
   hasMissed,
   formatCountdown,
+  isLocked,
   nextShutdownAt,
   normaliseShutdown,
   parseClock,
+  refuseShutdownChange,
   shutdownPhase,
   shutdownState,
   sudoReachedShutdown,
@@ -108,6 +112,70 @@ test('warn minutes are clamped to something a person can read and survive', () =
   assert.equal(clampWarnMinutes(15.4), 15);
   assert.equal(clampWarnMinutes(Number.NaN), DEFAULT_SHUTDOWN.warnMinutes);
   assert.equal(clampWarnMinutes(undefined), DEFAULT_SHUTDOWN.warnMinutes);
+});
+
+test('the last five minutes are locked, and the hour arriving unlocks nothing', () => {
+  const when = at(2026, 3, 10, 19, 0);
+  assert.equal(LOCK_MS, LOCK_MINUTES * 60_000);
+  assert.equal(isLocked(undefined, when), false);
+  assert.equal(isLocked(when, at(2026, 3, 10, 18, 54)), false);
+  // Exactly the lock away is still open: what you may still opt into, you may
+  // still opt out of.
+  assert.equal(isLocked(when, at(2026, 3, 10, 18, 55)), false);
+  assert.equal(isLocked(when, at(2026, 3, 10, 18, 55, 1)), true);
+  assert.equal(isLocked(when, when), true);
+  assert.equal(isLocked(when, at(2026, 3, 10, 19, 3)), true);
+  // The warning can never be shorter than the lock, or minutes would exist in
+  // which you could neither see the countdown nor call it off.
+  assert.ok(MIN_WARN_MINUTES >= LOCK_MINUTES);
+});
+
+test('inside the lock the opt-out and the hour are refused, the warning is not', () => {
+  const config = { enabled: true, time: '19:00', warnMinutes: 15 };
+  const current = { config, at: at(2026, 3, 10, 19, 0) };
+  const now = at(2026, 3, 10, 18, 57);
+  assert.match(refuseShutdownChange({ current, next: { ...config, enabled: false }, now }) ?? '', /too late to opt out/);
+  assert.match(refuseShutdownChange({ current, next: { ...config, time: '19:30' }, now }) ?? '', /too late to move/);
+  assert.equal(refuseShutdownChange({ current, next: { ...config, warnMinutes: 30 }, now }), undefined);
+  // Saving what already stands is not a change.
+  assert.equal(refuseShutdownChange({ current, next: config, now }), undefined);
+  // Due, and still locked.
+  const due = at(2026, 3, 10, 19, 2);
+  assert.match(refuseShutdownChange({ current, next: { ...config, enabled: false }, now: due }) ?? '', /too late/);
+  // Opted out, whatever the scheduler last armed is not a lock.
+  const off = { ...config, enabled: false };
+  assert.equal(refuseShutdownChange({ current: { config: off, at: current.at }, next: off, now }), undefined);
+});
+
+test('outside the lock the evening can be called off or moved — but not into it', () => {
+  const config = { enabled: true, time: '19:00', warnMinutes: 15 };
+  const current = { config, at: at(2026, 3, 10, 19, 0) };
+  const now = at(2026, 3, 10, 18, 50);
+  assert.equal(refuseShutdownChange({ current, next: { ...config, enabled: false }, now }), undefined);
+  assert.equal(refuseShutdownChange({ current, next: { ...config, time: '19:30' }, now }), undefined);
+  assert.match(refuseShutdownChange({ current, next: { ...config, time: '18:53' }, now }) ?? '', /18:53 is under 5 minutes away/);
+});
+
+test('an opt-in needs the lock’s worth of notice', () => {
+  const off = { enabled: false, time: '19:00', warnMinutes: 15 };
+  const current = { config: off, at: undefined };
+  const opted = { ...off, enabled: true };
+  assert.match(refuseShutdownChange({ current, next: opted, now: at(2026, 3, 10, 18, 56) }) ?? '', /19:00 is under 5 minutes away/);
+  // Exactly the lock away is allowed, and so is the whole afternoon.
+  assert.equal(refuseShutdownChange({ current, next: opted, now: at(2026, 3, 10, 18, 55) }), undefined);
+  assert.equal(refuseShutdownChange({ current, next: opted, now: at(2026, 3, 10, 14, 0) }), undefined);
+  // Just past the hour, the shutdown it would arm is tomorrow's.
+  assert.equal(refuseShutdownChange({ current, next: opted, now: at(2026, 3, 10, 19, 0, 30) }), undefined);
+  // An unreadable time is not refused here: normalising turns it off instead.
+  assert.equal(refuseShutdownChange({ current, next: { ...opted, time: 'later' }, now: at(2026, 3, 10, 18, 56) }), undefined);
+});
+
+test('the state says when it is locked', () => {
+  const config = { enabled: true, time: '19:00', warnMinutes: 15 };
+  const when = at(2026, 3, 10, 19, 0);
+  assert.equal(shutdownState({ config, at: when, now: at(2026, 3, 10, 18, 50) }).locked, false);
+  assert.equal(shutdownState({ config, at: when, now: at(2026, 3, 10, 18, 58) }).locked, true);
+  assert.equal(shutdownState({ config: { ...config, enabled: false }, at: when, now: at(2026, 3, 10, 18, 58) }).locked, false);
 });
 
 test('a hand-edited config cannot arm a shutdown at an hour nobody wrote', () => {

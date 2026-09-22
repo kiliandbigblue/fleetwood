@@ -106,6 +106,8 @@ export {
 // must not import this barrel to get them.
 export {
   DEFAULT_SHUTDOWN,
+  LOCK_MINUTES,
+  LOCK_MS,
   MAX_WARN_MINUTES,
   MIN_WARN_MINUTES,
   MISSED_GRACE_MS,
@@ -114,9 +116,11 @@ export {
   formatClock,
   formatCountdown,
   hasMissed,
+  isLocked,
   nextShutdownAt,
   normaliseShutdown,
   parseClock,
+  refuseShutdownChange,
   shutdownPhase,
   shutdownState,
   sudoReachedShutdown,

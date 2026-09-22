@@ -59,9 +59,12 @@ export function ShutdownWarning(): React.JSX.Element | null {
           got it <span className="key">esc</span>
         </button>
         {/* Said on the button's own terms, because the button is the one thing
-            here anybody reads: this dismisses the notice, not the evening. */}
+            here anybody reads: this dismisses the notice, not the evening — and
+            once the lock is on, not even the power tab does. */}
         <div className="warning-fine">
-          the shutdown still happens — call it off in fleetwood’s power tab
+          {shutdown.locked
+            ? 'the shutdown can’t be called off any more — close what you were doing'
+            : 'the shutdown still happens — call it off in fleetwood’s power tab'}
         </div>
       </div>
     </div>

@@ -362,11 +362,31 @@ At `time - warnMinutes` the primary display goes red with a countdown — a seco
 were doing. That is the job: the day is ending and you have to notice. Then
 `esc`, `return` or the button takes it away and you carry on.
 
+**Under a tiling window manager** (AeroSpace) a second window is one more window
+of the app: filed under fleetwood's workspace and moved off-screen with it the
+moment you look at another one — which is every workspace you actually work in.
+`setVisibleOnAllWorkspaces` speaks to macOS Spaces, which such a manager does not
+use. So for as long as the warning is up, fleetwood becomes the one kind of app
+AeroSpace's window heuristic leaves alone — an accessory app, without a Dock icon
+— and the overlay the one kind of window, borderless with no buttons. The Dock
+icon goes at `time - warnMinutes` and comes back when you dismiss; under plain
+macOS that is the only visible difference.
+
 Dismissing is **"I know", not "not tonight"**: the machine still goes down at the
 hour, the rail keeps counting it, and the warning does not come back for that
 shutdown. Calling the evening off is a separate act in a separate place — the
 opt-out on this tab — which is what makes the big button safe to hit without
 reading it.
+
+**The last five minutes are locked.** Inside them the opt-out is refused and the
+hour cannot be moved — the tab says so and greys the button — and, the same rule
+from the other side, an opt-in is refused unless the shutdown it would arm is at
+least five minutes off, so nothing fleetwood fires is something you were not told
+about with time to spare. The warning cannot be set shorter than the lock for the
+same reason: minutes in which you could neither see the countdown nor call it off
+would be a trap. It is a rule against flinching, not a cage — quitting fleetwood
+or editing `config.json` by hand still stops the evening. The button is what
+stops being an option.
 
 The scheduler keeps its own clock in the main process, independent of the window —
 the panel spends most of the day hidden behind `alt+shift+f`, and an evening

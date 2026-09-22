@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 import {
+  LOCK_MINUTES,
+  LOCK_MS,
   MAX_WARN_MINUTES,
   MIN_WARN_MINUTES,
   describeShutdown,
+  nextShutdownAt,
   parseClock,
 } from '@fleetwood/core/shutdown';
 import type { ShutdownConfig, ShutdownState } from '@fleetwood/core/shutdown';
@@ -48,7 +51,16 @@ export function Power({ shutdown, onResult }: Props): React.JSX.Element {
   const save = (next: ShutdownConfig): void => {
     const { enabled, time: when, warnMinutes: warn } = next;
     void send({ kind: 'setShutdown', shutdown: { enabled, time: when, warnMinutes: warn } }).then(
-      (result) => onResult(result.detail, result.ok),
+      (result) => {
+        onResult(result.detail, result.ok);
+        // Refused — the lock, see `refuseShutdownChange`. Nothing reached the
+        // disk, so no snapshot will move the fields back; they are walked back
+        // here to the schedule that still stands.
+        if (!result.ok) {
+          setTime(shutdown.time);
+          setWarnMinutes(shutdown.warnMinutes);
+        }
+      },
     );
   };
 
@@ -72,6 +84,24 @@ export function Power({ shutdown, onResult }: Props): React.JSX.Element {
   const when = describeShutdown(shutdown, now);
   const left = shutdown.at === undefined ? '' : duration(Math.round((shutdown.at - now) / 1000));
 
+  /*
+   * The lock, drawn before it is hit: a button that has gone grey says why a
+   * click would be refused better than the refusal does. `locked` is the
+   * scheduler's word on the armed shutdown; `tooSoon` is the same rule from the
+   * other side, asked of the time in the field rather than the one armed, so it
+   * follows what you type and lifts on its own as the clock moves past the hour.
+   */
+  const locked = shutdown.enabled && shutdown.locked;
+  const wouldArm = nextShutdownAt(time, now);
+  const tooSoon = !shutdown.enabled && wouldArm !== undefined && wouldArm - now < LOCK_MS;
+  const toggleTitle = locked
+    ? `under ${LOCK_MINUTES} minutes to go — too late to call it off`
+    : tooSoon
+      ? `${time} is under ${LOCK_MINUTES} minutes away — pick a later time`
+      : shutdown.enabled
+        ? 'stop shutting this machine down at the end of the day'
+        : 'shut this machine down at the time below, every day';
+
   return (
     <>
       <div className="section-title">end of day — this machine, not the fleet</div>
@@ -88,11 +118,8 @@ export function Power({ shutdown, onResult }: Props): React.JSX.Element {
           <button
             className={`button${shutdown.enabled ? ' deny' : ' approve'}`}
             onClick={onToggleEnabled}
-            title={
-              shutdown.enabled
-                ? 'stop shutting this machine down at the end of the day'
-                : 'shut this machine down at the time below, every day'
-            }
+            disabled={locked || tooSoon}
+            title={toggleTitle}
           >
             {shutdown.enabled ? 'opt out' : 'opt in'}
           </button>
@@ -100,10 +127,12 @@ export function Power({ shutdown, onResult }: Props): React.JSX.Element {
 
         <label className="power-field">
           <span className="power-label">shut down at</span>
+          {/* Fixed inside the lock: moving the hour is the opt-out wearing a hat. */}
           <input
             className="field power-time"
             type="time"
             value={time}
+            disabled={locked}
             onChange={(event) => onPickTime(event.target.value)}
           />
         </label>
@@ -120,6 +149,13 @@ export function Power({ shutdown, onResult }: Props): React.JSX.Element {
           />
           <span className="power-label">minutes before, full screen</span>
         </label>
+
+        {/* Said once the button has gone grey, so the grey is not a mystery. */}
+        {locked && (
+          <div className="power-locked">
+            under {LOCK_MINUTES} minutes to go — it can’t be called off any more. save your work.
+          </div>
+        )}
 
         {/*
           Said here rather than at 19:00, which is the only other place it could

@@ -36,13 +36,30 @@ export const DEFAULT_SHUTDOWN: ShutdownConfig = {
 };
 
 /**
+ * The last stretch, during which the evening can no longer be called off.
+ *
+ * Inside it the opt-out is refused and the time cannot be moved, and — the same
+ * fact from the other side — an opt-in is refused unless the machine gets at
+ * least this long to warn you first. One constant, because they are one rule:
+ * a shutdown fleetwood may fire is one you were told about this far ahead, and
+ * one you were told about this far ahead is one you go through with.
+ *
+ * It is a rule against flinching rather than a safety net — the net is the
+ * warning. Quitting fleetwood or editing `config.json` by hand still stops the
+ * evening; the button on the tab is what stops being an option.
+ */
+export const LOCK_MINUTES = 5;
+export const LOCK_MS = LOCK_MINUTES * 60_000;
+
+/**
  * The warning's bounds.
  *
- * A floor of one minute because a warning shorter than the time it takes to read
- * it is not a warning; a ceiling of two hours because past that the overlay is no
- * longer telling you about the end of the day, it is the day.
+ * The floor is the lock: a warning shorter than that would leave minutes in
+ * which you can neither see the countdown nor call it off, and a rule you cannot
+ * see coming is a trap. The ceiling is two hours because past that the overlay
+ * is no longer telling you about the end of the day, it is the day.
  */
-export const MIN_WARN_MINUTES = 1;
+export const MIN_WARN_MINUTES = LOCK_MINUTES;
 export const MAX_WARN_MINUTES = 120;
 
 export interface Clock {
@@ -145,6 +162,59 @@ export function shutdownPhase(at: number | undefined, warnMinutes: number, now: 
 }
 
 /**
+ * Whether the armed shutdown is inside the lock — see `LOCK_MS`.
+ *
+ * Strictly under: a shutdown exactly `LOCK_MS` away is the last one you may
+ * still opt into, and what you may still opt into you may still opt out of.
+ * A due shutdown is locked too; nothing about the hour arriving unlocks it.
+ */
+export function isLocked(at: number | undefined, now: number): boolean {
+  return at !== undefined && at - now < LOCK_MS;
+}
+
+interface ChangeInput {
+  /** The schedule as it stands: the config on disk and what it is armed for. */
+  current: { config: ShutdownConfig; at: number | undefined };
+  next: ShutdownConfig;
+  now: number;
+}
+
+/**
+ * Why a change to the schedule may not be made — or nothing, and it may.
+ *
+ * Two refusals, both `LOCK_MS`. Inside the lock, the armed shutdown is what it
+ * is: the opt-out is refused, and so is moving the time, which is the opt-out
+ * wearing a hat. Outside it, an opt-in — or a time change while opted in — is
+ * refused when the shutdown it would arm is closer than the lock, because that
+ * is a shutdown you would be locked into before you had been warned about it.
+ *
+ * The warning length is free either way: it is how loud, not whether.
+ *
+ * The rule lives here rather than in the tab so that the tab, the CLI and any
+ * hand that reaches the scheduler get one answer, and so the answer can be
+ * asked in a test at 18:56 without waiting for it.
+ */
+export function refuseShutdownChange({ current, next, now }: ChangeInput): string | undefined {
+  const armed = current.config.enabled ? current.at : undefined;
+  if (isLocked(armed, now)) {
+    if (!next.enabled) return `too late to opt out — under ${LOCK_MINUTES} minutes to go`;
+    if (next.time.trim() !== current.config.time) {
+      return `too late to move it — under ${LOCK_MINUTES} minutes to go`;
+    }
+    return undefined;
+  }
+  if (!next.enabled) return undefined;
+  const at = nextShutdownAt(next.time, now);
+  // Unreadable: `normaliseShutdown` turns that off on save, which is refusal
+  // enough and the right kind.
+  if (at === undefined) return undefined;
+  if (at - now < LOCK_MS) {
+    return `${next.time.trim()} is under ${LOCK_MINUTES} minutes away — pick a later time`;
+  }
+  return undefined;
+}
+
+/**
  * Whether the permission probe actually reached `shutdown`.
  *
  * The probe runs `sudo -n /sbin/shutdown` with no time after it, so the whole
@@ -173,6 +243,13 @@ export interface ShutdownState extends ShutdownConfig {
   /** Milliseconds until `at`, floored at zero so the overlay never counts up. */
   msLeft?: number;
   /**
+   * Inside the last `LOCK_MS`: the opt-out is refused and the time is fixed.
+   *
+   * On the state rather than derived in the tab, so the button that goes grey
+   * and the scheduler that refuses agree to the millisecond on the same clock.
+   */
+  locked: boolean;
+  /**
    * Whether `sudo` will run the shutdown without asking for a password.
    *
    * Undefined until it has been probed. Surfaced rather than kept in main
@@ -200,6 +277,7 @@ export function shutdownState({ config, at, now, permitted, error }: StateInput)
     at: armed,
     phase: shutdownPhase(armed, config.warnMinutes, now),
     msLeft: armed === undefined ? undefined : Math.max(0, armed - now),
+    locked: isLocked(armed, now),
     permitted,
     error,
   };
