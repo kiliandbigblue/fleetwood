@@ -33,6 +33,7 @@ export { describeNotes } from './notesFormat.ts';
 export { offsetOfLine, parseInline, parseNotes, toggleCheckbox } from './notesMarkdown.ts';
 export type { NoteLine, NoteSpan } from './notesMarkdown.ts';
 export {
+  dormantTasks,
   groupPrStacks,
   isMerged,
   orderReposByStack,

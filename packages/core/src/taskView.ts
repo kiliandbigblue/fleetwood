@@ -1,4 +1,5 @@
 import { hasDriftedOffBranch } from './naming.ts';
+import { isHidden, sortSessions } from './sessionOrder.ts';
 import type { FleetAgent } from './fleet.ts';
 import type { PullRequest } from './github.ts';
 import type { Task, TaskRepo } from './task.ts';
@@ -12,6 +13,31 @@ import type { BranchVia, TaskPr } from './taskPrs.ts';
  * `Task` that somebody else assembled. Type-only imports, so nothing above comes
  * with them.
  */
+
+/**
+ * The tasks with no session, in the order and fold their last session had.
+ *
+ * A reboot takes every session down at once, so this is the whole fleet the
+ * morning after — and drawn newest-first it lost the order you had put it in and
+ * put back every card you had hidden. The name the session last had still says
+ * both (see `Task.lastSession`), so they are read the way a live session's are:
+ * `sortSessions` for the slot and the pin, `isHidden` for the fold. A task that
+ * never had a session keeps the newest-first place `listTasks` gave it, since
+ * the sort leaves unnumbered rows in the order they came.
+ */
+export function dormantTasks<T extends Pick<Task, 'slug' | 'session' | 'lastSession'>>(
+  tasks: readonly T[],
+): { shown: T[]; hidden: T[] } {
+  const ranked = sortSessions(
+    tasks
+      .filter((task) => !task.session)
+      .map((task) => ({ task, name: task.lastSession ?? task.slug, needsAttention: false, agents: [] })),
+  );
+  return {
+    shown: ranked.filter((row) => !isHidden(row.name)).map((row) => row.task),
+    hidden: ranked.filter((row) => isHidden(row.name)).map((row) => row.task),
+  };
+}
 
 /**
  * Which repo an agent is working in, by its cwd.

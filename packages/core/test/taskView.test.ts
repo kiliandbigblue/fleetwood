@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   baseFor,
+  dormantTasks,
   groupPrStacks,
   isMerged,
   orderReposByStack,
@@ -544,4 +545,34 @@ test('a pull request found some other way does not rank a worktree', () => {
     orderReposByStack([flagLayer, helperLayer, upsertLayer], viaStack).map((r) => r.name),
     [flagLayer.name, helperLayer.name, upsertLayer.name],
   );
+});
+
+/**
+ * After a reboot every task is dormant at once, so the order and fold their
+ * sessions had are read back off the name each one last went by.
+ */
+const dormant = (slug: string, lastSession?: string, session?: string) => ({ slug, lastSession, session });
+
+test('dormant tasks sit in the slot and tier their last session had', () => {
+  const tasks = [
+    dormant('newest'),
+    dormant('atlas', '30-atlas'),
+    dormant('reflow', '+40-reflow'),
+    dormant('proto', '10-proto'),
+  ];
+  const { shown, hidden } = dormantTasks(tasks);
+  assert.deepEqual(shown.map((t) => t.slug), ['reflow', 'proto', 'atlas', 'newest']);
+  assert.deepEqual(hidden, []);
+});
+
+test('a dormant task whose session was hidden stays folded away', () => {
+  const tasks = [dormant('atlas', '20-atlas'), dormant('graphy', '-+10-graphy'), dormant('proto', '-30-proto')];
+  const { shown, hidden } = dormantTasks(tasks);
+  assert.deepEqual(shown.map((t) => t.slug), ['atlas']);
+  assert.deepEqual(hidden.map((t) => t.slug), ['graphy', 'proto']);
+});
+
+test('a task with a live session is not dormant, and one never started keeps its place', () => {
+  const tasks = [dormant('running', '10-running', '10-running'), dormant('b'), dormant('a')];
+  assert.deepEqual(dormantTasks(tasks).shown.map((t) => t.slug), ['b', 'a']);
 });

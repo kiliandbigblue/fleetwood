@@ -304,6 +304,14 @@ test('an unstamped session named for the task is adopted', () => {
   assert.equal(found?.adopted, true);
 });
 
+test('an unstamped session named for the task is adopted under its order prefix', () => {
+  // A restore brings the name back whole — slot, pin and fold included.
+  const sessions = [session('unrelated', 1785781000), session('-+20-flow-execution-labels', 1785790000)];
+  const found = findTaskSession(sessions, 'flow-execution-labels', '/Users/k/flow-execution-labels');
+  assert.equal(found?.session.name, '-+20-flow-execution-labels');
+  assert.equal(found?.adopted, true);
+});
+
 test('an unstamped session sitting at the task folder is adopted by path, whatever its name', () => {
   const renamed = { ...session('0-flow-execution-labels', 1785790000), path: '/Users/k/tasks/flow-execution-labels' };
   const found = findTaskSession([session('unrelated', 1785781000), renamed], 'flow-execution-labels', '/Users/k/tasks/flow-execution-labels');

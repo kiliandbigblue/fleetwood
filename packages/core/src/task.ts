@@ -44,6 +44,13 @@ export interface Task {
   repos: TaskRepo[];
   /** tmux session working this task, when one exists. */
   session?: string;
+  /**
+   * The name the task's session last had, prefix and all — the live one when
+   * there is one, else the one remembered from before tmux went away.
+   *
+   * What a dormant card is ordered and folded by — see {@link rememberSession}.
+   */
+  lastSession?: string;
   /** Your own running notes, from `NOTES.md`. Absent when you haven't written any. */
   notes?: string;
 }
@@ -95,6 +102,8 @@ const RECORD_FILE = 'task.json';
 const BRIEF_FILE = 'TASK.md';
 /** Hand-written, never generated — see `readTaskNotes`. */
 const NOTES_FILE = 'NOTES.md';
+/** The session name last seen working the task — see {@link rememberSession}. */
+const SESSION_FILE = '.session';
 
 /**
  * The one section of the brief you are meant to type into.
@@ -458,6 +467,61 @@ export async function readTaskNotes(dir: string): Promise<string | undefined> {
 }
 
 /**
+ * The session name a task last had, if any was ever seen.
+ *
+ * A dotfile so `readTaskRepos` passes over it like the skill links.
+ */
+async function readRememberedSession(dir: string): Promise<string | undefined> {
+  try {
+    const name = (await readFile(join(dir, SESSION_FILE), 'utf8')).trim();
+    return name.length > 0 ? name : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Write down the name a task's live session goes by, when it changed.
+ *
+ * The slot, the pin and the fold are all in the session's name (see
+ * `sessionOrder.ts`), and tmux is the only place that name lives — so a reboot
+ * took all three with it, and every task came back as an unnumbered, shown,
+ * dormant card. This is the one copy that outlives the server. tmux stays the
+ * source of truth while it runs: the file only follows it, is only read when
+ * there is no session to ask, and goes with the folder when the task is archived.
+ *
+ * Only on change, since the panel lists tasks every few seconds. Best-effort: a
+ * failed write costs an order after the next reboot, not the listing.
+ */
+async function rememberSession(
+  dir: string,
+  session: string,
+  remembered: string | undefined,
+): Promise<void> {
+  if (session === remembered) return;
+  try {
+    await writeFile(join(dir, SESSION_FILE), `${session}\n`, 'utf8');
+  } catch {
+    // Unwritable folder: the order is simply not carried over a restart.
+  }
+}
+
+/** A task's live session and the name it last had, remembering the live one. */
+async function taskSessionNames(
+  sessions: tmux.SessionRow[],
+  record: Pick<TaskRecord, 'slug' | 'branch'>,
+  dir: string,
+  repos: TaskRepo[],
+): Promise<Pick<Task, 'session' | 'lastSession'>> {
+  const [live, remembered] = await Promise.all([
+    resolveTaskSession(sessions, record, dir, repos),
+    readRememberedSession(dir),
+  ]);
+  if (live) await rememberSession(dir, live.name, remembered);
+  return { session: live?.name, lastSession: live?.name ?? remembered };
+}
+
+/**
  * Replace a task's notes, by folder.
  *
  * Emptying them removes the file rather than leaving a blank one behind, so
@@ -686,6 +750,15 @@ async function ensureTaskSession(
   let name = record.slug;
   if (sessions.some((s) => sameSession(s.name, name))) name = `${record.slug}-task`;
   if (sessions.some((s) => sameSession(s.name, name))) return undefined;
+  /*
+   * Back under the name it had before the server went away, so a task started
+   * after a reboot returns to its slot, its tier and its fold rather than to the
+   * bottom of the list. Only when the label is the one just settled on: the
+   * collision check above is about labels, and a remembered `-20-atlas` must not
+   * bring back a name another session has taken since.
+   */
+  const remembered = await readRememberedSession(dir);
+  if (remembered && sameSession(remembered, name)) name = remembered;
 
   const created = await tmux.newSession({ name, cwd: dir, windowName: 'task' });
   if (!created) return undefined;
@@ -934,7 +1007,7 @@ export async function getTask(slug: string): Promise<Task | undefined> {
     ...record,
     dir,
     repos,
-    session: (await resolveTaskSession(sessions, record, dir, repos))?.name,
+    ...(await taskSessionNames(sessions, record, dir, repos)),
     notes: await readTaskNotes(dir),
   };
 }
@@ -961,7 +1034,7 @@ export async function listTasks(): Promise<Task[]> {
       ...record,
       dir,
       repos,
-      session: (await resolveTaskSession(sessions, record, dir, repos))?.name,
+      ...(await taskSessionNames(sessions, record, dir, repos)),
       notes: await readTaskNotes(dir),
     });
   }

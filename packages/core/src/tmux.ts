@@ -1,4 +1,5 @@
 import { run } from './exec.ts';
+import { sameSession } from './sessionOrder.ts';
 import type { PaneInfo, SessionInfo, SessionMeta, WindowInfo } from './types.ts';
 
 /**
@@ -218,7 +219,8 @@ export interface TaskSessionMatch {
  * back with no `@fw_task` at all — matching on the option alone would make
  * every task look dormant again after a restore. Falling back to the name
  * `ensureTaskSession` would have given it (the slug) or its path (the task
- * folder) reclaims it; the caller re-stamps the options once it does.
+ * folder) reclaims it; the caller re-stamps the options once it does. By label,
+ * since the name it comes back under carries its order prefix — `-+20-slug`.
  */
 export function findTaskSession(
   sessions: SessionRow[],
@@ -227,7 +229,7 @@ export function findTaskSession(
 ): TaskSessionMatch | undefined {
   const stamped = sessions.find((s) => s.meta.task === slug);
   if (stamped) return { session: stamped, adopted: false };
-  const orphan = sessions.find((s) => !s.meta.task && (s.name === slug || s.path === dir));
+  const orphan = sessions.find((s) => !s.meta.task && (sameSession(s.name, slug) || s.path === dir));
   return orphan ? { session: orphan, adopted: true } : undefined;
 }
 

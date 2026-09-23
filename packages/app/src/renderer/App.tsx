@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { FleetSession } from '@fleetwood/core';
+import type { FleetSession, Task } from '@fleetwood/core';
 import type { Snapshot } from '../shared/ipc.ts';
 import { SessionCard } from './SessionCard.tsx';
 import { AgentRow } from './AgentRow.tsx';
@@ -20,6 +20,7 @@ import { ThemePicker } from './ThemePicker.tsx';
 import { needsDeploy } from '@fleetwood/core/deployState';
 import { isHidden, sortSessions } from '@fleetwood/core/sessionOrder';
 import { isWorkSession } from '@fleetwood/core/fleetList';
+import { dormantTasks } from '@fleetwood/core/taskView';
 import { resolveFocus } from './focus.ts';
 import { applyTheme } from './theme.ts';
 import { watchZoom } from './zoom.ts';
@@ -244,8 +245,12 @@ export function App(): React.JSX.Element {
    * Listed last and under their own heading rather than mixed in: a session-keyed
    * list would otherwise drop them entirely, and "the task exists, nothing is
    * running it" is the state a folder of worktrees spends most of its life in.
+   *
+   * In the slot and the fold their last session had, so the morning after a
+   * reboot — when this is every task — reads like the evening before it. The
+   * hidden ones go behind the same drawer as the hidden sessions.
    */
-  const dormantTasks = (snapshot?.tasks ?? []).filter((t) => !t.session);
+  const { shown: dormant, hidden: hiddenDormant } = dormantTasks(snapshot?.tasks ?? []);
 
   /**
    * One row of the fleet: a task card when we know what task the session is
@@ -280,6 +285,21 @@ export function App(): React.JSX.Element {
     );
   }
 
+  /** A task with no session: its card, with the one button that starts one. */
+  function dormantRow(task: Task): React.JSX.Element {
+    return (
+      <TaskCard
+        key={task.slug}
+        task={task}
+        prs={snapshot?.taskPrs?.byTask[task.slug]}
+        prsStale={snapshot?.taskPrs?.degraded}
+        editor={snapshot?.editor ?? ''}
+        onResult={onResult}
+        onFocus={() => setFocusedSlug(task.slug)}
+      />
+    );
+  }
+
   return (
     <div className="app">
       <TopBar
@@ -290,7 +310,7 @@ export function App(): React.JSX.Element {
           setTab(next);
         }}
         counts={counts}
-        fleetCount={sessions.length + dormantTasks.length}
+        fleetCount={sessions.length + dormant.length}
         prCount={prCount}
         historyCount={snapshot?.history.length ?? 0}
         shutdownLabel={shutdownLabel}
@@ -360,14 +380,14 @@ export function App(): React.JSX.Element {
 
         {snapshot && !focused && tab === 'fleet' && (
           <>
-            {sessions.length === 0 && dormantTasks.length === 0 && (
+            {sessions.length === 0 && dormant.length === 0 && (
               // "No tmux sessions" over a drawer saying there are three would read
               // as fleetwood having lost them. And with nothing on screen to
               // point at, the one thing you can do comes to the middle of the
               // panel rather than staying a 24px glyph up in the rail.
               <div className="empty">
                 <span>
-                  {hidden.length > 0
+                  {hidden.length + hiddenDormant.length > 0
                     ? 'every session is hidden'
                     : offList.length > 0
                       ? // Said rather than left out: with tmux plainly busy, an
@@ -388,22 +408,12 @@ export function App(): React.JSX.Element {
               </div>
             )}
             {sessions.map((session) => sessionRow(session, order))}
-            {dormantTasks.length > 0 && (
+            {dormant.length > 0 && (
               <>
                 <div className="section-title">
-                  no session ({dormantTasks.length}) — worktrees ready, nothing running
+                  no session ({dormant.length}) — worktrees ready, nothing running
                 </div>
-                {dormantTasks.map((task) => (
-                  <TaskCard
-                    key={task.slug}
-                    task={task}
-                    prs={snapshot.taskPrs?.byTask[task.slug]}
-                    prsStale={snapshot.taskPrs?.degraded}
-                    editor={snapshot.editor}
-                    onResult={onResult}
-                    onFocus={() => setFocusedSlug(task.slug)}
-                  />
-                ))}
+                {dormant.map((task) => dormantRow(task))}
               </>
             )}
             {/* Two different situations, so don't file them under one scary label:
@@ -467,7 +477,7 @@ export function App(): React.JSX.Element {
           lifting the card back into the list — hiding a session that is
           blocked is a thing you are allowed to do, and being told about it is
           not the same as having it put back. */}
-      {snapshot && !focused && tab === 'fleet' && hidden.length > 0 && (
+      {snapshot && !focused && tab === 'fleet' && hidden.length + hiddenDormant.length > 0 && (
         <Drawer
           open={hiddenOpen}
           onToggle={() => setHiddenOpen((open) => !open)}
@@ -479,7 +489,7 @@ export function App(): React.JSX.Element {
           }
           summary={
             <>
-              <span className="hidden-count">{hidden.length}</span>
+              <span className="hidden-count">{hidden.length + hiddenDormant.length}</span>
               {/* The rail's own alert, not a sentence: a dot and a number is
                   how this panel says "some of these want you" everywhere
                   else, and the drawer is the one place it had been spelling
@@ -495,6 +505,7 @@ export function App(): React.JSX.Element {
         >
           <div className="drawer-body hidden-group">
             {hidden.map((session) => sessionRow(session, hiddenOrder))}
+            {hiddenDormant.map((task) => dormantRow(task))}
           </div>
         </Drawer>
       )}
