@@ -192,16 +192,8 @@ export type Request =
   | { kind: 'setTaskNotes'; slug: string; notes: string }
   /** Editor in a fresh pane of an existing session, on one repo's worktree. */
   | { kind: 'openEditor'; session: string; cwd: string; name?: string }
-  /**
-   * difit review server on one repo's worktree; difit opens the browser.
-   *
-   * No session, unlike `openEditor`: difit is spawned straight from main and the
-   * review is read in a browser, so this works on a task that has never been
-   * started. `base` is the head pull request's own base branch when the snapshot
-   * holds one — the only record of what a stacked layer sits on — and main falls
-   * back to the repo's trunk without it.
-   */
-  | { kind: 'openDifit'; cwd: string; base?: string }
+  /** The nvim review — codediff on uncommitted changes — in a fresh pane, on one repo's worktree. */
+  | { kind: 'openReview'; session: string; cwd: string; name?: string }
   | { kind: 'archiveTask'; slug: string; force?: boolean }
   | { kind: 'listProjects' }
   | { kind: 'openExternal'; url: string }

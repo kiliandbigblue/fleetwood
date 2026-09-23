@@ -184,9 +184,8 @@ guessed onto the wrong terminal. `fw doctor` reports both numbers.
 Requires tmux ≥ 3.0, Node ≥ 23.6 (it runs the TypeScript directly — no build step
 for core or the CLI), `gh` authenticated for the PR features, and `fzf` for
 `fw switch` — the one `prefix+g` runs, so `fw doctor` fails rather than warns
-without it. `difit` on the
-PATH is optional — only the repo rows' `review` button runs it, and `fw doctor`
-warns rather than fails when it's absent.
+without it. The repo rows' `review` button expects nvim with
+[codediff.nvim](https://github.com/esmuellert/codediff.nvim) installed.
 
 ```sh
 pnpm install
@@ -552,7 +551,7 @@ with. It is fed and read over pipes and finds its own terminal on `/dev/tty`,
 which is what keeps this one process — the selection is acted on by the same
 `actions` calls the app's buttons make, not by a shell script reimplementing
 them. Being a hard dependency of a key you press all day, a missing `fzf` is a
-`fw doctor` **failure** rather than a warning, unlike `difit`.
+`fw doctor` **failure** rather than a warning.
 
 Three details that are load-bearing:
 
@@ -753,70 +752,17 @@ window rather than a split because an editor wants the full height, and the comm
 is typed into a shell, so quitting it leaves you at a prompt in the right directory.
 `editor` in the config names the command, and the button is labelled with it.
 
-Beside it, `review` runs [difit](https://github.com/yoshiko-pg/difit) on that
-worktree — `difit . <base> --merge-base` — and difit opens the browser itself. The
-two arguments are the whole reason this is one button and not a menu: `.` is the
-worktree as it stands, committed branch work and uncommitted edits together, and
-`--merge-base` pins the other side to where the branch left its base, so commits
-landed there since then aren't blamed on this branch. That's the diff the pull
-request will show, plus whatever isn't committed yet — which is what an agent's work
-looks like at the moment you go to read it, and the reason `git diff dev` is the
-wrong question to ask a worktree.
+Beside it, `review` opens the same kind of window with `nvim -c CodeDiff`:
+[codediff.nvim](https://github.com/esmuellert/codediff.nvim) on the worktree's
+uncommitted changes, which is what an agent's work looks like at the moment you go
+to read it. The review itself lives in nvim, not here: comments are made on the diff
+and sent back to the Claude pane in the same session, which is why the button needs
+the task to have one, as `+nvim` does. It is nvim by name rather than the configured
+`editor`, because `CodeDiff` is an nvim command.
 
-**What it compares against is the head pull request's own base**, and only the
-trunk when there is none. That distinction is the whole of stacked work. A layer's
-base is the layer below it, and the trunk would credit the layer with every commit
-underneath it — in `orders-b2b-flag-migration`, reviewing PR2 (`upsert`) against
-`dev` hands it PR1's helper commit as if it were its own. GitHub is the only place
-that fact is written down: the commit graph cannot supply it, because a layer is
-typically cut from its parent's *first* commit and the parent then moves on, so
-neither branch is an ancestor of the other in either direction. `--merge-base` is
-what makes naming the parent sufficient — the fork point stays the fork point when
-the parent advances past it.
-
-That base costs nothing to know. The per-PR `gh pr view` the task list already
-makes now asks for `baseRefName` too, so the card holds the answer before it is
-clicked and the button stays offline-capable: no pull request yet, or the search
-still out, and it falls back to the trunk.
-
-The trunk itself is `origin/HEAD` where there is a remote, and the remote-tracking
-ref deliberately: a task worktree usually holds only the task branch, so its local
-`dev` is often stale or missing outright. A repo that was never pushed anywhere —
-this one's own worktrees — has no origin/HEAD to read, so the local trunks are tried
-by existence rather than `main` being assumed, which is the same rule `fw` follows
-when it cuts a branch. A base branch is resolved the same way, `origin/` first, and
-a name this worktree holds in neither form is treated as absent rather than handed
-to difit to refuse.
-
-**No terminal is involved.** difit is spawned straight from the main process: it
-needs no tty once untracked files are settled by flag, it opens the browser itself,
-and the browser is where the review is read — a tmux window would only have been a
-place for the process to sit. What such a window would have given is a way to stop
-the server and somewhere to watch it fail, and neither is lost. difit holds an SSE
-stream for the tab and exits when it closes, about a second later; a failure to
-start is read off its output and returned as the click's own result, so `difit:
-Invalid target commit-ish format` lands in the panel instead of scrolling past in a
-pane nobody opened. It is detached and unref'd, so a review outlives the panel that
-opened it.
-
-`--background` is still deliberately unused, and this is the trap worth recording:
-it forces difit's own `--keep-alive`, so the flag that looks like the way to run a
-server in the background is the one thing that stops it ever shutting down. Plain
-`spawn` keeps the self-shutdown. The one outcome that cannot clean itself up is an
-empty diff — difit prints `No differences found` and opens no browser, so nothing
-ever connects and nothing ever disconnects — so that line is watched for and the
-process killed, the click reporting `nothing to review` instead.
-
-`--include-untracked` is not optional either. Without it difit stops to ask `(Y/n)`
-about new files, and with no terminal to ask in it would hang rather than prompt —
-quite apart from a review that quietly omitted the files an agent created being
-worse than the question. It marks them `--intent-to-add`, so they show as added
-until `git reset --` puts them back, which is also why the click refreshes the task:
-the row's dirty count moves.
-
-Unlike `+nvim`, `review` is not gated on the task having a tmux session, because
-nothing about it needs one. Reading what the last agent did without first starting
-another is a real thing to want.
+It used to run [difit](https://github.com/yoshiko-pg/difit) against the branch's
+merge base and open a browser. That review could be read but not answered: nothing
+written there reached the agent that did the work.
 
 `notes` on the card writes `NOTES.md` beside the worktrees. It is a file of its own
 because `task.json` is immutable and `TASK.md` is regenerated every time a repo is

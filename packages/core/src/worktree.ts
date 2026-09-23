@@ -170,7 +170,7 @@ export async function localDefaultBranch(repoPath: string): Promise<string | und
 }
 
 /**
- * Branches worth trying as a review base in a repo with no remote at all.
+ * Branches worth trying as the trunk in a repo with no remote at all.
  *
  * Ordered by how strongly each names a trunk. Only reached when there is no
  * origin/HEAD to read — fleetwood's own worktrees are the case in hand — and every
@@ -180,52 +180,19 @@ export async function localDefaultBranch(repoPath: string): Promise<string | und
 const LOCAL_TRUNKS = ['main', 'master', 'dev', 'develop'];
 
 /**
- * What a worktree's work should be reviewed against.
+ * The trunk a worktree's commits are counted against.
  *
  * origin/HEAD is the real answer wherever there is a remote, which is every cloned
- * repo. A repo that was never pushed anywhere has none, and refusing there would
- * make a review button useless in exactly the repos worked on locally — so the
- * local trunks are tried in turn, by existence.
- *
- * The branch the worktree is on is deliberately *not* excluded: sitting on the
- * trunk itself, "what have I changed against the trunk" is still the honest
- * question, and the answer is the uncommitted work.
- *
- * This is the answer for a branch cut straight from the trunk. A stacked layer's
- * base is the layer below it, which no read of the commit graph can recover — see
- * `resolveBaseRef`, and the pull request's `base` that feeds it.
+ * repo. A repo that was never pushed anywhere has none, and giving up there would
+ * leave exactly the repos worked on locally without a count — so the local trunks
+ * are tried in turn, by existence.
  */
-export async function reviewBase(repoPath: string): Promise<string | undefined> {
+export async function localTrunk(repoPath: string): Promise<string | undefined> {
   const remote = await localDefaultBranch(repoPath);
   if (remote) return remote;
   for (const name of LOCAL_TRUNKS) {
     if (await refExists(repoPath, `refs/heads/${name}`)) return name;
   }
-  return undefined;
-}
-
-/**
- * Turn a branch *name* into a ref this worktree can actually diff against.
- *
- * A pull request reports its base as a bare name — `dev`, or a sibling layer's
- * `fix/orders-helper-order-type-b2b`. Neither is necessarily usable as written: a
- * task worktree holds one branch and its local copy of any other may be stale or
- * absent entirely, and difit fails outright on a ref that does not resolve.
- *
- * The remote-tracking ref is preferred for the reason `localDefaultBranch` keeps
- * the `origin/` prefix — it is current as of the last fetch, where a local copy is
- * whatever it was when this worktree last saw it. Either answers the same question
- * anyway once `--merge-base` is applied: the fork point does not move when the base
- * branch advances past it.
- *
- * `undefined` means neither form exists here, and the caller should fall back
- * rather than hand difit a ref it will refuse.
- */
-export async function resolveBaseRef(repoPath: string, branch: string): Promise<string | undefined> {
-  const name = branch.trim().replace(/^origin\//, '');
-  if (name.length === 0) return undefined;
-  if (await refExists(repoPath, `refs/remotes/origin/${name}`)) return `origin/${name}`;
-  if (await refExists(repoPath, `refs/heads/${name}`)) return name;
   return undefined;
 }
 
@@ -489,7 +456,7 @@ export async function localProgress(path: string, branch: string | undefined): P
  *
  * `origin/HEAD` is asked for by name rather than resolved first, which is the
  * whole saving: `rev-list` looks the ref up itself, and only a repo without one
- * — a local-only checkout, fleetwood's own among them — pays for `reviewBase`.
+ * — a local-only checkout, fleetwood's own among them — pays for `localTrunk`.
  */
 async function aheadOfTrunk(path: string): Promise<number | undefined> {
   const direct = await run('git', ['-C', path, 'rev-list', '--count', 'origin/HEAD..HEAD']);
@@ -497,7 +464,7 @@ async function aheadOfTrunk(path: string): Promise<number | undefined> {
     const n = Number.parseInt(direct.stdout.trim(), 10);
     if (Number.isFinite(n)) return n;
   }
-  const base = await reviewBase(path);
+  const base = await localTrunk(path);
   if (base === undefined) return undefined;
   const { code, stdout } = await run('git', ['-C', path, 'rev-list', '--count', `${base}..HEAD`]);
   if (code !== 0) return undefined;

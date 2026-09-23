@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  baseFor,
   dormantTasks,
   groupPrStacks,
   isMerged,
@@ -138,58 +137,6 @@ function pr(overrides: Partial<TaskPr>): TaskPr {
     ...overrides,
   } as TaskPr;
 }
-
-test('a stacked layer takes its base from its own pull request, not the trunk', () => {
-  const prs = [
-    pr({ number: 10427, branch: helperLayer.branch, base: 'dev', repoName: helperLayer.name }),
-    pr({
-      number: 10428,
-      branch: upsertLayer.branch,
-      base: 'fix/orders-helper-order-type-b2b',
-      repoName: upsertLayer.name,
-    }),
-  ];
-  // The bottom layer is cut from the trunk and says so.
-  assert.equal(baseFor(prs, helperLayer), 'dev');
-  // The layer above names the one below — the fact no read of the graph supplies.
-  assert.equal(baseFor(prs, upsertLayer), 'fix/orders-helper-order-type-b2b');
-});
-
-test('the worktree is matched too, so a namesake branch in another repo cannot answer', () => {
-  // `fix/orders-use-order-type-over-b2b` exists in both reflow and graphy in this
-  // migration, and each has its own pull request with its own base.
-  const graphyLayer: TaskRepo = {
-    ...upsertLayer,
-    name: 'graphy-orders-use-order-type-over-b2b',
-    branch: 'fix/shared-name',
-  };
-  const prs = [
-    pr({ branch: 'fix/shared-name', base: 'dev', repoName: 'reflow-orders-use-order-type-over-b2b' }),
-  ];
-  assert.equal(baseFor(prs, graphyLayer), undefined);
-});
-
-test('only the branch a worktree is actually on can supply its base', () => {
-  // `stack`, `history` and `task` name branches this worktree is not checked out
-  // on, so their bases describe a different review than the one being opened.
-  const prs = [
-    pr({
-      branch: upsertLayer.branch,
-      base: 'fix/somewhere-else',
-      via: 'stack',
-      repoName: upsertLayer.name,
-    }),
-  ];
-  assert.equal(baseFor(prs, upsertLayer), undefined);
-});
-
-test('no pull request, no base — the trunk decides instead', () => {
-  assert.equal(baseFor(undefined, upsertLayer), undefined);
-  assert.equal(baseFor([], upsertLayer), undefined);
-  // A worktree with no branch at all (detached) cannot be matched on one.
-  const detached: TaskRepo = { ...upsertLayer, branch: undefined };
-  assert.equal(baseFor([pr({ base: 'dev', repoName: upsertLayer.name })], detached), undefined);
-});
 
 test('a task whose pull requests span repos tags each row with its repo', () => {
   const tags = prRepoTags([
@@ -538,8 +485,8 @@ test('a search still out leaves the rows as they came off disk', () => {
 });
 
 test('a pull request found some other way does not rank a worktree', () => {
-  // `stack`, `history` and `task` name branches this worktree is not on — the
-  // reason `baseFor` reads `head` alone.
+  // `stack`, `history` and `task` name branches this worktree is not on, so only
+  // `head` places a row.
   const viaStack = stackPrs.map((p) => ({ ...p, via: 'stack' }) as TaskPr);
   assert.deepEqual(
     orderReposByStack([flagLayer, helperLayer, upsertLayer], viaStack).map((r) => r.name),

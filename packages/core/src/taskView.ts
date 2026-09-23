@@ -152,31 +152,6 @@ export function prSummary(prs: TaskPr[]): string {
 }
 
 /**
- * What a worktree's own pull request merges into — the base a review must use.
- *
- * Only stacked work needs this. A layer's base is the layer below it, and that is
- * recorded nowhere else: the commit graph cannot supply it, because a layer cut
- * from its parent's *first* commit is not a descendant of the parent's tip and
- * neither branch contains the other. Reviewed against the trunk instead, a layer
- * is credited with every commit the layers beneath it added.
- *
- * Matched on the worktree as well as the branch, since a stack is several
- * worktrees of one repo and a task can hold several repos — the branch alone could
- * pick a namesake in the wrong one. Only a `head` pull request counts: the other
- * three discovery sources name branches this worktree is *not* on, whose bases say
- * nothing about what is checked out here.
- *
- * `undefined` covers every honest gap — no pull request yet, the search still out,
- * a base GitHub did not report — and the trunk is the right answer in all of them.
- */
-export function baseFor(prs: TaskPr[] | undefined, repo: TaskRepo): string | undefined {
-  if (!prs || !repo.branch) return undefined;
-  return prs.find(
-    (pr) => !isMerged(pr) && pr.via === 'head' && pr.branch === repo.branch && pr.repoName === repo.name,
-  )?.base;
-}
-
-/**
  * A task's worktrees in the order its stack reads, when it has one.
  *
  * The rows come off `readdir`, so their order is the directory names sorted —
@@ -187,10 +162,11 @@ export function baseFor(prs: TaskPr[] | undefined, repo: TaskRepo): string | und
  * the other, with nothing on either saying they are the same four.
  *
  * So the rank comes from the list that already knows. A worktree's own pull
- * request is the `head` one on the branch it is checked out on — the match
- * `baseFor` makes — and `groupPrStacks` has already put those in printed order,
- * bottom layer first, each stack contiguous. Ordering the rows by that position
- * makes the two lists one list read twice.
+ * request is the `head` one on the branch it is checked out on — the other
+ * discovery sources name branches this worktree is not on — and `groupPrStacks`
+ * has already put those in printed order, bottom layer first, each stack
+ * contiguous. Ordering the rows by that position makes the two lists one list
+ * read twice.
  *
  * Only a stack reorders anything. A task holding two unrelated repos has a pull
  * request each and no relation between them, so ranking those rows would have the
@@ -206,9 +182,8 @@ export function orderReposByStack(repos: TaskRepo[], prs: TaskPr[] | undefined):
   if (!prs || repos.length < 2) return repos;
 
   const rows = groupPrStacks(splitPrs(prs).open);
-  // Keyed on the worktree *and* its branch, for the reason `baseFor` is matched on
-  // both: a stack is one repo on several branches, so neither half identifies a
-  // layer alone.
+  // Keyed on the worktree *and* its branch: a stack is one repo on several
+  // branches, so neither half identifies a layer alone.
   const layerKey = (repoName: string, branch: string): string => `${repoName} ${branch}`;
   const rank = new Map<string, number>();
   const inStack = new Set<string>();

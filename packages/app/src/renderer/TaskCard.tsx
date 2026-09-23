@@ -3,7 +3,6 @@ import type { FleetSession, StackRow, Task, TaskPr, TaskRepo, TaskStatus } from 
 // The leaf module: the barrel re-exports tmux and process scanning, which fail the
 // renderer bundle on `node:child_process`.
 import {
-  baseFor,
   groupPrStacks,
   isMerged,
   orderReposByStack,
@@ -99,24 +98,15 @@ export function RepoRow({
   taskBranch,
   session,
   editor,
-  base,
   onResult,
 }: {
   repo: TaskRepo;
   /** The task this worktree belongs to — `removeRepoFromTask` is keyed by slug. */
   slug: string;
   taskBranch: string;
-  /** The task's tmux session, when it has one — the editor needs somewhere to land. */
+  /** The task's tmux session, when it has one — the editor and the review need somewhere to land. */
   session?: string;
   editor: string;
-  /**
-   * What this worktree's own pull request merges into, when it has one.
-   *
-   * Only stacked work needs it — there the base is the layer below, and reviewing
-   * against the trunk instead credits this branch with everything underneath it.
-   * Absent (no pull request yet, or the search hasn't landed) main uses the trunk.
-   */
-  base?: string;
   onResult: Props['onResult'];
 }): React.JSX.Element {
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -159,17 +149,17 @@ export function RepoRow({
           +{editorLabel(editor)}
         </button>
       )}
-      {/* Not gated on a session, unlike the editor: difit is spawned from main
-          and read in a browser, so there is nothing a tmux session would be for.
-          Reviewing a worktree without first starting an agent on it is a real
-          thing to want — it is how you read what the last one did. */}
-      <button
-        className="chip repo-review"
-        onClick={() => void act({ kind: 'openDifit', cwd: repo.path, base })}
-        title={`difit on ${repo.path} vs ${base ?? 'its trunk'} — committed and uncommitted work together, from where the branch left it. New files are marked intent-to-add.`}
-      >
-        review
-      </button>
+      {session && (
+        <button
+          className="chip repo-review"
+          onClick={() =>
+            void act({ kind: 'openReview', session, cwd: repo.path, name: `${repo.name}-review` })
+          }
+          title={`codediff on ${repo.path}'s uncommitted changes, in nvim — comments go back to the Claude pane in this session`}
+        >
+          review
+        </button>
+      )}
       {/* The landed-PR case: this branch is merged, the checkout is dead weight,
           and the task is still going. Two steps, like archive — and never
           forced from here: uncommitted work refuses, and clearing it is a
@@ -647,7 +637,6 @@ export function TaskCard({
             taskBranch={task.branch}
             session={task.session}
             editor={editor}
-            base={baseFor(prs, repo)}
             onResult={onResult}
           />
         ))}
