@@ -12,7 +12,7 @@ installed copy, start it again. Four commands.
 ## The main path
 
 ```bash
-# 1. Be on main. There is no remote, so there is nothing to pull.
+# 1. Be on main. It is where work lands; origin only ever trails it.
 git switch main && git status --short
 
 # 2. Quit the running app — step 3 deletes the bundle underneath it.
@@ -80,8 +80,9 @@ bundle that dies a second later.
 - **`osascript -e 'quit app "Fleetwood"'` prints nothing on success** — and also
   when no such app is running. Confirm with `ps -p <pid>` rather than trusting the
   silence.
-- **This repo has no `origin` remote.** "Update on main" is `git switch main`, full
-  stop; `git pull` fails and `git fetch` is a no-op. Feature branches live in
+- **`origin` trails local `main`, never leads it.** Work lands on local `main` and
+  is pushed from there, so "update on main" is `git switch main`, full stop — no
+  `git pull`. Feature branches live in
   worktrees (`.agents/worktrees/`, `.claude/worktrees/`) and land on local `main`,
   so `main` is normally already the newest thing. Verify with `git branch -vv`
   rather than assuming a branch has unmerged work.

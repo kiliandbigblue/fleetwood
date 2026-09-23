@@ -1,6 +1,6 @@
 ---
 name: land-and-redeploy
-description: Take finished work in a fleetwood worktree all the way to the app Kilian is looking at — commit it, land it on main without a PR, rebuild and reinstall /Applications/Fleetwood.app, relaunch. Use for "commit then integrate to main then redeploy", "land this and restart the app", "ship this to my app", "commit, merge, redeploy".
+description: Take finished work in a fleetwood worktree all the way to the app Kilian is looking at — commit it, land it on main without a PR, push main, rebuild and reinstall /Applications/Fleetwood.app, relaunch. Use for "commit then integrate to main then redeploy", "land this and restart the app", "ship this to my app", "commit, merge, redeploy".
 ---
 
 # Land it, then redeploy
@@ -8,14 +8,13 @@ description: Take finished work in a fleetwood worktree all the way to the app K
 One gesture, three phases, in this order and no other:
 
 1. **Commit** the work where it lives.
-2. **Land it on `main`** — no PR, no review. This is `/integrate-to-main`.
+2. **Land it on `main`** — no PR, no review — and push `main` to `origin`.
 3. **Redeploy** `/Applications/Fleetwood.app` from `main`. This is `relaunch-app`.
 
-The two existing skills own the details and are the source of truth for them:
-`/integrate-to-main` (global, `~/.claude/skills/`) for phases 1–2, and
-`relaunch-app` (this repo, beside this file) for phase 3. **Read them** — don't
-reimplement them from this file. What this skill adds is the seam between them,
-which is where the mistakes actually happen.
+Phases 1–2 are all here. `relaunch-app` (this repo, beside this file) owns the
+details of phase 3 — **read it** rather than reimplementing it from this file.
+What this skill adds is the seam between them, which is where the mistakes
+actually happen.
 
 Skipping review is the point of this flow, not an oversight. That means the checks
 in phase 2 are the only thing between the work and `main`, so they are not
@@ -44,9 +43,8 @@ out where you are.
 ## When `main` moved while you worked
 
 Landing here is always a fast-forward, so a branch based on an older tip has to
-catch up first. **Rebase it — don't ask.** `/integrate-to-main` says to offer the
-choice between a rebase and a merge commit; that question is settled for this
-repo and this flow, and asking it again is just a prompt in the way:
+catch up first. **Rebase it — don't ask.** Rebase or merge commit is settled
+for this repo and this flow, and asking it again is just a prompt in the way:
 
 ```bash
 git rebase main                                          # in the worktree
@@ -54,10 +52,10 @@ pnpm typecheck && pnpm test                              # the replayed commit i
 git -C ~/projects/fleetwood merge --ff-only <branch>
 ```
 
-Kilian wants linear history here and these branches are local — nothing published
-gets rewritten. Re-run the checks *after* the rebase as well as before: the commit
-that lands is not the one you tested, and that is the whole reason the replay can
-go wrong.
+Kilian wants linear history here and feature branches are never pushed — nothing
+published gets rewritten. Re-run the checks *after* the rebase as well as before:
+the commit that lands is not the one you tested, and that is the whole reason the
+replay can go wrong.
 
 Two things still stop and ask, because neither has a standing answer:
 
@@ -70,9 +68,9 @@ Two things still stop and ask, because neither has a standing answer:
 
 | Phase | Command | Watch for |
 |---|---|---|
-| 1 | `git add` + `git commit -F <file>` | Zero commits ahead with everything uncommitted is the normal case here, not an error — commit first, then say so in the report. |
+| 1 | `git add` + `git commit -F <file>` | Zero commits ahead with everything uncommitted is the normal case here, not an error — commit first, then say so in the report. The subject is a sentence in the voice of `git log` ("Open the review in nvim, where its comments reach the agent"), never the branch name. |
 | 2 | `pnpm typecheck && pnpm test`, then `merge --ff-only` | Red stops the chain. Not fast-forwardable means `main` moved — rebase; see the section above. |
-| 2 | — | **There is no remote.** Nothing to push, and nothing to say about pushing. |
+| 2 | `git -C ~/projects/fleetwood push origin main` | After the merge, never before the checks. Only `main` is pushed, never the feature branch. A rejected push means `origin/main` has commits local `main` lacks: stop and say what they are — never force. |
 | 3 | `osascript -e 'quit app "Fleetwood"'` | Quit *before* installing: `install-app` `rm -rf`s the live bundle. |
 | 3 | `pnpm --filter @fleetwood/app install-app` | ~20s, no sudo, no prompts. |
 | 3 | `open -a /Applications/Fleetwood.app` | Exits 0 for a bundle that dies a second later — verify by process, not by `open`. |
@@ -90,8 +88,8 @@ never came up: read the failure, don't call it shipped.
 
 ## Report
 
-Lead with the SHA on `main`, whether the checks were green, and that the installed
-app is running the new code. Then flag, separately, anything the user would
+Lead with the SHA on `main`, whether the checks were green, that `origin/main` is
+at it, and that the installed app is running the new code. Then flag, separately, anything the user would
 reasonably have assumed and that isn't true — work that wasn't committed when they
 thought it was, a check you couldn't run, a repo in the task that had nothing to
 land.
