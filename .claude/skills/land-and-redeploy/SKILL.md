@@ -16,6 +16,10 @@ details of phase 3 — **read it** rather than reimplementing it from this file.
 What this skill adds is the seam between them, which is where the mistakes
 actually happen.
 
+No PR, even when `/shipit` is invoked alongside this skill: here this flow
+replaces it. Landing is the merge plus the push, and a PR for a branch already
+on `main` is moot.
+
 Skipping review is the point of this flow, not an oversight. That means the checks
 in phase 2 are the only thing between the work and `main`, so they are not
 optional and a red one stops the whole chain — including the redeploy. Landing a
