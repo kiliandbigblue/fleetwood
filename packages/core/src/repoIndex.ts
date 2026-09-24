@@ -82,16 +82,29 @@ interface Scanned {
   isRepo: boolean;
 }
 
+/** Whether git owns `path` — `.git` is a directory in a normal clone and a file in a linked worktree. */
+async function isCheckout(path: string): Promise<boolean> {
+  return (await isDirectory(join(path, '.git'))) || (await isFile(join(path, '.git')));
+}
+
 /**
  * Every directory under the configured roots, in the order the picker shows them.
  *
  * The cheap half of building the index — a readdir per root and a couple of stats
  * per entry, no subprocesses — which is what lets `getIndex` check its cache
  * against the filesystem on every open rather than against the clock.
+ *
+ * A root that is itself a checkout is one project, not a folder of them.
+ * `~/dotfiles` is the case: listing inside it offered nothing at all, since every
+ * entry there is hidden, and the repo you meant was never on the list.
  */
 async function scanRoots(roots: readonly string[]): Promise<Scanned[]> {
   const found: Scanned[] = [];
   for (const root of roots) {
+    if (await isCheckout(root)) {
+      found.push({ path: root, isRepo: true });
+      continue;
+    }
     let entries: string[];
     try {
       entries = await readdir(root);
@@ -102,9 +115,7 @@ async function scanRoots(roots: readonly string[]): Promise<Scanned[]> {
       if (entry.startsWith('.')) continue;
       const path = join(root, entry);
       if (!(await isDirectory(path))) continue;
-      // `.git` is a directory in a normal clone and a file in a linked worktree.
-      const isRepo = (await isDirectory(join(path, '.git'))) || (await isFile(join(path, '.git')));
-      found.push({ path, isRepo });
+      found.push({ path, isRepo: await isCheckout(path) });
     }
   }
   return found;
