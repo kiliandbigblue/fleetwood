@@ -1431,6 +1431,13 @@ button {
   margin-left: 0;
 }
 
+/* A session's head has no `.repo-summary` to do the pushing — `.head-path` sits
+   beside the name, not on the gutter — so the controls take the space back, or
+   the menu lands against the badge instead of on the row's trailing edge. */
+.card-head:not(:has(> .repo-summary)) > .row-act {
+  margin-left: auto;
+}
+
 /*
  * A head control's target is the row it sits in, not the box it draws.
  *
