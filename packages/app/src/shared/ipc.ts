@@ -6,6 +6,7 @@ import type {
   CursorUsage,
   PlanLimits,
   PrLists,
+  PullRequest,
   ShutdownConfig,
   ShutdownState,
   Task,
@@ -37,6 +38,14 @@ export interface Snapshot {
   taskPrs?: TaskPrs;
   /** Session names that fleetwood stamped, keyed by PR key, for link badges. */
   prSessions: Record<string, string>;
+  /**
+   * The pull request each PR session is checked out on, keyed by PR key.
+   *
+   * Looked up by name rather than out of `prs`: a review you have already
+   * submitted drops out of the review-requested search, and the session working
+   * it would lose its row the moment you did the thing it was opened for.
+   */
+  sessionPrs: Record<string, PullRequest>;
   hooksInstalled: boolean;
   /** The editor `openEditor` will run, so the button says what it does. */
   editor: string;

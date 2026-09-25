@@ -279,6 +279,7 @@ export function App(): React.JSX.Element {
       <SessionCard
         key={session.sessionId}
         session={session}
+        pr={session.meta.pr ? snapshot?.sessionPrs?.[session.meta.pr] : undefined}
         order={rowOrder}
         onResult={onResult}
       />

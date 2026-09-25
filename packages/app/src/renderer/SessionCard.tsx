@@ -1,4 +1,4 @@
-import type { FleetSession } from '@fleetwood/core';
+import type { FleetSession, PullRequest, TaskPr } from '@fleetwood/core';
 import { isPinned, sessionLabel } from '@fleetwood/core/sessionOrder';
 import type { Severity } from '@fleetwood/core';
 import { worstState } from '@fleetwood/core/taskView';
@@ -7,6 +7,7 @@ import { Icon } from './Icon.tsx';
 import { CardMenu } from './CardMenu.tsx';
 import type { MenuItem } from './CardMenu.tsx';
 import { Slug } from './Slug.tsx';
+import { numColStyle, PrRow } from './TaskCard.tsx';
 import { send, shortenPath, tildify } from './api.ts';
 
 /**
@@ -31,6 +32,11 @@ export function sevNote(state: Severity, attached: boolean): string {
 
 interface Props {
   session: FleetSession;
+  /**
+   * The pull request this session is checked out on, when it is a PR session
+   * and the lookup has come back. Absent until then, and the badge stands in.
+   */
+  pr?: PullRequest;
   /** Session names in fleet order, for the reorder arrows. */
   order: string[];
   onResult: (message: string, ok: boolean) => void;
@@ -48,7 +54,7 @@ const RANK: Record<string, number> = {
   gone: 7,
 };
 
-export function SessionCard({ session, order, onResult }: Props): React.JSX.Element {
+export function SessionCard({ session, pr, order, onResult }: Props): React.JSX.Element {
   const act = async (request: Parameters<typeof send>[0]): Promise<void> => {
     const result = await send(request);
     onResult(result.detail, result.ok);
@@ -60,6 +66,13 @@ export function SessionCard({ session, order, onResult }: Props): React.JSX.Elem
   const paneCount = session.windows.reduce((n, w) => n + w.panes.length, 0);
   const cwd = session.windows[0]?.panes[0]?.cwd ?? session.path;
   const isPr = session.meta.kind === 'pr';
+  // The task card's row, fed the one pull request this checkout is on. `head`
+  // because that is literally how it belongs here: the session is its branch.
+  const prRow: TaskPr | undefined = pr && {
+    ...pr,
+    branch: pr.branch ?? session.meta.branch ?? '',
+    via: 'head',
+  };
   // No repos or pull requests to weigh — a bare session's mark is agents only.
   // `prs` stays `undefined` so we do not pretend to have searched GitHub.
   const state = worstState([], undefined, session.needsAttention, session.agents);
@@ -137,7 +150,8 @@ export function SessionCard({ session, order, onResult }: Props): React.JSX.Elem
          * since fleetwood is the only thing that ever writes that option. So the
          * word goes on the cards that had none.
          */}
-        {session.meta.pr ? (
+        {/* The row below carries the number once it is in; until then this does. */}
+        {prRow ? null : session.meta.pr ? (
           <span className="badge pr">#{session.meta.pr.split('#')[1]}</span>
         ) : session.meta.kind ? (
           <span className="badge kind">{session.meta.kind}</span>
@@ -180,6 +194,12 @@ export function SessionCard({ session, order, onResult }: Props): React.JSX.Elem
         </div>
       )}
 
+      {/* Where a task card keeps its pull requests, drawn by the same row. */}
+      {prRow && (
+        <div className="task-prs" style={numColStyle([prRow])}>
+          <PrRow pr={prRow} onResult={onResult} />
+        </div>
+      )}
     </div>
   );
 }

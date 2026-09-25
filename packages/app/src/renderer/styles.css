@@ -2584,7 +2584,10 @@ button {
  * which is why this read as cards keeping different rhythms rather than as one
  * rule being applied twice.
  */
+/* A session's branch line pads its own bottom, so the agents under it take none. */
+.branch-line + .agents,
 .agents + .task-repos,
+.agents + .task-prs,
 .task-repos + .task-prs,
 .task-repos + .task-notes-block,
 .task-prs + .task-notes-block {
