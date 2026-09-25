@@ -20,6 +20,13 @@ export interface Snapshot {
   /** Multi-repo tasks. Refreshed on a slower cadence than the fleet — each one
    *  costs a `git status` per repo, which is not worth doing every second. */
   tasks: Task[];
+  /**
+   * Configured workspaces with no session rooted at them — see `fleetList.ts`.
+   *
+   * The ones that do have a session are already in `fleet`, marked
+   * `kind: 'workspace'`, so this is only what the list has to draw a start for.
+   */
+  dormantWorkspaces: string[];
   prs?: PrLists;
   /**
    * Merged inside the lookback window, with what CI did with the merge commit.

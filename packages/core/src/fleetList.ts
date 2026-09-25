@@ -14,7 +14,12 @@ import type { SessionMeta } from './types.ts';
  * `@fw_kind` on the session at creation, which is exactly the line we want —
  * fleetwood knows why those sessions exist and has something to say about them,
  * and a session it never created is a terminal you opened, which it does not.
- * Nothing is marked and nothing is configured; a session qualifies by what it is.
+ * Nothing is marked; a session qualifies by what it is.
+ *
+ * The one thing configured is a workspace: a folder you coordinate from, like
+ * `~/projects/os`, where no task is ever made and so nothing stamps a kind. It
+ * is work all the same, and naming it in `workspaces` is fleetwood being told
+ * why the session exists — which is the line this list draws.
  *
  * This is not the hidden fold in `sessionOrder.ts`, and the two do not meet. That
  * one is a decision you make about a session that belongs in the list, written on
@@ -41,5 +46,51 @@ import type { SessionMeta } from './types.ts';
  * since a card that vanishes looks like a session that died.
  */
 export function isWorkSession(meta: SessionMeta): boolean {
-  return meta.kind === 'task' || meta.kind === 'pr' || meta.task !== undefined;
+  return (
+    meta.kind === 'task' || meta.kind === 'pr' || meta.kind === 'workspace' || meta.task !== undefined
+  );
+}
+
+/** One spelling per directory: `~/projects/os/` and `~/projects/os` are one place. */
+function samePath(a: string, b: string): boolean {
+  const trim = (path: string): string => (path.length > 1 ? path.replace(/\/+$/, '') : path);
+  return trim(a) === trim(b);
+}
+
+/**
+ * The sessions, with the ones rooted at a workspace marked as such.
+ *
+ * Read off `session_path` rather than stamped as `@fw_kind` when fleetwood opens
+ * one. A stamp would only cover the sessions fleetwood made, and a workspace is
+ * the case where it often did not: `prefix+g`, the sessionizer or a plain
+ * `tmux new -c` all make the same session, and a restored one loses its user
+ * options anyway. The directory is the fact that survives all of them.
+ *
+ * A session that already says what it is keeps its word — a task session is a
+ * task session wherever it was started.
+ */
+export function markWorkspaces<T extends { path: string; meta: SessionMeta }>(
+  sessions: readonly T[],
+  workspaces: readonly string[],
+): T[] {
+  return sessions.map((session) =>
+    session.meta.kind === undefined &&
+    session.meta.task === undefined &&
+    workspaces.some((dir) => samePath(dir, session.path))
+      ? { ...session, meta: { ...session.meta, kind: 'workspace' } }
+      : session,
+  );
+}
+
+/**
+ * Workspaces with no session rooted at them, in the order they are configured.
+ *
+ * The dormant tasks' counterpart: without a card of its own, a workspace nobody
+ * has opened yet would be the one piece of work the list has no way into.
+ */
+export function dormantWorkspaces(
+  sessions: readonly { path: string }[],
+  workspaces: readonly string[],
+): string[] {
+  return workspaces.filter((dir) => !sessions.some((session) => samePath(dir, session.path)));
 }

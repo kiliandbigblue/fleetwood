@@ -24,7 +24,8 @@ import { dormantTasks } from '@fleetwood/core/taskView';
 import { resolveFocus } from './focus.ts';
 import { applyTheme } from './theme.ts';
 import { watchZoom } from './zoom.ts';
-import { send } from './api.ts';
+import { Slug } from './Slug.tsx';
+import { send, shortenPath, tildify } from './api.ts';
 import { api } from './api.ts';
 
 interface Toast {
@@ -251,6 +252,12 @@ export function App(): React.JSX.Element {
    * hidden ones go behind the same drawer as the hidden sessions.
    */
   const { shown: dormant, hidden: hiddenDormant } = dormantTasks(snapshot?.tasks ?? []);
+  /*
+   * Workspaces nobody has opened yet — see `fleetList.ts`. Above the dormant
+   * tasks rather than among them: a task card is worktrees waiting on a branch,
+   * and this is a folder waiting on nothing but a session.
+   */
+  const idleWorkspaces = snapshot?.dormantWorkspaces ?? [];
 
   /**
    * One row of the fleet: a task card when we know what task the session is
@@ -286,6 +293,33 @@ export function App(): React.JSX.Element {
     );
   }
 
+  /**
+   * A workspace with no session: the header opens one, as on a dormant task.
+   *
+   * Nothing else to draw — no agents, no repos, no menu. Once the session exists
+   * it is an ordinary session card, marked `workspace`, with every control those
+   * have.
+   */
+  function workspaceRow(path: string): React.JSX.Element {
+    const name = path.split('/').filter(Boolean).pop() ?? path;
+    return (
+      <div key={path} className="card dormant">
+        <div
+          className="card-head"
+          onClick={() => void send({ kind: 'openProject', path }).then((r) => onResult(r.detail, r.ok))}
+          title={`no session yet — open one on ${tildify(path)}`}
+        >
+          <span className="attached-dot sev-quiet detached" title="no session yet" />
+          <span className="session-name">
+            <Slug text={name} />
+          </span>
+          <span className="badge kind">workspace</span>
+          <span className="head-path">{shortenPath(path, 22)}</span>
+        </div>
+      </div>
+    );
+  }
+
   /** A task with no session: its card, with the one button that starts one. */
   function dormantRow(task: Task): React.JSX.Element {
     return (
@@ -311,7 +345,7 @@ export function App(): React.JSX.Element {
           setTab(next);
         }}
         counts={counts}
-        fleetCount={sessions.length + dormant.length}
+        fleetCount={sessions.length + idleWorkspaces.length + dormant.length}
         prCount={prCount}
         historyCount={snapshot?.history.length ?? 0}
         shutdownLabel={shutdownLabel}
@@ -381,7 +415,7 @@ export function App(): React.JSX.Element {
 
         {snapshot && !focused && tab === 'fleet' && (
           <>
-            {sessions.length === 0 && dormant.length === 0 && (
+            {sessions.length === 0 && idleWorkspaces.length === 0 && dormant.length === 0 && (
               // "No tmux sessions" over a drawer saying there are three would read
               // as fleetwood having lost them. And with nothing on screen to
               // point at, the one thing you can do comes to the middle of the
@@ -409,6 +443,14 @@ export function App(): React.JSX.Element {
               </div>
             )}
             {sessions.map((session) => sessionRow(session, order))}
+            {idleWorkspaces.length > 0 && (
+              <>
+                <div className="section-title">
+                  no session ({idleWorkspaces.length}) — workspace{idleWorkspaces.length === 1 ? '' : 's'}, nothing running
+                </div>
+                {idleWorkspaces.map((path) => workspaceRow(path))}
+              </>
+            )}
             {dormant.length > 0 && (
               <>
                 <div className="section-title">

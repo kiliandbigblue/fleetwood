@@ -616,6 +616,23 @@ A worktree with no GitHub remote falls back to its directory, with the task's
 own slug taken back off it (`read-later-ui-read-later-ui-improve` is a repo
 called `read-later-ui`).
 
+## Workspaces
+
+The fleet list only shows work fleetwood set up: a task or a pull request. Some
+work is neither. `~/projects/os` is a folder you coordinate from, and nobody
+makes a task inside it, so nothing would ever stamp its session. Name it in
+`~/.fleetwood/config.json`:
+
+```json
+{ "workspaces": ["~/projects/os"] }
+```
+
+A session rooted at that folder is then in the list with a `workspace` badge,
+however it was opened: from the panel, `prefix+g`, the sessionizer or `tmux new
+-c`. The match is on the session's directory rather than on a stamp, so a
+restored session is still listed. A workspace with no session gets a card under
+**no session**, and clicking it opens one there.
+
 ## Tasks that span repos
 
 Real work isn't repo-shaped. A change to `flow` touches `proto`, `graphy` and

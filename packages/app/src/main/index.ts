@@ -13,6 +13,8 @@ import {
   parsePrRef,
   paths,
   deployMarks,
+  dormantWorkspaces,
+  markWorkspaces,
   planReorder,
   prSession,
   repoIndex,
@@ -199,11 +201,12 @@ async function refreshLimits(settings: Awaited<ReturnType<typeof configModule.lo
 async function buildSnapshot(): Promise<Snapshot> {
   const settings = await configModule.loadConfig();
   await refreshLimits(settings);
-  const fleet = await buildFleet({
+  const built = await buildFleet({
     states: collector?.states,
     capture: settings.capture,
     context: settings.context,
   });
+  const fleet = { ...built, sessions: markWorkspaces(built.sessions, settings.workspaces) };
 
   // Which PR each session is working on, so the PR list can say "already open".
   const prSessions: Record<string, string> = {};
@@ -220,6 +223,7 @@ async function buildSnapshot(): Promise<Snapshot> {
   return {
     fleet,
     tasks: await getTasks(),
+    dormantWorkspaces: dormantWorkspaces(fleet.sessions, settings.workspaces),
     prs,
     merged,
     taskPrs,

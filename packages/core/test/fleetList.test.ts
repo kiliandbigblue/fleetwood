@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isWorkSession } from '../src/fleetList.ts';
+import { dormantWorkspaces, isWorkSession, markWorkspaces } from '../src/fleetList.ts';
+import type { SessionMeta } from '../src/types.ts';
+
+const at = (path: string, meta: SessionMeta = {}): { path: string; meta: SessionMeta } => ({ path, meta });
 
 test('the fleet list is the work fleetwood set up', () => {
   assert.equal(isWorkSession({ kind: 'task', task: 'ui-hide-non-task-sessions' }), true);
@@ -22,4 +25,40 @@ test('a task session qualifies on @fw_task alone', () => {
   // meant to be settable with plain tmux. Dropping one of these would look like
   // a session that died.
   assert.equal(isWorkSession({ task: 'ui-hide-non-task-sessions' }), true);
+});
+
+test('a session rooted at a workspace is in the list', () => {
+  const [os, atlas] = markWorkspaces(
+    [
+      at('/Users/me/projects/os'),
+      at('/Users/me/projects/atlas'),
+    ],
+    ['/Users/me/projects/os/'],
+  );
+  assert.equal(os?.meta.kind, 'workspace');
+  assert.equal(isWorkSession(os?.meta ?? {}), true);
+  // Every other directory is still a terminal you opened.
+  assert.equal(atlas?.meta.kind, undefined);
+});
+
+test('a session that says what it is keeps its kind in a workspace', () => {
+  const [pr, task] = markWorkspaces(
+    [
+      at('/Users/me/projects/os', { kind: 'pr' }),
+      at('/Users/me/projects/os', { task: 'os-main' }),
+    ],
+    ['/Users/me/projects/os'],
+  );
+  assert.equal(pr?.meta.kind, 'pr');
+  assert.equal(task?.meta.kind, undefined);
+});
+
+test('a workspace with no session is offered to start', () => {
+  assert.deepEqual(
+    dormantWorkspaces(
+      [{ path: '/Users/me/projects/os' }],
+      ['/Users/me/projects/os/', '/Users/me/projects/ops'],
+    ),
+    ['/Users/me/projects/ops'],
+  );
 });

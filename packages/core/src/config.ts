@@ -58,6 +58,15 @@ export interface Config {
    * shows up in the project picker or the tmux-sessionizer's fzf.
    */
   taskRoot: string;
+  /**
+   * Directories you coordinate from rather than work in — `~/projects/os`.
+   *
+   * No task is ever made in one, so nothing would stamp its session, and the
+   * fleet list is only the work fleetwood set up. Naming the folder here is how
+   * it becomes work: a session rooted at it is listed, and one with no session
+   * gets a card that opens it. A leading `~` is expanded.
+   */
+  workspaces: string[];
   /** Named repo constellations, e.g. `flow: [proto, graphy]`. */
   repoGroups: Record<string, string[]>;
   /**
@@ -195,6 +204,7 @@ export interface Config {
 export const DEFAULT_CONFIG: Config = {
   projectRoots: [join(homedir(), 'projects'), join(homedir(), 'dotfiles')],
   taskRoot: join(homedir(), 'projects', '.agents', 'tasks'),
+  workspaces: [],
   repoGroups: {},
   worktreeDir: '.agents/worktrees',
   github: {
@@ -224,6 +234,20 @@ export const DEFAULT_CONFIG: Config = {
   shutdown: DEFAULT_SHUTDOWN,
 };
 
+/**
+ * The configured workspaces as absolute paths.
+ *
+ * Expanded here rather than at each match, because `session_path` is what they
+ * are compared against and tmux always reports that one absolute. Anything that
+ * is not a string is dropped rather than failing the whole config.
+ */
+function normaliseWorkspaces(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return DEFAULT_CONFIG.workspaces;
+  return raw
+    .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+    .map((entry) => entry.trim().replace(/^~(?=$|\/)/, homedir()));
+}
+
 /** Shallow-merge on purpose: a partial config file must not lose new defaults. */
 export async function loadConfig(): Promise<Config> {
   try {
@@ -240,6 +264,7 @@ export async function loadConfig(): Promise<Config> {
       limits: { ...DEFAULT_CONFIG.limits, ...raw.limits },
       context: { ...DEFAULT_CONFIG.context, ...raw.context },
       repoGroups: { ...DEFAULT_CONFIG.repoGroups, ...raw.repoGroups },
+      workspaces: normaliseWorkspaces(raw.workspaces),
       // Validated rather than merged: every other field degrades legibly when
       // it's wrong, but a misspelt theme name would leave both UIs with no
       // palette at all.

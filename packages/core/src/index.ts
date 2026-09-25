@@ -87,7 +87,7 @@ export {
 export type { MoveDirection, Orderable, SessionName, SessionRename } from './sessionOrder.ts';
 // Flat for the same reason, and beside the fold it is not: this one says which
 // sessions the fleet list is about at all — see fleetList.ts.
-export { isWorkSession } from './fleetList.ts';
+export { dormantWorkspaces, isWorkSession, markWorkspaces } from './fleetList.ts';
 // Flat, because both renderers paint from the same palettes and neither may
 // import the barrel for them (which pulls in tmux and process scanning).
 export {
