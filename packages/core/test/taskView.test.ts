@@ -10,7 +10,6 @@ import {
   prRepoTags,
   prSummary,
   repoSummary,
-  worstState,
 } from '../src/taskView.ts';
 import type { FleetAgent } from '../src/fleet.ts';
 import type { Task, TaskRepo } from '../src/task.ts';
@@ -163,60 +162,6 @@ test('one pull request has nothing to be told apart from', () => {
   assert.deepEqual(prRepoTags([]), {});
 });
 
-/** A clean worktree, for the severity cases below. */
-function repo(dirty: number): TaskRepo {
-  return { ...upsertLayer, dirty };
-}
-
-test('a blocked agent outranks everything else on the card', () => {
-  // It is the only state here that is *waiting* on you and getting nothing done
-  // in the meantime, so it wins even against a card that is otherwise fine.
-  assert.equal(worstState([repo(4)], [pr({ reviewDecision: 'APPROVED' })], true), 'danger');
-});
-
-test('work that has come back outranks work you have not committed', () => {
-  assert.equal(worstState([repo(4)], [pr({ reviewDecision: 'CHANGES_REQUESTED' })], false), 'danger');
-  assert.equal(worstState([repo(4)], [pr({ checks: 'failing' })], false), 'danger');
-});
-
-test('uncommitted changes outrank an approval', () => {
-  // Yours to lose, against a merge you have merely not got round to.
-  assert.equal(worstState([repo(2)], [pr({ reviewDecision: 'APPROVED' })], false), 'warn');
-});
-
-test('an approval is the quietest thing worth a stripe', () => {
-  assert.equal(worstState([repo(0)], [pr({ reviewDecision: 'APPROVED' })], false), 'ok');
-});
-
-test('a working agent lifts a quiet card to the same accent its row already wears', () => {
-  // Without this, the title mark stayed `quiet` while the agent row alone was live.
-  assert.equal(worstState([repo(0)], [], false, [{ status: 'working' }]), 'ok');
-  assert.equal(worstState([repo(0)], [], false, [{ status: 'compacting' }]), 'ok');
-  assert.equal(worstState([repo(0)], [], false, [{ status: 'idle' }]), 'quiet');
-});
-
-test('a live agent does not outrank dirty work or a blocked session', () => {
-  assert.equal(worstState([repo(2)], [], false, [{ status: 'working' }]), 'warn');
-  assert.equal(worstState([repo(0)], [], true, [{ status: 'working' }]), 'danger');
-});
-
-test('a task with nothing to say gets no stripe', () => {
-  assert.equal(worstState([repo(0)], [], false), 'quiet');
-  assert.equal(worstState([], [], false), 'quiet');
-});
-
-test('pull requests still being searched for contribute nothing either way', () => {
-  // `undefined` is the first `gh` search being out, which is not the claim that
-  // this task has no pull requests — so it neither raises nor confirms a state.
-  assert.equal(worstState([repo(0)], undefined, false), 'quiet');
-  assert.equal(worstState([repo(3)], undefined, false), 'warn');
-  assert.equal(worstState([repo(0)], undefined, true), 'danger');
-});
-
-test('a draft under review is not treated as reviewed', () => {
-  // The row shows `draft` alone for the same reason: nobody has been asked yet.
-  assert.equal(worstState([repo(0)], [pr({ isDraft: true, reviewDecision: 'REVIEW_REQUIRED' })], false), 'quiet');
-});
 /*
  * The three-layer stack, as the panel receives it: bottom first, each layer based
  * on the branch of the one below, and each holding more commits than that one.
@@ -396,9 +341,6 @@ test('a task with nothing left open says only what landed', () => {
   assert.equal(prSummary([pr({ number: 1, state: 'MERGED' })]), '1 merged');
 });
 
-test('a landed pull request is not an errand, so it cannot make a task urgent', () => {
-  assert.equal(worstState([repo(0)], [pr({ state: 'MERGED', checks: 'failing' })], false), 'quiet');
-});
 
 /*
  * The stack's third layer, so the rows have somewhere to move *to* — two of them

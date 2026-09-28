@@ -1,7 +1,5 @@
 import type { FleetSession, PullRequest, TaskPr } from '@fleetwood/core';
 import { isPinned, sessionLabel } from '@fleetwood/core/sessionOrder';
-import type { Severity } from '@fleetwood/core';
-import { worstState } from '@fleetwood/core/taskView';
 import { AgentRow } from './AgentRow.tsx';
 import { Icon } from './Icon.tsx';
 import { CardMenu } from './CardMenu.tsx';
@@ -9,25 +7,20 @@ import type { MenuItem } from './CardMenu.tsx';
 import { Slug } from './Slug.tsx';
 import { numColStyle, PrRow } from './TaskCard.tsx';
 import { send, shortenPath, tildify } from './api.ts';
+import { byUrgency, liveSeverity, needsYouLabel, SEVERITY_NOTE } from './fleetSignals.ts';
+import type { Severity } from './fleetSignals.ts';
 
 /**
  * The dot, in words — a bare session's version.
  *
  * A session is not a task and has no progress to report: nothing here has a
  * branch, a pull request or a trunk to have landed on. What it has is agents,
- * so the mark stays the urgency rank it always was, and the sentence says which
- * rank and whether you are attached. The task cards moved on — see `dotNote` —
- * and keeping this here rather than sharing one function is the honest version
- * of that: the two marks now measure different things.
+ * so the mark is what they are doing — see `liveSeverity`, which a live task
+ * card now leads with too — and the sentence says it, and whether you are
+ * attached.
  */
 export function sevNote(state: Severity, attached: boolean): string {
-  const colour = {
-    danger: 'something here needs you',
-    warn: 'uncommitted work',
-    ok: 'live, or approved and waiting',
-    quiet: 'nothing waiting',
-  }[state];
-  return `${colour} · ${attached ? 'attached' : 'running, not attached'}`;
+  return `${SEVERITY_NOTE[state]} · ${attached ? 'attached' : 'running, not attached'}`;
 }
 
 interface Props {
@@ -42,27 +35,13 @@ interface Props {
   onResult: (message: string, ok: boolean) => void;
 }
 
-/** Whoever needs the human is listed first. */
-const RANK: Record<string, number> = {
-  blocked_permission: 0,
-  blocked_input: 1,
-  error: 2,
-  working: 3,
-  compacting: 4,
-  starting: 5,
-  idle: 6,
-  gone: 7,
-};
-
 export function SessionCard({ session, pr, order, onResult }: Props): React.JSX.Element {
   const act = async (request: Parameters<typeof send>[0]): Promise<void> => {
     const result = await send(request);
     onResult(result.detail, result.ok);
   };
 
-  const agents = [...session.agents].sort(
-    (a, b) => (RANK[a.status] ?? 9) - (RANK[b.status] ?? 9),
-  );
+  const agents = byUrgency(session.agents);
   const paneCount = session.windows.reduce((n, w) => n + w.panes.length, 0);
   const cwd = session.windows[0]?.panes[0]?.cwd ?? session.path;
   const isPr = session.meta.kind === 'pr';
@@ -73,9 +52,12 @@ export function SessionCard({ session, pr, order, onResult }: Props): React.JSX.
     branch: pr.branch ?? session.meta.branch ?? '',
     via: 'head',
   };
-  // No repos or pull requests to weigh — a bare session's mark is agents only.
-  // `prs` stays `undefined` so we do not pretend to have searched GitHub.
-  const state = worstState([], undefined, session.needsAttention, session.agents);
+  // No repos or pull requests to weigh — a bare session's mark is agents only,
+  // by the same rule a live task card's is, so the two marks mean one thing.
+  const state = liveSeverity(session.agents);
+  const needsYou = needsYouLabel(session.agents);
+  const prNumber = session.meta.pr?.split('#')[1];
+  const prNumberInName = prNumber !== undefined && sessionLabel(session.name).includes(prNumber);
 
   /*
    * What this card can do, behind the header's dot column — as on a task group.
@@ -114,7 +96,7 @@ export function SessionCard({ session, pr, order, onResult }: Props): React.JSX.
   ];
 
   return (
-    <div className={`card${session.needsAttention ? ' attention' : ''}`}>
+    <div className={`card${needsYou ? ' attention' : ''}`}>
       {/* The whole header focuses the session — a separate "focus" button next to a
           clickable title was two controls for one action. */}
       <div
@@ -130,9 +112,14 @@ export function SessionCard({ session, pr, order, onResult }: Props): React.JSX.
         {/* The label, not the name: an order prefix is fleetwood's own bookkeeping
             and reading `20-atlas` on the card would be noise. The tooltip above
             carries the real name, which is what tmux answers to. */}
-        <span className="session-name">
+        {/* The keyboard's way in — see the same button on `TaskCard`. */}
+        <button type="button" className="session-name card-title">
           <Slug text={sessionLabel(session.name)} />
-        </span>
+          <span className="sr-only">, {sevNote(state, session.attached > 0)}</span>
+        </button>
+        {/* Where a narrow card's head breaks onto a second line — see `.head-break`. */}
+        {needsYou && <span className="head-break" aria-hidden="true" />}
+        {needsYou && <span className="needs-you">{needsYou}</span>}
         {/* The one part of the prefix that is worth showing: a pinned card is at
             the top because someone put it there, and without a mark that reads
             as fleetwood having reordered the fleet on its own. */}
@@ -151,8 +138,10 @@ export function SessionCard({ session, pr, order, onResult }: Props): React.JSX.
          * word goes on the cards that had none.
          */}
         {/* The row below carries the number once it is in; until then this does. */}
-        {prRow ? null : session.meta.pr ? (
-          <span className="badge pr">#{session.meta.pr.split('#')[1]}</span>
+        {/* Not when the name already carries it: `pr atlas 4821 #4821` said the
+            number twice on one line. */}
+        {prRow || prNumberInName ? null : session.meta.pr ? (
+          <span className="badge pr">#{prNumber}</span>
         ) : session.meta.kind ? (
           <span className="badge kind">{session.meta.kind}</span>
         ) : (
@@ -187,7 +176,7 @@ export function SessionCard({ session, pr, order, onResult }: Props): React.JSX.
            every other group of rows rather than 8px less. */
         <div className="agents">
           <div className="agent">
-            <span className="activity" style={{ color: 'var(--dim)' }}>
+            <span className="activity agent-none">
               no agents · {paneCount} pane{paneCount === 1 ? '' : 's'}
             </span>
           </div>

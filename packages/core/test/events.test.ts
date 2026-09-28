@@ -149,10 +149,18 @@ test('a permission request is the status that means "you are the bottleneck"', (
   assert.equal(state.activity, 'Write: x.ts');
 });
 
-test('Notification means waiting on the human, distinctly from a permission prompt', () => {
-  const state = fold([{ ...claudeEvent('Notification', { message: 'waiting for your input' }), at: 300 }]);
-  assert.equal(state.status, 'blocked_input');
-  assert.equal(state.activity, 'waiting for your input');
+test('a Notification after a finished turn leaves the agent idle, with what it last did', () => {
+  // "Waiting for your input" is the turn having ended a minute ago — nothing was
+  // asked, so it must not read as a question, nor replace the last activity.
+  const state = fold([
+    { ...claudeEvent('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'pnpm test' } }), at: 100 },
+    { ...claudeEvent('Stop'), at: 200 },
+    { ...claudeEvent('Notification', { message: 'Claude is waiting for your input' }), at: 260 },
+  ]);
+  assert.equal(state.status, 'idle');
+  assert.equal(state.since, 200);
+  assert.equal(state.activity, 'Bash: pnpm test');
+  assert.equal(state.lastEventAt, 260);
 });
 
 test('subagents are counted without disturbing the parent status', () => {

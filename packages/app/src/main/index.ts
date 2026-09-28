@@ -245,7 +245,7 @@ async function buildSnapshot(): Promise<Snapshot> {
 
 function summarise(snapshot: Snapshot): string {
   const { counts } = snapshot.fleet;
-  const blocked = counts.blocked_permission + counts.blocked_input;
+  const blocked = counts.blocked_permission;
   if (blocked > 0) return `✋${blocked}`;
   if (counts.working > 0) return `▶${counts.working}`;
   if (counts.total > 0) return `○${counts.total}`;

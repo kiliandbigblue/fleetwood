@@ -114,7 +114,15 @@ function ClaudeQuota({ limits }: { limits: PlanLimits }): React.JSX.Element | nu
              * reaches you from across the room.
              */}
             <span className={`quota-fig ${bandOf(current.utilization)}`}>{percent}%</span>
-            {clock && <span className="quota-sub">{clock}</span>}
+            {/* Said as a reset, since a bare time beside a percent read as a
+                clock rather than as when the window opens again. The word goes
+                first when the rail is short of room — see `.quota-when`. */}
+            {clock && (
+              <span className="quota-sub">
+                <span className="quota-when">resets </span>
+                {clock}
+              </span>
+            )}
           </>
         ) : (
           /* The endpoint answered without a session window. The weekly list is
@@ -213,6 +221,15 @@ function CursorQuota({ usage }: { usage: CursorUsage }): React.JSX.Element {
 export function StatusBar({ counts, limits, cursorUsage }: Props): React.JSX.Element {
   return (
     <footer className="rail rail-bottom">
+      {/*
+       * Each count only when it has something in it.
+       *
+       * `0 working` was left out and `0 idle` was not, so the rail said the one
+       * zero and hid the other. Both follow the same rule now; the blocked are
+       * counted on the fleet tab, where the way to them is. A fleet with agents
+       * that are neither — all of them blocked — still says how many there are,
+       * so the rail is never blank while something is running.
+       */}
       <div className="vitals">
         {counts.working > 0 && (
           <span className="vital ok" title={`${counts.working} mid-turn`}>
@@ -220,16 +237,23 @@ export function StatusBar({ counts, limits, cursorUsage }: Props): React.JSX.Ele
             {counts.working} working
           </span>
         )}
-        <span
-          className="vital"
-          title={
-            counts.total === 0
-              ? 'no agents registered'
-              : `${counts.idle} registered and awaiting a prompt`
-          }
-        >
-          {counts.total === 0 ? 'no agents' : `${counts.idle} idle`}
-        </span>
+        {counts.idle > 0 && (
+          <span className="vital" title={`${counts.idle} registered and awaiting a prompt`}>
+            {counts.idle} idle
+          </span>
+        )}
+        {counts.total === 0 ? (
+          <span className="vital" title="no agents registered">
+            no agents
+          </span>
+        ) : (
+          counts.working === 0 &&
+          counts.idle === 0 && (
+            <span className="vital" title="every agent is blocked on a permission prompt — see the fleet tab">
+              {counts.total} agent{counts.total === 1 ? '' : 's'}
+            </span>
+          )
+        )}
       </div>
       <div className="quotas">
         {limits && <ClaudeQuota limits={limits} />}

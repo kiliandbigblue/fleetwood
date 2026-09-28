@@ -6,6 +6,8 @@ import {
   MIN_BG_OPACITY,
   clampBgOpacity,
   withAlpha,
+  contrastRatio,
+  readableDim,
   THEMES,
   THEME_NAMES,
   isThemeName,
@@ -162,4 +164,23 @@ test('withAlpha renders the translucent surfaces the renderer paints', () => {
   // Clamped on the way out too, so no caller can paint an invisible window.
   assert.equal(withAlpha('#000000', 0), `rgb(0 0 0 / ${MIN_BG_OPACITY})`);
   assert.throws(() => withAlpha('#fff', 1), /not a 6-digit hex/);
+});
+
+test('readableDim clears 4.5:1 on the window in every theme', () => {
+  for (const name of THEME_NAMES) {
+    const palette = THEMES[name].palette;
+    const dim = readableDim(palette);
+    assert.ok(contrastRatio(dim, palette.bg) >= 4.5, `${name}: ${dim} on ${palette.bg}`);
+  }
+});
+
+test('readableDim leaves a dim that already reads alone', () => {
+  const palette = { ...THEMES['rose-pine'].palette, dim: '#a0a0a0', bg: '#000000' };
+  assert.equal(readableDim(palette), '#a0a0a0');
+});
+
+test('contrastRatio is symmetric and runs 1 to 21', () => {
+  assert.equal(contrastRatio('#000000', '#ffffff'), 21);
+  assert.equal(contrastRatio('#ffffff', '#000000'), 21);
+  assert.equal(contrastRatio('#191724', '#191724'), 1);
 });

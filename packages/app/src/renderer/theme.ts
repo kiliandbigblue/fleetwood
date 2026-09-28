@@ -1,6 +1,6 @@
 // The leaf module, not the barrel: `@fleetwood/core` re-exports tmux and process
 // scanning, which fail the renderer bundle on `node:child_process`.
-import { paletteFor, withAlpha } from '@fleetwood/core/theme';
+import { paletteFor, readableDim, withAlpha } from '@fleetwood/core/theme';
 import type { Palette, ThemeName } from '@fleetwood/core/theme';
 
 /**
@@ -41,4 +41,15 @@ export function applyTheme(name: ThemeName, bgOpacity: number): void {
    * setting it is applying is a control you cannot use to get back.
    */
   style.setProperty('--panel-solid', palette.panel);
+  /*
+   * `dim` is written twice, because it was doing two jobs.
+   *
+   * As ink — a path, a duration, the label over a group — it has to be read, and
+   * several upstream greys are under 4.5:1 on their own window: see
+   * `readableDim`. As a mark — an idle agent's dot, a hollow ring, a checkbox
+   * edge — it is a shape, and a shape reads at 3:1, so it keeps the palette's
+   * own value and stays as quiet as the theme meant it.
+   */
+  style.setProperty('--dim', readableDim(palette));
+  style.setProperty('--dim-mark', palette.dim);
 }

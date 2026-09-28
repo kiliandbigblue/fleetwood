@@ -42,9 +42,8 @@ export {
   prSummary,
   repoSummary,
   splitPrs,
-  worstState,
 } from './taskView.ts';
-export type { Severity, StackRow } from './taskView.ts';
+export type { StackRow } from './taskView.ts';
 // Flat for the same reason as the taskView helpers above: both front ends draw
 // the progress mark, and the renderer takes it off the leaf module rather than
 // this barrel.

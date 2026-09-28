@@ -27,8 +27,17 @@ interface Props {
   onTab: (tab: Tab) => void;
   /** Undefined until the first snapshot: the rail draws its labels either way. */
   counts?: FleetState['counts'];
-  /** Sessions plus the tasks with no session — the whole of the one list. */
+  /**
+   * The sessions running in the list.
+   *
+   * Running ones only. It was sessions plus workspaces plus parked tasks — the
+   * length of the list — which made it the one number in the rail that was
+   * neither agents nor anything waiting: `5` on a morning with two sessions
+   * live and three folders asleep. The parked count is in the tooltip.
+   */
   fleetCount: number;
+  /** Tasks and workspaces with no session, for the tab's tooltip. */
+  parkedCount: number;
   /** Undefined while GitHub is still answering, which the count shows as `…`. */
   prCount?: number;
   /** Archived tasks. Read from a file, so it is never pending. */
@@ -94,6 +103,7 @@ export function TopBar({
   onTab,
   counts,
   fleetCount,
+  parkedCount,
   prCount,
   historyCount,
   shutdownLabel,
@@ -121,9 +131,7 @@ export function TopBar({
     </button>
   );
 
-  const permission = counts?.blocked_permission ?? 0;
-  const input = counts?.blocked_input ?? 0;
-  const blocked = permission + input;
+  const blocked = counts?.blocked_permission ?? 0;
 
   const entries: Entry[] = [
     {
@@ -131,23 +139,13 @@ export function TopBar({
       label: 'fleet',
       total: fleetCount,
       alert: blocked,
-      /*
-       * The two blocked states are different colours on the rows below — a
-       * permission prompt is `danger`, a question is `warn` — and summing them
-       * into one dot has to pick one. It picks the louder of the two whenever a
-       * permission prompt is among them, because that is the one holding an agent
-       * completely still. The exact split is in the tooltip.
-       */
-      tone: permission > 0 ? 'danger' : 'warn',
+      // `danger`, like the band on the card it counts: an agent that has
+      // stopped until you answer a permission prompt.
+      tone: 'danger',
       title:
         blocked === 0
-          ? 'tmux sessions, and the tasks with nothing running them'
-          : [
-              permission > 0 ? `${permission} waiting on a permission prompt` : '',
-              input > 0 ? `${input} waiting on an answer` : '',
-            ]
-              .filter(Boolean)
-              .join(', '),
+          ? `${fleetCount} running${parkedCount > 0 ? `, ${parkedCount} with nothing running them` : ''} · ? for keys`
+          : `${blocked} waiting on a permission prompt — press n to go to the next one`,
     },
     {
       id: 'prs',
@@ -220,7 +218,7 @@ export function TopBar({
         <div className="rail-controls">
           {themePicker}
           <button
-            className={`icon-button${pinned ? ' on' : ''}`}
+            className={`icon-button rail-above${pinned ? ' on' : ''}`}
             title="keep on top of other windows"
             aria-pressed={pinned}
             onClick={onPin}
@@ -242,21 +240,43 @@ export function TopBar({
 
   return (
     <header className="rail rail-top">
-      <nav className="nav">
+      <nav
+        className="nav"
+        role="tablist"
+        aria-label="lists"
+        /* A tablist's own keys: the arrows move between tabs and open the one
+           they land on, so the four are one stop in the tab order, not four. */
+        onKeyDown={(event) => {
+          if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+          const at = entries.findIndex((entry) => entry.id === tab);
+          const next = entries[(at + (event.key === 'ArrowRight' ? 1 : -1) + entries.length) % entries.length];
+          if (!next) return;
+          event.preventDefault();
+          event.stopPropagation();
+          onTab(next.id);
+          event.currentTarget.querySelector<HTMLButtonElement>(`[data-tab="${next.id}"]`)?.focus();
+        }}
+      >
         {entries.map((entry) => (
           <button
             key={entry.id}
             className={`nav-tab${tab === entry.id ? ' active' : ''}`}
             title={entry.title}
-            aria-current={tab === entry.id}
+            role="tab"
+            data-tab={entry.id}
+            aria-selected={tab === entry.id}
+            tabIndex={tab === entry.id ? 0 : -1}
             onClick={() => onTab(entry.id)}
           >
             <span className="nav-label">{entry.label}</span>
-            <span className="nav-total">{entry.total ?? '…'}</span>
+            {/* `zero` so a narrow window can drop it — see `.nav-total.zero`. */}
+            <span className={`nav-total${entry.total === 0 ? ' zero' : ''}`}>{entry.total ?? '…'}</span>
             {entry.alert > 0 && (
               <span className={`nav-alert ${entry.tone}`}>
                 <span className="dot" />
                 {entry.alert}
+                {/* The dot is the word here; a screen reader gets the word. */}
+                <span className="sr-only">, {entry.title}</span>
               </span>
             )}
           </button>
@@ -267,7 +287,7 @@ export function TopBar({
       <div className="rail-controls">
         {themePicker}
         <button
-          className={`icon-button${pinned ? ' on' : ''}`}
+          className={`icon-button rail-above${pinned ? ' on' : ''}`}
           title="keep on top of other windows"
           aria-pressed={pinned}
           onClick={onPin}

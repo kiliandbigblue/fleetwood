@@ -85,10 +85,10 @@ const MID_TURN = `
   ⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt
 `;
 
-test('an unreadable screen never promotes an agent waiting on the human to working', () => {
-  const state = { status: 'blocked_input' as const, provenance: 'hook' as const };
+test('an unreadable screen never promotes an agent blocked on the human to working', () => {
+  const state = { status: 'blocked_permission' as const, provenance: 'hook' as const };
   const verdict = reconcileWithScreen(state, readScreen(WAITING_FOR_INPUT), true);
-  assert.equal(verdict.status, 'blocked_input', 'this is the row that means "you are the bottleneck"');
+  assert.equal(verdict.status, 'blocked_permission', 'this is the row that means "you are the bottleneck"');
   assert.equal(verdict.provenance, 'stale', 'unconfirmed, but still the best thing we know');
 });
 
@@ -100,9 +100,9 @@ test('a screen that positively says working overrides a stale blocked state', ()
 });
 
 test('a fresh hook state is not second-guessed by the screen', () => {
-  const state = { status: 'blocked_input' as const, provenance: 'hook' as const };
+  const state = { status: 'blocked_permission' as const, provenance: 'hook' as const };
   const verdict = reconcileWithScreen(state, readScreen(MID_TURN), false);
-  assert.equal(verdict.status, 'blocked_input');
+  assert.equal(verdict.status, 'blocked_permission');
   assert.equal(verdict.provenance, 'hook');
 });
 

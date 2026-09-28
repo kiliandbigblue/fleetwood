@@ -189,8 +189,6 @@ export function normalize(record: SpoolRecord): AgentEvent | undefined {
       if (prompt) activity = truncate(prompt, 72);
     } else if (toolName) {
       activity = describeToolUse(toolName, payload.tool_input);
-    } else if (event === 'Notification') {
-      activity = str(payload.message);
     }
     return {
       at,
@@ -296,7 +294,17 @@ const STATUS_BY_EVENT: Record<string, AgentStatus | undefined> = {
   PostToolUse: 'working',
   PostToolUseFailure: 'working',
   PermissionRequest: 'blocked_permission',
-  Notification: 'blocked_input',
+  /*
+   * Nothing, on purpose. Claude sends a Notification in two cases: a
+   * permission prompt, which `PermissionRequest` has already reported, and
+   * "waiting for your input" — the turn ended a minute ago and nobody has typed
+   * since. That second one is most of them, and it is `idle` by another name:
+   * nothing was asked. It used to be a status of its own, `blocked_input`,
+   * drawn in the waiting colour with "waiting on you" beside the name, so every
+   * agent that had simply finished lit up as if it had a question. The event
+   * still counts as a sign of life; it just changes nothing about the agent.
+   */
+  Notification: undefined,
   PreCompact: 'compacting',
   Stop: 'idle',
   // Subagent lifecycle changes counts, not the parent's status.

@@ -105,7 +105,7 @@ const STALE_AFTER_SECONDS = 20;
 const ORPHAN_TTL_SECONDS = 600;
 
 function isBlocked(status: AgentStatus): boolean {
-  return status === 'blocked_permission' || status === 'blocked_input';
+  return status === 'blocked_permission';
 }
 
 function emptyCounts(): FleetState['counts'] {
@@ -114,7 +114,6 @@ function emptyCounts(): FleetState['counts'] {
     idle: 0,
     working: 0,
     blocked_permission: 0,
-    blocked_input: 0,
     compacting: 0,
     error: 0,
     gone: 0,

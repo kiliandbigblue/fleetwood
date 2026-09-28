@@ -25,6 +25,7 @@ import type { MenuItem } from './CardMenu.tsx';
 import { Slug } from './Slug.tsx';
 import { TaskNotes } from './TaskNotes.tsx';
 import { send } from './api.ts';
+import { byUrgency, liveSeverity, needsYouLabel, prHeadline, SEVERITY_NOTE } from './fleetSignals.ts';
 
 interface Props {
   task: Task;
@@ -82,6 +83,17 @@ interface Props {
    * about a folder that is already gone reads as the archive having failed.
    */
   onArchive?: () => void;
+  /**
+   * Fold the card to its head until it is asked to open.
+   *
+   * The dormant list's cards. Parked tasks were drawn in full — every worktree,
+   * every pull request, the whole note — so on a morning with two sessions live
+   * the three parked under them took three quarters of the panel, at nearly the
+   * weight of the work that was actually running. Folded, a parked task is one
+   * line that still says the one thing worth knowing about it; the rest is a
+   * click away, and a live card is never folded.
+   */
+  compact?: boolean;
 }
 
 /** `nvim -u NONE` is a legal editor setting; only the command itself names the button. */
@@ -293,6 +305,13 @@ export function PrRow({
     <div
       className={`task-pr${landed ? ' task-pr-landed' : ''}`}
       onClick={open}
+      /* It opens a page in the browser, which is what a link is — and nothing
+         inside the row is interactive, so the row itself can be the one stop. */
+      role="link"
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') open();
+      }}
       title={`${pr.repo}#${pr.number} · ${pr.branch}\n${VIA_LABEL[pr.via]}${where ? ` · ${where}` : ''}`}
     >
       {/*
@@ -440,8 +459,12 @@ export function TaskCard({
   onResult,
   onFocus,
   onArchive,
+  compact,
 }: Props): React.JSX.Element {
   const [addingRepo, setAddingRepo] = useState(false);
+  /* Window state, like the hidden drawer: opening a parked card to look is not a
+     decision about the task, and it should be folded again after a relaunch. */
+  const [expanded, setExpanded] = useState(false);
   const [editingNotes, setEditingNotes] = useState(false);
   /**
    * What is being typed, held locally on purpose.
@@ -472,23 +495,47 @@ export function TaskCard({
    * uninterrupted list. The worktree rides on the row instead — `agent-where`
    * says which one, and an agent at the task root has nothing to say there.
    */
-  const agents = [
+  const placed = [
     // At the task root first — they are the ones acting on the whole of it.
     ...taskLevel.map((agent) => ({ agent, where: undefined as string | undefined })),
     ...[...byRepo.entries()].flatMap(([repo, inRepo]) =>
       inRepo.map((agent) => ({ agent, where: repo })),
     ),
   ];
+  /*
+   * Then the one waiting on you to the top of the block.
+   *
+   * A prompt renders under its own row, so this is what puts Approve / Deny
+   * directly under the card's head instead of below whichever idle agents
+   * happened to be listed first. Stable, so the root-then-worktree order above
+   * still holds among agents in the same state.
+   */
+  const agents = byUrgency(placed.map((entry) => ({ ...entry, status: entry.agent.status })));
   // Empty unless the pull requests actually span repos, which is the only case
   // where the tag tells you anything — see `prRepoTags`.
   const repoTags = prRepoTags(prs ?? []);
-  const needsAttention = session?.needsAttention ?? false;
   const status = taskStatus(task.repos, prs);
   const dormant = !task.session;
+  /*
+   * What leads the card: its agents when it has any, its progress when not.
+   *
+   * A live task is scanned for what its agents are doing, and that was the one
+   * thing its head did not say. With nothing running there is nothing to say
+   * about agents, and how far along the work is becomes the whole question — so
+   * a parked task keeps the progress ring, and a live one carries the same mark
+   * a session card does, in the same colours as the rows under it.
+   */
+  const live = session !== undefined && session.agents.length > 0;
+  const severity = liveSeverity(session?.agents ?? []);
+  const needsYou = needsYouLabel(session?.agents ?? []);
+  const attached = (session?.attached ?? 0) > 0;
+  const folded = compact === true && !expanded;
 
   const openNotes = (): void => {
     setDraft(task.notes ?? '');
     setEditingNotes(true);
+    // The note lives in the folded part of a parked card.
+    setExpanded(true);
   };
   const saveNotes = (): void => {
     setEditingNotes(false);
@@ -549,7 +596,9 @@ export function TaskCard({
   ];
 
   return (
-    <div className={`card${needsAttention ? ' attention' : ''}${dormant ? ' dormant' : ''}`}>
+    <div
+      className={`card${needsYou ? ' attention' : ''}${dormant ? ' dormant' : ''}`}
+    >
       <div
         className="card-head"
         onClick={
@@ -566,21 +615,77 @@ export function TaskCard({
             : `${task.branch} · no session yet — open one on ${task.dir}`
         }
       >
-        {/* How far along this is, and nothing else — see `dotNote`. */}
-        <span
-          className={`task-status-dot task-status-${status}`}
-          title={dotNote(status, (session?.attached ?? 0) > 0, task.session !== undefined)}
-        />
-        <span className="session-name">
+        {live ? (
+          /* The session card's mark, drawn by the same rule — see `liveSeverity`. */
+          <span
+            className={`attached-dot sev-${severity}${attached ? '' : ' detached'}`}
+            title={`${SEVERITY_NOTE[severity]} · ${attached ? 'attached' : 'running, not attached'}`}
+          />
+        ) : (
+          /* How far along this is, and nothing else — see `dotNote`. */
+          <span
+            className={`task-status-dot task-status-${status}`}
+            title={dotNote(status, attached, task.session !== undefined)}
+          />
+        )}
+        {/* A button with no handler of its own: the head is the pointer's target,
+            and this is the keyboard's — Enter presses it, the press bubbles to the
+            head. The list's `j`/`k` move between these. */}
+        <button type="button" className="session-name card-title">
           <Slug text={task.slug} />
-        </span>
+          <span className="sr-only">
+            , {live ? SEVERITY_NOTE[severity] : STATUS_LABEL[status]}
+          </span>
+        </button>
+        {/*
+         * Said in words, and only when it is true.
+         *
+         * The mark in front already turned red or gold, and a mark is exactly the
+         * kind of thing a busy list teaches you to stop reading. Beside the name
+         * is the one place on the card a glance is guaranteed to land.
+         */}
+        {/* Where a narrow card's head breaks onto a second line — see `.head-break`. */}
+        {needsYou && <span className="head-break" aria-hidden="true" />}
+        {needsYou && <span className="needs-you">{needsYou}</span>}
+        {/* Beside the name and shown at rest, not in the trailing column with the
+            other controls: those appear on hover over the summary, and a card
+            whose contents are hidden has to say so before you point at it. */}
+        {compact && (
+          <button
+            className={`card-fold${expanded ? ' open' : ''}`}
+            aria-expanded={expanded}
+            title={expanded ? 'fold this task back to one line' : 'show its worktrees, pull requests and note'}
+            onClick={(event) => {
+              // The head starts the session; unfolding must not also do that.
+              event.stopPropagation();
+              setExpanded((was) => !was);
+            }}
+          >
+            <Icon name="chevron" />
+          </button>
+        )}
         {/* As on a session card: the pin is the reason this one is up here. */}
         {task.session && isPinned(task.session) && (
           <span className="pin-mark" title="pinned above the unpinned sessions">
             <Icon name="pin" />
           </span>
         )}
-        <span className="repo-summary">{repoSummary(task.repos, task.branch)}</span>
+        {/*
+         * The summary on the gutter, and where progress went.
+         *
+         * A live card's mark is its agents now, so its progress is said here in
+         * words. A folded card has no rows under it to open, so the one pull
+         * request fact worth crossing the panel for rides here too.
+         */}
+        <span className="repo-summary">
+          {[
+            live ? STATUS_LABEL[status] : undefined,
+            repoSummary(task.repos, task.branch),
+            folded && prs ? prHeadline(prs) : undefined,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </span>
         {/* Two arrows out of a box: the same mark a window uses for "make this
             the whole of the view", which is exactly what it does. Drawn rather
             than typed, like the rail's controls and for the same reason — no
@@ -620,7 +725,7 @@ export function TaskCard({
         </span>
       </div>
 
-      {agents.length > 0 && (
+      {!folded && agents.length > 0 && (
         <div className="agents">
           {agents.map(({ agent, where }) => (
             <AgentRow key={agent.key} agent={agent} where={where} onResult={onResult} />
@@ -628,22 +733,24 @@ export function TaskCard({
         </div>
       )}
 
-      <div className="task-repos">
-        {orderReposByStack(task.repos, prs).map((repo) => (
-          <RepoRow
-            key={repo.name}
-            repo={repo}
-            slug={task.slug}
-            taskBranch={task.branch}
-            session={task.session}
-            editor={editor}
-            onResult={onResult}
-          />
-        ))}
-      </div>
+      {!folded && (
+        <div className="task-repos">
+          {orderReposByStack(task.repos, prs).map((repo) => (
+            <RepoRow
+              key={repo.name}
+              repo={repo}
+              slug={task.slug}
+              taskBranch={task.branch}
+              session={task.session}
+              editor={editor}
+              onResult={onResult}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Above the notes, which is where these links were being kept by hand. */}
-      {prs && prs.length > 0 && (
+      {!folded && prs && prs.length > 0 && (
         <div className="task-prs" style={numColStyle(prs)}>
           <div
             className="task-prs-head"
@@ -694,16 +801,18 @@ export function TaskCard({
 
       {/* No placeholder: a card with no note shows nothing at all, because twelve
           empty boxes down a list is what the pane exists to get away from. */}
-      <TaskNotes
-        notes={task.notes}
-        editing={editingNotes}
-        draft={draft}
-        onDraft={setDraft}
-        onOpen={openNotes}
-        onCancel={() => setEditingNotes(false)}
-        onSave={saveNotes}
-        onNotes={(text) => void act({ kind: 'setTaskNotes', slug: task.slug, notes: text })}
-      />
+      {!folded && (
+        <TaskNotes
+          notes={task.notes}
+          editing={editingNotes}
+          draft={draft}
+          onDraft={setDraft}
+          onOpen={openNotes}
+          onCancel={() => setEditingNotes(false)}
+          onSave={saveNotes}
+          onNotes={(text) => void act({ kind: 'setTaskNotes', slug: task.slug, notes: text })}
+        />
+      )}
 
       {addingRepo && (
         <AddRepo task={task} onClose={() => setAddingRepo(false)} onResult={onResult} />

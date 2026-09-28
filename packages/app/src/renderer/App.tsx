@@ -22,6 +22,15 @@ import { isHidden, sortSessions } from '@fleetwood/core/sessionOrder';
 import { isWorkSession } from '@fleetwood/core/fleetList';
 import { dormantTasks } from '@fleetwood/core/taskView';
 import { resolveFocus } from './focus.ts';
+import {
+  answerFocusedPrompt,
+  focusNextAttention,
+  foldFocusedCard,
+  isTyping,
+  moveCardFocus,
+  openFocusedMenu,
+} from './listKeys.ts';
+import { KeysSheet } from './KeysSheet.tsx';
 import { applyTheme } from './theme.ts';
 import { watchZoom } from './zoom.ts';
 import { Slug } from './Slug.tsx';
@@ -43,6 +52,8 @@ export function App(): React.JSX.Element {
   // Carried from ⌘K into the form; empty for every other way in.
   const [newTaskSummary, setNewTaskSummary] = useState('');
   const [themeOpen, setThemeOpen] = useState(false);
+  /** The `?` sheet: every key and mark the fleet uses, in one place. */
+  const [helpOpen, setHelpOpen] = useState(false);
   /*
    * Whether the hidden group is expanded. Window state on purpose, and the only
    * part of this feature that is: hiddenness itself is written on the tmux
@@ -98,9 +109,17 @@ export function App(): React.JSX.Element {
     if (snapshot) applyTheme(snapshot.theme, snapshot.bgOpacity);
   }, [snapshot?.theme, snapshot?.bgOpacity]);
 
+  /*
+   * A failure stays up long enough to be read.
+   *
+   * Every result used to leave after 3.5s, the failures too — and a failure is
+   * the one message you were not expecting, so it is the one most likely to be
+   * gone before your eyes got to the bottom of the panel. It stays until the
+   * next message or a click; a success still gets out of the way.
+   */
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => setToast(undefined), 3_500);
+    const timer = setTimeout(() => setToast(undefined), toast.ok ? 3_500 : 10_000);
     return () => clearTimeout(timer);
   }, [toast]);
 
@@ -122,6 +141,52 @@ export function App(): React.JSX.Element {
       } else if ((event.metaKey || event.ctrlKey) && event.key === 'n') {
         event.preventDefault();
         setNotesOpen((open) => !open);
+      } else if (
+        /*
+         * The list's own keys — see `listKeys.ts`. Bare keys, so only when
+         * nothing else could want them: not while typing, not with an overlay
+         * up, and not with a modifier, which is the rail's shortcuts.
+         */
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !isTyping(event.target) &&
+        !paletteOpen &&
+        !newTaskOpen &&
+        !themeOpen &&
+        !helpOpen
+      ) {
+        const handled = ((): boolean => {
+          switch (event.key) {
+            case 'j':
+            case 'k':
+              moveCardFocus(event.key === 'j' ? 1 : -1);
+              return true;
+            case 'n':
+              focusNextAttention();
+              return true;
+            case 'a':
+              return answerFocusedPrompt('approve');
+            case 'd':
+              return answerFocusedPrompt('deny');
+            case 'm':
+              return openFocusedMenu();
+            case 'ArrowRight':
+            case 'ArrowLeft':
+              return foldFocusedCard(event.key === 'ArrowRight');
+            case '?':
+              setHelpOpen(true);
+              return true;
+            default:
+              // The terminal numbers its options, and so does the card.
+              return /^[1-9]$/.test(event.key) && answerFocusedPrompt({ key: event.key });
+          }
+        })();
+        if (handled) event.preventDefault();
+      }
+      if (event.defaultPrevented) return;
+      if (event.key === 'Escape' && helpOpen) {
+        setHelpOpen(false);
       } else if (event.key === 'Escape' && !paletteOpen && !newTaskOpen && !themeOpen) {
         /*
          * The way out of the pane.
@@ -137,7 +202,7 @@ export function App(): React.JSX.Element {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [refresh, paletteOpen, newTaskOpen, themeOpen]);
+  }, [refresh, paletteOpen, newTaskOpen, themeOpen, helpOpen]);
 
   const onResult = (message: string, ok: boolean): void => setToast({ message, ok });
 
@@ -310,10 +375,10 @@ export function App(): React.JSX.Element {
           title={`no session yet — open one on ${tildify(path)}`}
         >
           <span className="attached-dot sev-quiet detached" title="no session yet" />
-          <span className="session-name">
+          {/* The keyboard's way in — see the same button on `TaskCard`. */}
+          <button type="button" className="session-name card-title">
             <Slug text={name} />
-          </span>
-          <span className="badge kind">workspace</span>
+          </button>
           <span className="head-path">{shortenPath(path, 22)}</span>
         </div>
       </div>
@@ -331,6 +396,7 @@ export function App(): React.JSX.Element {
         editor={snapshot?.editor ?? ''}
         onResult={onResult}
         onFocus={() => setFocusedSlug(task.slug)}
+        compact
       />
     );
   }
@@ -345,7 +411,8 @@ export function App(): React.JSX.Element {
           setTab(next);
         }}
         counts={counts}
-        fleetCount={sessions.length + idleWorkspaces.length + dormant.length}
+        fleetCount={sessions.length}
+        parkedCount={idleWorkspaces.length + dormant.length}
         prCount={prCount}
         historyCount={snapshot?.history.length ?? 0}
         shutdownLabel={shutdownLabel}
@@ -440,21 +507,27 @@ export function App(): React.JSX.Element {
                 >
                   new task <span className="key">⌘T</span>
                 </button>
+                <span className="empty-hint">
+                  press <kbd className="key-cap">?</kbd> for every key and mark
+                </span>
               </div>
             )}
             {sessions.map((session) => sessionRow(session, order))}
             {idleWorkspaces.length > 0 && (
               <>
-                <div className="section-title">
-                  no session ({idleWorkspaces.length}) — workspace{idleWorkspaces.length === 1 ? '' : 's'}, nothing running
+                {/* A label, not a sentence: it names the group under it, and the
+                    long form was the heaviest line on screen for the least
+                    urgent group in the list. The rest is on hover. */}
+                <div className="section-title" title="folders fleetwood knows, with no tmux session open on them">
+                  workspaces · {idleWorkspaces.length}
                 </div>
                 {idleWorkspaces.map((path) => workspaceRow(path))}
               </>
             )}
             {dormant.length > 0 && (
               <>
-                <div className="section-title">
-                  no session ({dormant.length}) — worktrees ready, nothing running
+                <div className="section-title" title="tasks with their worktrees ready and no session running them">
+                  not running · {dormant.length}
                 </div>
                 {dormant.map((task) => dormantRow(task))}
               </>
@@ -474,9 +547,17 @@ export function App(): React.JSX.Element {
                         closing event` was the internal state name and the reason
                         it was set, verbatim: true, and the only line in the list
                         written for whoever wrote the collector. */}
-                    {reason === 'daemon-hosted'
-                      ? `${group.length} in the claude daemon — no terminal to attach to`
-                      : `${group.length} left over — the terminal these ran in is gone`}
+                    {/* Labels, like the two groups above; the sentence that says
+                        what each one means moved to the hover. */}
+                    <span
+                      title={
+                        reason === 'daemon-hosted'
+                          ? 'running in the claude daemon — no terminal to attach to'
+                          : 'left over — the terminal these ran in is gone'
+                      }
+                    >
+                      {reason === 'daemon-hosted' ? 'in the daemon' : 'left over'} · {group.length}
+                    </span>
                   </div>
                   <div className="card">
                     <div className="agents">
@@ -538,7 +619,7 @@ export function App(): React.JSX.Element {
                   else, and the drawer is the one place it had been spelling
                   it out in words instead. */}
               {hiddenAttention > 0 && (
-                <span className="hidden-attention" title={`${hiddenAttention} of them is waiting on you`}>
+                <span className="hidden-attention" title={`${hiddenAttention} of them is blocked on a permission prompt`}>
                   <span className="dot" />
                   {hiddenAttention}
                 </span>
@@ -594,7 +675,43 @@ export function App(): React.JSX.Element {
         onResult={onResult}
       />
 
-      {toast && <div className={`toast${toast.ok ? '' : ' error'}`}>{toast.message}</div>}
+      {/*
+       * Two regions, mounted always and filled when there is something to say.
+       *
+       * A live region only announces a change to a region that already exists,
+       * so one that appears with its message is one a screen reader never
+       * reads — and one whose politeness flips in the same render as its text is
+       * one it may not read either. So a region per politeness, each fixed: a
+       * failure interrupts, a success waits its turn.
+       */}
+      <div className="toast-region">
+        <div role="status" aria-live="polite">
+          {toast?.ok && <ToastLine toast={toast} onDismiss={() => setToast(undefined)} />}
+        </div>
+        <div role="alert" aria-live="assertive">
+          {toast && !toast.ok && <ToastLine toast={toast} onDismiss={() => setToast(undefined)} />}
+        </div>
+      </div>
+
+      <KeysSheet open={helpOpen} onClose={() => setHelpOpen(false)} />
+    </div>
+  );
+}
+
+/**
+ * One result, said at the foot of the panel.
+ *
+ * Text, with its own small close control, rather than a button that is all
+ * message: inside a live region a button is announced as a button, and the
+ * words are what has to be heard.
+ */
+function ToastLine({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }): React.JSX.Element {
+  return (
+    <div className={`toast${toast.ok ? '' : ' error'}`}>
+      <span className="toast-text">{toast.message}</span>
+      <button type="button" className="toast-close" onClick={onDismiss}>
+        ×<span className="sr-only">dismiss</span>
+      </button>
     </div>
   );
 }

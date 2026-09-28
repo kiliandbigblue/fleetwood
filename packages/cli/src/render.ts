@@ -80,7 +80,6 @@ interface Style {
 const STYLES: Record<AgentStatus, Style> = {
   working: { glyph: '▶', paint: c.ok, label: 'working' },
   blocked_permission: { glyph: '✋', paint: c.danger, label: 'permission' },
-  blocked_input: { glyph: '✋', paint: c.warn, label: 'waiting' },
   compacting: { glyph: '⟳', paint: c.accent, label: 'compacting' },
   idle: { glyph: '○', paint: c.muted, label: 'idle' },
   starting: { glyph: '◌', paint: c.muted, label: 'starting' },
@@ -195,8 +194,8 @@ export function renderFleet(
 
   const summary = [
     counts.working > 0 ? c.ok(`${counts.working} working`) : '',
-    counts.blocked_permission + counts.blocked_input > 0
-      ? c.danger(`${counts.blocked_permission + counts.blocked_input} blocked`)
+    counts.blocked_permission > 0
+      ? c.danger(`${counts.blocked_permission} blocked`)
       : '',
     counts.idle > 0 ? c.muted(`${counts.idle} idle`) : '',
   ].filter(Boolean);

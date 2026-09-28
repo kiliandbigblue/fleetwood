@@ -16,8 +16,9 @@ import type { TaskPr } from './taskPrs.ts';
  * tasks is actually scanned for — how far is this, and is it finished — had no
  * answer anywhere on the card. Worse, the two orders disagree: uncommitted work
  * outranked an approval, so a task one click from merging drew louder than one
- * still being written. `worstState` is kept, for the session cards where urgency
- * *is* the question; the task dot is progress now, and nothing else.
+ * still being written. Urgency moved to where it belongs — what a card's agents
+ * are doing, see the renderer's `liveSeverity` — and this mark is progress,
+ * which is what a parked task, with no agents to report on, is scanned for.
  */
 
 /** Where a task has got to. Ordered, and the order is the whole type. */

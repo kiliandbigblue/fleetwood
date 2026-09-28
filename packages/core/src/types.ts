@@ -12,7 +12,6 @@ export type AgentStatus =
   | 'idle' // registered, or turn finished and awaiting a prompt
   | 'working' // mid-turn
   | 'blocked_permission' // a permission prompt is on screen
-  | 'blocked_input' // Notification: waiting on the human
   | 'compacting'
   | 'error'
   | 'gone';

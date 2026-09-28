@@ -94,7 +94,11 @@ export function TaskNotes({
   // editor: it is the one edit that does not need the keyboard.
   return (
     <div className="task-notes-block">
-      <div className="task-notes-label">note</div>
+      {/* The keyboard's way into the editor. The block below is the pointer's,
+          but it holds the note's own checkboxes, so it cannot be a button. */}
+      <button type="button" className="task-notes-label" onClick={onOpen} title="edit the note · kept in NOTES.md">
+        note
+      </button>
       <div className="task-notes" onClick={onOpen} title="click to edit · kept in NOTES.md">
         <NotesView text={notes} onToggle={(index) => onNotes(toggleCheckbox(notes, index))} />
       </div>

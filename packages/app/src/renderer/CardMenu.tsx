@@ -40,6 +40,12 @@ interface Props {
  * nowhere to keep one. There is no "up one": two clicks to move a card one
  * place is worse than the arrows this replaced.
  *
+ * Where it sits is one row, `arrange`, that opens onto its four moves in the
+ * same sheet. They were four rows of their own, which took a task's menu to
+ * eleven — the things you open a menu for sat among the ones you use once a
+ * week, and the list was too long to take in before choosing. Arranging is
+ * the rare errand, so it is the one that costs a click.
+ *
  * The moves are bounded by the card's own tier, which is why "move to top" can
  * be inert on a card that is not at the top of the panel: a pinned short-list
  * sits above, and the top this card has is the top of the unpinned list.
@@ -48,11 +54,75 @@ export function CardMenu({ session, order, actions, onResult }: Props): React.JS
   const [open, setOpen] = useState(false);
   /** Which `confirm` item is armed, by label. One at a time, cleared on close. */
   const [armed, setArmed] = useState<string>();
+  /** Whether the sheet is showing the position moves in place of the actions. */
+  const [arranging, setArranging] = useState(false);
   const wrapRef = useRef<HTMLSpanElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const sheetRef = useRef<HTMLSpanElement>(null);
   useDismiss(wrapRef, open, () => setOpen(false));
+  /*
+   * Whether the sheet was open on the last render.
+   *
+   * The effect below runs on mount too, with `open` false and focus on `body`
+   * because nothing has taken it yet — which is exactly what "focus went down
+   * with the sheet" looks like. Without this every card pulled focus to its ⋮
+   * as it appeared, so the panel opened with a focus ring on the first card.
+   * Only a sheet that was open can hand focus back.
+   */
+  const wasOpen = useRef(false);
   useEffect(() => {
-    if (!open) setArmed(undefined);
+    const closing = wasOpen.current && !open;
+    wasOpen.current = open;
+    if (!open) {
+      setArmed(undefined);
+      setArranging(false);
+    }
+    if (!closing) return;
+    // Back to the ⋮ it came from, but only if focus went down with the sheet
+    // — the browser drops it on `body` when the focused row unmounts. A menu
+    // closed by a click elsewhere must not pull focus back from that click.
+    const lost = document.activeElement === document.body;
+    if (lost || wrapRef.current?.contains(document.activeElement)) triggerRef.current?.focus();
   }, [open]);
+  /*
+   * Focus the first live row whenever the sheet opens or swaps its rows.
+   *
+   * A `role="menu"` promises the keyboard it can be driven: opened, it is where
+   * focus is, and the arrows move through it. Without this it was a list of
+   * buttons behind a label that said otherwise — the rows were reachable only
+   * by tabbing through the rest of the card first.
+   */
+  useEffect(() => {
+    if (open) sheetRef.current?.querySelector<HTMLButtonElement>('.menu-item:enabled')?.focus();
+  }, [open, arranging]);
+
+  /** Up and down the live rows, wrapping, as a menu does. */
+  const onSheetKey = (event: React.KeyboardEvent<HTMLSpanElement>): void => {
+    const rows = [...(sheetRef.current?.querySelectorAll<HTMLButtonElement>('.menu-item:enabled') ?? [])];
+    const at = rows.indexOf(document.activeElement as HTMLButtonElement);
+    const to = (index: number): void => {
+      event.preventDefault();
+      rows[(index + rows.length) % rows.length]?.focus();
+    };
+    if (event.key === 'Escape') {
+      // Handled here rather than left to `useDismiss`, because the line below
+      // stops the event before it could reach the document.
+      event.preventDefault();
+      setOpen(false);
+    } else if (event.key === 'ArrowDown') to(at + 1);
+    else if (event.key === 'ArrowUp') to(at - 1);
+    else if (event.key === 'Home') to(0);
+    else if (event.key === 'End') to(rows.length - 1);
+    else if (event.key === 'ArrowLeft' && arranging) {
+      event.preventDefault();
+      setArranging(false);
+    } else if (event.key === 'ArrowRight' && document.activeElement?.classList.contains('menu-more')) {
+      event.preventDefault();
+      setArranging(true);
+    }
+    // The list's own keys must not act on the card behind an open menu.
+    event.stopPropagation();
+  };
 
   const pinned = session !== undefined && isPinned(session);
   const hidden = session !== undefined && isHidden(session);
@@ -110,6 +180,7 @@ export function CardMenu({ session, order, actions, onResult }: Props): React.JS
     // The card head focuses the session, so nothing in here may reach it.
     <span className="card-menu" ref={wrapRef} onClick={(event) => event.stopPropagation()}>
       <button
+        ref={triggerRef}
         className={`menu-open${open ? ' showing' : ''}`}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -125,19 +196,16 @@ export function CardMenu({ session, order, actions, onResult }: Props): React.JS
         onClick={() => setOpen((was) => !was)}
       >
         <Icon name="dots" />
+        <span className="sr-only">{session === undefined ? 'task actions' : `actions for ${sessionLabel(session)}`}</span>
       </button>
       {open && (
-        <span className="menu-sheet" role="menu">
-          {actions.filter((item) => !item.danger).map(row)}
-
-          {positioned && (
+        <span className="menu-sheet" role="menu" ref={sheetRef} onKeyDown={onSheetKey}>
+          {arranging && positioned ? (
             <>
-              {/* A heading, not a readout: which slot this card is in is on the
-                  trigger's tooltip, and having it here as well put the card's
-                  current state where a group title goes. */}
-              <span className="menu-label" role="presentation">
-                position
-              </span>
+              <button className="menu-item menu-back" role="menuitem" onClick={() => setArranging(false)}>
+                <Icon name="chevron" />
+                arrange
+              </button>
               {row(
                 moveItem(
                   'move to top',
@@ -168,22 +236,41 @@ export function CardMenu({ session, order, actions, onResult }: Props): React.JS
                 onClick: () => void act({ kind: 'clearSessionOrder', session }),
               })}
             </>
-          )}
+          ) : (
+            <>
+              {actions.filter((item) => !item.danger).map(row)}
 
-          {/* The two ways a card leaves the list, together and last: hiding and
-              archiving are the same intent at two strengths. */}
-          {(positioned || actions.some((item) => item.danger === true)) && (
-            <span className="menu-divider" role="separator" />
+              {positioned && (
+                <button
+                  className="menu-item menu-more"
+                  role="menuitem"
+                  aria-haspopup="menu"
+                  title={`move, pin or clear the slot — ${
+                    slot === undefined ? 'no slot yet' : `slot ${slot}`
+                  }${pinned ? ', pinned' : ''}`}
+                  onClick={() => setArranging(true)}
+                >
+                  arrange
+                  <Icon name="chevron" />
+                </button>
+              )}
+
+              {/* The two ways a card leaves the list, together and last: hiding and
+                  archiving are the same intent at two strengths. */}
+              {(positioned || actions.some((item) => item.danger === true)) && (
+                <span className="menu-divider" role="separator" />
+              )}
+              {positioned &&
+                row({
+                  label: hidden ? 'unhide' : 'hide',
+                  title: hidden
+                    ? `back in the fleet, ${pinned ? 'among the pins' : 'at the slot it already has'}`
+                    : 'out of the fleet, under "hidden" at the bottom — the session keeps running',
+                  onClick: () => void act({ kind: 'setSessionHidden', session, hidden: !hidden }),
+                })}
+              {actions.filter((item) => item.danger === true).map(row)}
+            </>
           )}
-          {positioned &&
-            row({
-              label: hidden ? 'unhide' : 'hide',
-              title: hidden
-                ? `back in the fleet, ${pinned ? 'among the pins' : 'at the slot it already has'}`
-                : 'out of the fleet, under "hidden" at the bottom — the session keeps running',
-              onClick: () => void act({ kind: 'setSessionHidden', session, hidden: !hidden }),
-            })}
-          {actions.filter((item) => item.danger === true).map(row)}
         </span>
       )}
     </span>

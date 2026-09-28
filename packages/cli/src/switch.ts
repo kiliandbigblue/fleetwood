@@ -358,7 +358,7 @@ function projectCells(target: SwitchTarget, layout: Layout): Cells {
  * now, so the tool and the target both survive.
  */
 function agentTail(agent: FleetAgent, layout: Layout): string {
-  if (agent.status === 'blocked_permission' || agent.status === 'blocked_input') {
+  if (agent.status === 'blocked_permission') {
     const question = agent.prompt?.question;
     return question ? c.warn(clip(question, layout.tail)) : '';
   }

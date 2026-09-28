@@ -144,8 +144,6 @@ export function agentUrgency(agent: FleetAgent): number {
   switch (agent.status) {
     case 'blocked_permission':
       return 0;
-    case 'blocked_input':
-      return 1;
     case 'error':
       return 2;
     case 'working':

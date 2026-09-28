@@ -5,6 +5,7 @@ import type { FleetAgent } from '@fleetwood/core';
 // reason the formatter lives apart from the reader in the first place.
 import { describeContext, formatContextTokens } from '@fleetwood/core/contextFormat';
 import { duration, send } from './api.ts';
+import { AGENT_STATUS_LABEL, agentLabel } from './fleetSignals.ts';
 
 interface Props {
   agent: FleetAgent;
@@ -18,17 +19,6 @@ interface Props {
   where?: string;
   onResult: (message: string, ok: boolean) => void;
 }
-
-const STATUS_LABEL: Record<string, string> = {
-  working: 'working',
-  blocked_permission: 'needs permission',
-  blocked_input: 'waiting on you',
-  compacting: 'compacting',
-  idle: 'idle',
-  starting: 'starting',
-  error: 'error',
-  gone: 'gone',
-};
 
 /**
  * How the status was learned, as tooltip prose rather than a glyph.
@@ -68,7 +58,8 @@ export function AgentRow({ agent, where, onResult }: Props): React.JSX.Element {
   };
 
   const prompt = agent.prompt;
-  const label = agent.activity ?? STATUS_LABEL[agent.status] ?? agent.status;
+  const label = agentLabel(agent);
+  const statusLabel = AGENT_STATUS_LABEL[agent.status];
 
   return (
     <>
@@ -82,8 +73,11 @@ export function AgentRow({ agent, where, onResult }: Props): React.JSX.Element {
       >
         <span
           className={`status-dot status-${agent.status}`}
-          title={`${STATUS_LABEL[agent.status] ?? agent.status} — ${PROVENANCE_NOTE[agent.provenance] ?? agent.provenance}`}
+          title={`${statusLabel} — ${PROVENANCE_NOTE[agent.provenance] ?? agent.provenance}`}
         />
+        {/* The dot's meaning, for whoever cannot see its colour. Said once, here,
+            rather than on the activity text, which can be anything. */}
+        <span className="sr-only">{statusLabel},</span>
         <span className={`tool tool-${agent.tool}`}>{agent.tool}</span>
         {where && (
           <span className="agent-where" title={`working in ${where}`}>
@@ -108,7 +102,22 @@ export function AgentRow({ agent, where, onResult }: Props): React.JSX.Element {
             +{agent.subagents}
           </span>
         )}
-        <span className="activity">{label}</span>
+        {/*
+         * The row's keyboard target, when the row has a pane to go to.
+         *
+         * The row itself stays the pointer's target — the whole 28px strip — but
+         * a row is not something a keyboard can land on, and a `div` with a click
+         * handler was the one way into a pane that Tab never reached. A button
+         * here, with no handler of its own, is focusable and presses the same way
+         * a click does: its click bubbles to the row.
+         */}
+        {agent.pane ? (
+          <button type="button" className="activity">
+            {label}
+          </button>
+        ) : (
+          <span className="activity">{label}</span>
+        )}
         {/* What the next turn in this pane will re-read, and so what it will
             cost relative to a fresh one. The only number on this row you can
             act on without leaving the panel: `/clear` empties it. A column of
@@ -162,48 +171,99 @@ export function AgentRow({ agent, where, onResult }: Props): React.JSX.Element {
       </div>
 
       {prompt && agent.pane && (
-        <div className="prompt">
-          {prompt.question && <div className="prompt-question">{prompt.question}</div>}
-          <div className="prompt-options">
-            {prompt.options.map((option) => (
-              <span key={option.key} className={`prompt-option${option.selected ? ' selected' : ''}`}>
-                {option.selected ? '❯' : ' '} {option.key}. {option.label}
-              </span>
-            ))}
-          </div>
-          <div className="prompt-buttons">
-            {prompt.approve && (
-              <button
-                className="button approve"
-                disabled={busy}
-                onClick={() =>
-                  void act({ kind: 'answerPrompt', pane: agent.pane as string, key: prompt.approve as string })
-                }
-              >
-                Approve
-              </button>
-            )}
-            {prompt.deny && (
-              <button
-                className="button deny"
-                disabled={busy}
-                onClick={() =>
-                  void act({ kind: 'answerPrompt', pane: agent.pane as string, key: prompt.deny as string })
-                }
-              >
-                Deny
-              </button>
-            )}
-            <button
-              className="button"
-              onClick={() => void act({ kind: 'focusPane', pane: agent.pane as string })}
-              title="open the pane and answer it yourself"
-            >
-              Open
-            </button>
-          </div>
-        </div>
+        <PromptBlock
+          /* Keyed on the question, so a new prompt in the same pane starts with
+             nothing marked as sent. */
+          key={`${prompt.question ?? ''}|${prompt.options.map((option) => option.key).join(',')}`}
+          tool={agent.tool}
+          pane={agent.pane}
+          prompt={prompt}
+          fallback={statusLabel}
+          onResult={onResult}
+        />
       )}
     </>
+  );
+}
+
+/**
+ * A permission prompt, answered from the card.
+ *
+ * The terminal's own options are the buttons. It used to print them as a list
+ * and then offer a separate Approve / Deny / Open under it — six things for
+ * three choices, and the middle option, "yes, and don't ask again", was on
+ * screen with no way to press it. Each option is now the one control for it,
+ * numbered as the terminal numbers it, and the number is also its key on a
+ * focused card, as it is in the pane.
+ *
+ * Once one is pressed the block says so and holds still until the next
+ * snapshot takes the prompt away, so there is never a moment where the
+ * answer appears to have gone nowhere.
+ */
+function PromptBlock({
+  tool,
+  pane,
+  prompt,
+  fallback,
+  onResult,
+}: {
+  tool: FleetAgent['tool'];
+  pane: string;
+  prompt: NonNullable<FleetAgent['prompt']>;
+  /** What to call the prompt when the screen gave no question. */
+  fallback: string;
+  onResult: Props['onResult'];
+}): React.JSX.Element {
+  const [sent, setSent] = useState<string>();
+
+  const answer = async (key: string, label: string): Promise<void> => {
+    setSent(`${key} · ${label}`);
+    const result = await send({ kind: 'answerPrompt', pane, key });
+    // Only a failure is worth a toast; success is the line on the card.
+    if (!result.ok) {
+      setSent(undefined);
+      onResult(result.detail, false);
+    }
+  };
+
+  return (
+    <div className="prompt" role="group" aria-label={`${tool} asks: ${prompt.question ?? fallback}`}>
+      {prompt.question && <div className="prompt-question">{prompt.question}</div>}
+      <div className="prompt-buttons">
+        {prompt.options.map((option) => (
+          <button
+            key={option.key}
+            type="button"
+            className={`button prompt-answer${
+              option.key === prompt.approve ? ' approve' : option.key === prompt.deny ? ' deny' : ''
+            }`}
+            data-key={option.key}
+            disabled={sent !== undefined}
+            title={`answer ${option.key} — or press ${option.key} with this card focused${
+              option.key === prompt.approve ? ' (a also works)' : option.key === prompt.deny ? ' (d also works)' : ''
+            }`}
+            onClick={() => void answer(option.key, option.label)}
+          >
+            <kbd className="key-cap">{option.key}</kbd>
+            {option.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          className="button prompt-open"
+          onClick={() =>
+            void send({ kind: 'focusPane', pane }).then((result) => onResult(result.detail, result.ok))
+          }
+          title="open the pane and answer it yourself"
+        >
+          open ↗
+        </button>
+      </div>
+      {sent && (
+        <div className="prompt-sent" role="status">
+          sent {sent} — waiting for the agent to move on
+        </div>
+      )}
+    </div>
   );
 }

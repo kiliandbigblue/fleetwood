@@ -43,7 +43,7 @@ export interface Palette {
   text: string;
   /** Blocked, error, off-branch, and every destructive action. */
   danger: string;
-  /** Waiting on you: `blocked_input`, a dirty worktree, a build still running. */
+  /** Yours to deal with, not broken: a dirty worktree, a build still running, a review asking for changes. */
   warn: string;
   /** Working, checks passing, approved, deployed. */
   ok: string;
@@ -409,4 +409,56 @@ export function clampBgOpacity(value: unknown): number {
 export function withAlpha(hex: string, alpha: number): string {
   const [r, g, b] = rgbTriplet(hex).split(';');
   return `rgb(${r} ${g} ${b} / ${clampBgOpacity(alpha)})`;
+}
+
+/** The three channels of a `#rrggbb`, 0–255. */
+function channels(hex: string): [number, number, number] {
+  const [r = 0, g = 0, b = 0] = rgbTriplet(hex).split(';').map(Number);
+  return [r, g, b];
+}
+
+/** WCAG relative luminance of a `#rrggbb`. */
+function luminance(hex: string): number {
+  const linear = (value: number): number => {
+    const c = value / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  const [r, g, b] = channels(hex);
+  return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+}
+
+/** The WCAG contrast ratio between two `#rrggbb` colours, 1 to 21. */
+export function contrastRatio(a: string, b: string): number {
+  const [la, lb] = [luminance(a), luminance(b)];
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+/** `from` moved `t` of the way to `to`, per channel, as `#rrggbb`. */
+function mixHex(from: string, to: string, t: number): string {
+  const target = channels(to);
+  const mixed = channels(from).map((c, i) => Math.round(c + ((target[i] ?? c) - c) * t));
+  return `#${mixed.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
+}
+
+/**
+ * The palette's `dim`, lifted toward `soft` until it can be read on `bg`.
+ *
+ * `dim` is documented as the dimmest text still meant to be read, and the
+ * upstream palettes do not agree: Rose Pine's `muted` is 3.4:1 on its own base,
+ * Tokyo Night's `comment` 2.5:1 — values drawn for code comments, which a
+ * reader skips on purpose, and used here for paths, durations and the labels
+ * over a group, which they do not. The palette keeps the upstream value, since
+ * matching the editor is the point of it and the CLI prints it as is; the
+ * panel reads it through this, in the smallest step that clears the floor, so
+ * each theme keeps as much of its own grey as it can.
+ *
+ * 4.5:1 is WCAG AA for text this size. A theme whose `soft` is itself under it
+ * gets `soft`, which is as far as a lift can go without inventing a colour.
+ */
+export function readableDim(palette: Palette, floor = 4.5): string {
+  for (let step = 0; step <= 20; step += 1) {
+    const candidate = mixHex(palette.dim, palette.soft, step / 20);
+    if (contrastRatio(candidate, palette.bg) >= floor) return candidate;
+  }
+  return palette.soft;
 }
