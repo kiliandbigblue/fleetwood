@@ -839,6 +839,22 @@ button {
  * two lines on every card would double the list for nothing.
  */
 @container card (max-width: 460px) {
+  /*
+   * A narrow row keeps its answer. The context figure only speaks once it is
+   * costly, the age column sizes to its figure, and the worktree name gives
+   * way before the activity does — at 420px the row read `atla… Editing inte…`
+   * while `84k` and a 58px age column kept every pixel they had.
+   */
+  .agent-context:not(:has(.warn, .critical)) {
+    display: none;
+  }
+  .since {
+    min-width: 0;
+  }
+  .agent-where {
+    flex-shrink: 3;
+  }
+
   .card.attention .card-head {
     flex-wrap: wrap;
     row-gap: 0;
@@ -889,9 +905,10 @@ button {
 /*
  * A task with no tmux session.
  *
- * The hollow dot on the title row is the whole of it now. It used to be a dashed
- * border, which needs a border — and a dashed rectangle was the loudest thing in
- * a list this quiet, for the least urgent fact on it.
+ * Its progress ring on the title row, and the softer title, are the whole of it
+ * now. It used to be a dashed border, which needs a border — and a dashed
+ * rectangle was the loudest thing in a list this quiet, for the least urgent
+ * fact on it.
  */
 .card.dormant .session-name {
   color: var(--soft);
@@ -1334,6 +1351,10 @@ button {
 .attached-dot.detached::before {
   background-color: transparent;
 }
+/* A card whose "working" is only a guess: the ring without its core. */
+.attached-dot.guessed::before {
+  background-color: transparent;
+}
 
 .attached-dot.sev-danger {
   color: var(--danger);
@@ -1426,6 +1447,12 @@ button {
    card, because an untouched task should not compete with a live one. */
 .task-status-dot.task-status-not-started {
   color: var(--dim-mark);
+}
+/* Dotted rather than hollow: hollow means a guessed status, and "nothing
+   committed yet" is not a guess. The same for a folder with no session. */
+.task-status-dot.task-status-not-started::before,
+.attached-dot.detached::before {
+  border-style: dotted;
 }
 
 /* Something is being written. A small core — the ring has started to fill — in
@@ -1821,9 +1848,10 @@ button {
   border-radius: 50%;
   flex: none;
 }
+/* Still, not pulsing: motion is the loudest cue in peripheral vision, and it
+   was spent all day on the one state that asks nothing of you. */
 .status-working {
   background: var(--ok);
-  animation: pulse 1.6s ease-in-out infinite;
 }
 
 /*
@@ -1831,8 +1859,7 @@ button {
  *
  * A 3% lift and a dot the same size as five idle ones was the quietest
  * treatment in the panel for the only fact on it that is changing. The fill is
- * the accent at low alpha and the tool name takes the accent outright, so the
- * live row is what the eye lands on first.
+ * the accent at low alpha, so the live row is what the eye lands on first.
  */
 .agents .agent:has(.status-working),
 .task-repos .agent:has(.status-working) {
@@ -2213,10 +2240,26 @@ button.activity:focus-visible {
   color: var(--text);
   background: color-mix(in srgb, var(--text) 8%, transparent);
 }
-/* A narrow rail has no room for it beside the runway gauges, and those are
-   what the rail is for; `?` still opens the sheet. */
+/* A narrow rail keeps the cap and drops the word: room for the runway
+   gauges, and the way to the sheet still visible. */
 @media (max-width: 460px) {
+  /* The rail's spacing gives before any figure does: at 420px the counts ran
+     23px into the claude gauge. The blocked count keeps its colour and word
+     and drops only its dot, which the word already says. */
+  .rail-bottom {
+    gap: var(--s2);
+  }
+  .vitals {
+    gap: var(--s2);
+  }
+  .vital.danger .dot {
+    display: none;
+  }
   .vital-help {
+    margin-left: 0;
+    padding: 0;
+  }
+  .vital-help-word {
     display: none;
   }
 }
@@ -3094,20 +3137,18 @@ button.activity:focus-visible {
 
 .hidden-group > * {
   flex-shrink: 0;
-  /* Per card and not on the wrapper: a child cannot be more opaque than its
-     parent, so dimming the group is the one arrangement in which pointing at
-     one card cannot bring that card back. */
-  opacity: 0.55;
-  transition: opacity 90ms ease-out;
+}
+/*
+ * Set back by ink, not by opacity. At 0.55 the drawer's cards measured 2.3:1 —
+ * out of the way had become unreadable, and a hidden card is still one you
+ * open the drawer to read. The title steps down to soft ink, the drawer and
+ * its heading say the rest.
+ */
+.hidden-group .card:not(.attention) .session-name {
+  color: var(--soft);
 }
 
-.hidden-group > *:hover,
-/* Hiding a card puts it out of the way, not out of reach: one that is stopped
-   on a permission prompt comes back to full strength — faded, the prompt and
-   its buttons fell below readable contrast, often for the riskiest command. */
-.hidden-group > .card.attention {
-  opacity: 1;
-}
+
 
 .task-repos {
   padding: var(--s3) 0;
@@ -3184,7 +3225,9 @@ button.activity:focus-visible {
   flex: none;
 }
 .dirty {
-  color: var(--warn);
+  /* Soft, not gold: uncommitted work is the ordinary state of a task being
+     written, and gold on every busy worktree left it meaning nothing. */
+  color: var(--soft);
   font-size: var(--fs-micro);
   flex: none;
 }

@@ -63,6 +63,21 @@ export function liveSeverity(agents: ReadonlyArray<Pick<FleetAgent, 'status'>>):
 }
 
 /**
+ * Whether the card's "working" rests only on guesses.
+ *
+ * The card's mark is teal when any agent on it is working — and if every one
+ * of those is a guess (read off the pane, a bare process, a stale report), a
+ * solid teal mark claimed a certainty the rows under it do not have. Those
+ * cards draw the mark hollow instead, which is what hollow means everywhere.
+ */
+export function workingIsGuessed(
+  agents: ReadonlyArray<Pick<FleetAgent, 'status' | 'provenance'>>,
+): boolean {
+  const moving = agents.filter((a) => a.status === 'working' || a.status === 'compacting');
+  return moving.length > 0 && moving.every((a) => a.provenance !== 'hook');
+}
+
+/**
  * The words the head says when an agent on the card is stopped on you.
  *
  * `undefined` otherwise — the head says nothing about an agent that needs

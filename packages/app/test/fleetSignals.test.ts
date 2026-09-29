@@ -10,6 +10,7 @@ import {
   needsYouLabel,
   prHeadline,
   stepIndex,
+  workingIsGuessed,
 } from '../src/renderer/fleetSignals.ts';
 
 const agent = (status: FleetAgent['status'], activity?: string): FleetAgent =>
@@ -83,4 +84,12 @@ test('only agents that newly stopped are announced', () => {
     blockedAnnouncement(new Set(), now.slice(0, 1)),
     'returns-label-v2 needs permission: Bash: make test. Press n to go to it.',
   );
+});
+
+test("a card's working mark goes hollow only when every working agent is a guess", () => {
+  const a = (status: FleetAgent['status'], provenance: FleetAgent['provenance']): FleetAgent =>
+    ({ status, provenance }) as FleetAgent;
+  assert.equal(workingIsGuessed([a('working', 'stale'), a('idle', 'hook')]), true);
+  assert.equal(workingIsGuessed([a('working', 'stale'), a('working', 'hook')]), false);
+  assert.equal(workingIsGuessed([a('idle', 'screen')]), false);
 });

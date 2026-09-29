@@ -244,7 +244,7 @@ export function StatusBar({ counts, limits, cursorUsage, onHelp }: Props): React
         )}
         {counts.working > 0 && (
           <span className="vital ok" title={`${counts.working} mid-turn`}>
-            <span className="dot pulsing" />
+            <span className="dot" />
             {counts.working} working
           </span>
         )}
@@ -260,17 +260,23 @@ export function StatusBar({ counts, limits, cursorUsage, onHelp }: Props): React
         ) : (
           counts.working === 0 &&
           counts.idle === 0 &&
-          counts.blocked_permission === 0 && (
-            <span className="vital" title="agents starting, compacting or in error">
+          counts.blocked_permission === 0 &&
+          counts.error === 0 && (
+            <span className="vital" title="agents starting or compacting">
               {counts.total} agent{counts.total === 1 ? '' : 's'}
             </span>
           )
         )}
         {/* The keys and marks, findable without knowing they exist: `?` was
             only ever mentioned in a tooltip and the empty state. */}
+        {counts.error > 0 && (
+          <span className="vital danger" title={`${counts.error} agent(s) in error — see its row for what it last said`}>
+            {counts.error} error
+          </span>
+        )}
         <button type="button" className="vital vital-help" onClick={onHelp} title="every key and mark (?)">
           <kbd className="key-cap">?</kbd>
-          keys
+          <span className="vital-help-word">keys</span>
         </button>
       </div>
       <div className="quotas">

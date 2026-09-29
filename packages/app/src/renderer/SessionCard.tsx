@@ -7,7 +7,7 @@ import type { MenuItem } from './CardMenu.tsx';
 import { Slug } from './Slug.tsx';
 import { numColStyle, PrRow } from './TaskCard.tsx';
 import { send, shortenPath, tildify } from './api.ts';
-import { byUrgency, liveSeverity, needsYouLabel, SEVERITY_NOTE } from './fleetSignals.ts';
+import { byUrgency, liveSeverity, needsYouLabel, SEVERITY_NOTE, workingIsGuessed } from './fleetSignals.ts';
 import type { Severity } from './fleetSignals.ts';
 
 /**
@@ -106,7 +106,7 @@ export function SessionCard({ session, pr, order, onResult }: Props): React.JSX.
       >
         {/* Colour is the state, shape is attachment — as on a task group. */}
         <span
-          className={`attached-dot sev-${state}`}
+          className={`attached-dot sev-${state}${state === 'ok' && workingIsGuessed(session.agents) ? ' guessed' : ''}`}
           title={sevNote(state, session.attached > 0)}
         />
         {/* The label, not the name: an order prefix is fleetwood's own bookkeeping

@@ -25,7 +25,7 @@ import type { MenuItem } from './CardMenu.tsx';
 import { Slug } from './Slug.tsx';
 import { TaskNotes } from './TaskNotes.tsx';
 import { send } from './api.ts';
-import { byUrgency, liveSeverity, needsYouLabel, prHeadline, SEVERITY_NOTE } from './fleetSignals.ts';
+import { byUrgency, liveSeverity, needsYouLabel, prHeadline, SEVERITY_NOTE, workingIsGuessed } from './fleetSignals.ts';
 
 interface Props {
   task: Task;
@@ -212,8 +212,10 @@ export function RepoRow({
        * say. The count is never unknown — an unreadable repo would say so.
        */}
       {repo.dirty > 0 && (
+        /* "changed", not "dirty": the head's `1 dirty` counts worktrees, and
+           the same word counting files one line down read as a contradiction. */
         <span className="dirty" title={`${repo.dirty} uncommitted change(s)`}>
-          {repo.dirty} dirty
+          {repo.dirty} changed
         </span>
       )}
     </div>
@@ -499,7 +501,10 @@ export function TaskCard({
     // At the task root first — they are the ones acting on the whole of it.
     ...taskLevel.map((agent) => ({ agent, where: undefined as string | undefined })),
     ...[...byRepo.entries()].flatMap(([repo, inRepo]) =>
-      inRepo.map((agent) => ({ agent, where: repo })),
+      // Only when the task has worktrees to tell apart: on a one-repo task the
+      // name repeats the only row under it, and at panel width it was the
+      // worktree name that pushed the activity — the answer — off the row.
+      inRepo.map((agent) => ({ agent, where: task.repos.length > 1 ? repo : undefined })),
     ),
   ];
   /*
@@ -527,6 +532,7 @@ export function TaskCard({
    */
   const live = session !== undefined && session.agents.length > 0;
   const severity = liveSeverity(session?.agents ?? []);
+  const guessed = severity === 'ok' && workingIsGuessed(session?.agents ?? []);
   const needsYou = needsYouLabel(session?.agents ?? []);
   const attached = (session?.attached ?? 0) > 0;
   /*
@@ -626,8 +632,10 @@ export function TaskCard({
           <span
             /* Always filled: hollow is kept for one meaning, a guessed status.
                Whether a client is attached is in the tooltip. */
-            className={`attached-dot sev-${severity}`}
-            title={`${SEVERITY_NOTE[severity]} · ${attached ? 'attached' : 'running, not attached'}`}
+            className={`attached-dot sev-${severity}${guessed ? ' guessed' : ''}`}
+            title={`${guessed ? 'an agent here seems to be working — not reported' : SEVERITY_NOTE[severity]} · ${
+              attached ? 'attached' : 'running, not attached'
+            }`}
           />
         ) : (
           /* How far along this is, and nothing else — see `dotNote`. */

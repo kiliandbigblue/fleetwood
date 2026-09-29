@@ -7,9 +7,9 @@ import { stepIndex } from './fleetSignals.ts';
  * unfold and fold a parked card.
  *
  * Read off the document rather than held in state, on purpose. The list is
- * redrawn every second from a fresh snapshot and reordered by what the agents
- * are doing, so an index held in React would point at a different card after
- * the next poll; the focused element is the one thing a redraw keeps where it
+ * redrawn every second from a fresh snapshot — cards appear, fold and leave as
+ * sessions do — so an index held in React would point at a different card
+ * after the next poll; the focused element is the one thing a redraw keeps where it
  * was. Every card's title is a real button, so "where you are" is just focus,
  * and a screen reader and a mouse user agree with the keyboard about it.
  */

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FleetAgent } from '@fleetwood/core';
 // The leaf module, not the barrel: importing a value from `@fleetwood/core`
 // pulls tmux, `fs` and `child_process` into the renderer bundle — which is the
@@ -112,7 +112,16 @@ export function AgentRow({ agent, where, onResult }: Props): React.JSX.Element {
          * a click does: its click bubbles to the row.
          */}
         {agent.pane ? (
-          <button type="button" className={`activity${agent.provenance === 'stale' ? ' stale' : ''}`}>
+          <button
+            type="button"
+            className={`activity${agent.provenance === 'stale' ? ' stale' : ''}`}
+            /* The row's whole sentence, since this is the stop focus lands on:
+               the status, tool and worktree sit outside the button, and
+               focus alone read "Bash: make test, button". */
+            aria-label={`${agent.tool}, ${statusLabel}${inferred ? `, ${inferred.note}` : ''}${
+              where ? `, in ${where}` : ''
+            }: ${label} — go to the pane`}
+          >
             {label}
           </button>
         ) : (
@@ -155,6 +164,7 @@ export function AgentRow({ agent, where, onResult }: Props): React.JSX.Element {
         {agent.status !== 'gone' && (
           <button
             className={`agent-kill${confirmingKill ? ' confirming' : ''}`}
+            aria-label={confirmingKill ? `${killNote(agent)} — press again to confirm` : killNote(agent)}
             disabled={busy}
             title={confirmingKill ? `${killNote(agent)} — click again to confirm` : killNote(agent)}
             onClick={(event) => {
@@ -234,7 +244,26 @@ function PromptBlock({
     void answer(key, label);
   };
 
+  /*
+   * A sent answer that never lands gets its buttons back.
+   *
+   * The block holds still until the snapshot takes the prompt away — but if
+   * the key never reached it (the pane in copy mode, a redrawn question), the
+   * same prompt is still there six seconds later with its buttons dead and the
+   * card still red. So the buttons come back, and the line says why.
+   */
+  const [stuck, setStuck] = useState(false);
+  useEffect(() => {
+    if (sent === undefined) return;
+    const timer = setTimeout(() => {
+      setSent(undefined);
+      setStuck(true);
+    }, 6_000);
+    return () => clearTimeout(timer);
+  }, [sent]);
+
   const answer = async (key: string, label: string): Promise<void> => {
+    setStuck(false);
     setSent(`${key} · ${label}`);
     const result = await send({ kind: 'answerPrompt', pane, key });
     // Only a failure is worth a toast; success is the line on the card.
@@ -284,7 +313,9 @@ function PromptBlock({
           ? `sent ${sent} — waiting for the agent to move on`
           : armed
             ? `press ${armed} again — this answer lasts beyond this prompt`
-            : ''}
+            : stuck
+              ? 'still asking — that answer may not have landed. Try again, or open the pane'
+              : ''}
       </div>
     </div>
   );
