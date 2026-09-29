@@ -203,10 +203,18 @@ export function Palette({ open, onClose, sessions, onNewTask, onResult }: Props)
                 cursor: 'pointer',
               }}
             >
-              <span style={{ color: KIND_COLOUR[item.kind], fontSize: 10 }}>
+              <span style={{ color: KIND_COLOUR[item.kind], fontSize: 'var(--fs-micro)' }}>
                 {item.kind === 'new-task' ? 'task' : item.kind}
               </span>
-              <span>
+              {/* A session or project name is an identifier, so it takes the
+                  panel's mono; `new task: …` and `open …` are sentences. */}
+              <span
+                style={
+                  item.kind === 'session' || item.kind === 'project'
+                    ? { fontFamily: 'var(--mono)', fontSize: 'var(--fs-body)' }
+                    : undefined
+                }
+              >
                 {item.kind === 'new-task'
                   ? item.label.length > 0
                     ? `new task: ${item.label}`

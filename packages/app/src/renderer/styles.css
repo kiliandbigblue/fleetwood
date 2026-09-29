@@ -9,22 +9,30 @@
  * decision, it is the absence of one, and it reads as the body row in bold that
  * it is.
  *
- * Geist Mono is a drawn display mono — flat-sided bowls, an open aperture, a
- * lower-contrast fit than SF Mono — so the head keeps the terminal register the
- * whole panel depends on while plainly not being the face under it. Bundled,
- * not named: a `font-family` that resolves on the machine it was chosen on and
- * nowhere else is a coincidence wearing a decision's clothes, and the 23kB latin
- * subset is the whole cost of it being true everywhere. Variable, so the weight
+ * Fira Code, because it is the face in the terminal beside this panel: the
+ * head should read as a line of that terminal set large, not as a different
+ * foundry's idea of one. It keeps the mono register the whole panel depends on
+ * while plainly not being the system mono under it — taller x-height, a drawn
+ * rather than gridded fit.
+ *
+ * The plain cut, not the Nerd Font build the terminal has installed. The patch
+ * adds a few thousand icon glyphs this panel never draws — its marks are
+ * `Icon.tsx` — at roughly fifty times the file size. Bundled, not named: a
+ * `font-family` that resolves on the machine it was chosen on and nowhere else
+ * is a coincidence wearing a decision's clothes, and the 36kB latin subset is
+ * the whole cost of it being true everywhere. Variable, 300–700, so the weight
  * below is an instance of the design rather than a synthetic smear.
- * See `fonts/LICENSE-geist-mono.txt`.
+ *
+ * Its ligatures are switched off wherever it is set — see `--mono-display`.
+ * See `fonts/LICENSE-fira-code.txt`.
  */
 @font-face {
-  font-family: 'Geist Mono';
-  src: url('./fonts/geist-mono-latin.woff2') format('woff2');
-  font-weight: 100 900;
+  font-family: 'Fira Code';
+  src: url('./fonts/fira-code-latin.woff2') format('woff2');
+  font-weight: 300 700;
   font-style: normal;
-  /* One line on screen is set in it, so there is no reflow worth hiding: paint
-     the title in it or wait for it. It is a local file. */
+  /* A handful of lines are set in it and none of them is worth a reflow: paint
+     them in it or wait for it. It is a local file. */
   font-display: block;
 }
 
@@ -121,8 +129,9 @@
    * Marks are shapes, and were the reason the type scale kept growing: `●` at
    * 9px, `⋮` at 13, an icon at 12 are not four opinions about text, they are
    * four glyphs sized to look right. Named separately so they stop being
-   * counted as type — and set to the same two values the type scale uses, so
-   * there are three sizes on screen and not five.
+   * counted as type. They were the type scale's own values when it ran
+   * 10/11/13; the scale has since moved to 11/12 and these did not, because a
+   * glyph sized to look right does not get righter by following text.
    */
   --mark-sm: 10px;
   --mark-md: 13px;
@@ -272,10 +281,23 @@
    * that comes from a mono actually cut for display rather than for a terminal
    * grid. See the `@font-face` at the top of the file.
    *
-   * It falls back to `--mono`, which is the same design one generation coarser:
-   * if the bundled file ever fails, the head loses its cut and keeps its rank.
+   * It falls back to `--mono`: if the bundled file ever fails, the head loses
+   * its cut and keeps its rank.
+   *
+   * Every rule that sets it also sets `font-variant-ligatures: none`. Fira
+   * Code's ligatures redraw `->`, `!=` and `--` as single glyphs, and a slug or
+   * a branch shown as something other than the characters in it is the one
+   * thing an identifier cannot afford.
    */
-  --mono-display: 'Geist Mono', var(--mono);
+  --mono-display: 'Fira Code', var(--mono);
+
+  /*
+   * The tracking of every uppercase label — a group heading, a menu section,
+   * the rail's tabs. One role, so one value: it was 0.06em in seven places and
+   * 0.07em in three, which is a difference nobody can see and everybody has to
+   * keep in step.
+   */
+  --caps-track: 0.06em;
 }
 
 * {
@@ -492,7 +514,7 @@ button {
   font-family: var(--mono);
   font-size: var(--fs-body);
   font-weight: 500;
-  letter-spacing: 0.07em;
+  letter-spacing: var(--caps-track);
   text-transform: uppercase;
   color: var(--dim);
   white-space: nowrap;
@@ -1034,6 +1056,7 @@ button {
 .session-name {
   color: var(--text);
   font-family: var(--mono-display);
+  font-variant-ligatures: none;
   font-size: var(--fs-head);
   font-weight: 500;
   letter-spacing: -0.02em;
@@ -1232,7 +1255,7 @@ button {
 .menu-label {
   font-size: var(--fs-micro);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--caps-track);
   color: var(--dim);
   padding: 7px 6px 3px;
   margin-top: 3px;
@@ -1289,7 +1312,7 @@ button {
 .menu-back {
   font-size: var(--fs-micro);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--caps-track);
   color: var(--dim);
 }
 .menu-back .icon {
@@ -1427,6 +1450,7 @@ button {
   /* The title's own cut and step, so the `ex` below is the title's x-height —
      see the note above. It follows `--mono-display` for that reason. */
   font-family: var(--mono-display);
+  font-variant-ligatures: none;
   font-size: var(--fs-head);
   align-self: baseline;
   /* Baseline on an empty flex item is its bottom edge, so this lifts the mark's
@@ -1541,7 +1565,7 @@ button {
 
 .path {
   color: var(--dim);
-  font-size: 11px;
+  font-size: var(--fs-micro);
   margin-left: auto;
   font-family: var(--mono);
   white-space: nowrap;
@@ -2576,7 +2600,7 @@ button.activity:focus-visible {
 }
 
 .prompt-question {
-  font-size: 12px;
+  font-size: var(--fs-body);
   margin-bottom: 6px;
 }
 
@@ -2682,7 +2706,7 @@ button.activity:focus-visible {
 .button {
   padding: 4px 12px;
   border-radius: 5px;
-  font-size: 12px;
+  font-size: var(--fs-body);
   background: var(--edge);
 }
 .button:hover {
@@ -2708,9 +2732,9 @@ button.activity:focus-visible {
 /* --- PR list ------------------------------------------------------------ */
 
 .section-title {
-  font-size: var(--fs-body);
+  font-size: var(--fs-micro);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--caps-track);
   color: var(--dim);
   /* No vertical margin: `.body`'s own gap already spaces this from the group
      above, and 4px on top of it put one hole in an otherwise even list.
@@ -2899,6 +2923,7 @@ button.activity:focus-visible {
   /* On the text rail, like the row above it. */
   padding: 0 var(--s4) 0 var(--indent);
   font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
   color: var(--dim);
   min-width: 0;
 }
@@ -3127,6 +3152,7 @@ button.activity:focus-visible {
    * right edge read as another piece of data rather than as a caption.
    */
   font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
   color: var(--dim);
   white-space: nowrap;
   overflow: hidden;
@@ -3326,6 +3352,7 @@ button.activity:focus-visible {
      written, and gold on every busy worktree left it meaning nothing. */
   color: var(--soft);
   font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
   flex: none;
 }
 
@@ -3407,7 +3434,7 @@ button.activity:focus-visible {
   padding: 0 var(--s4) var(--s2) var(--row-indent);
   font-size: var(--fs-micro);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--caps-track);
   color: var(--dim);
 }
 
@@ -3664,7 +3691,7 @@ button.activity:focus-visible {
   padding: 0 var(--s4) var(--s2) var(--row-indent);
   font-size: var(--fs-micro);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--caps-track);
   color: var(--dim);
 }
 
@@ -3774,7 +3801,7 @@ button.activity:focus-visible {
 
 .add-repo-empty {
   color: var(--dim);
-  font-size: 11px;
+  font-size: var(--fs-micro);
   padding: 5px 8px;
 }
 
@@ -3850,9 +3877,9 @@ button.activity:focus-visible {
   gap: 6px;
   padding: 0 9px 0 0;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-micro);
   font-weight: 500;
-  letter-spacing: 0.07em;
+  letter-spacing: var(--caps-track);
   text-transform: uppercase;
   color: var(--soft);
   flex: none;
@@ -3870,8 +3897,8 @@ button.activity:focus-visible {
 /* Where you are. Not a control — the pane below is already all about it. */
 .nav-here {
   font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.07em;
+  font-size: var(--fs-micro);
+  letter-spacing: var(--caps-track);
   text-transform: uppercase;
   color: var(--text);
   white-space: nowrap;
@@ -3934,7 +3961,7 @@ button.activity:focus-visible {
 
 .modal-title {
   font-weight: 600;
-  font-size: 12px;
+  font-size: var(--fs-body);
   color: var(--soft);
 }
 
@@ -3989,7 +4016,7 @@ button.activity:focus-visible {
 }
 
 .step-question {
-  font-size: 12px;
+  font-size: var(--fs-body);
   color: var(--text);
   padding: 4px 8px 0;
 }
@@ -4113,7 +4140,7 @@ button.activity:focus-visible {
 .theme-family {
   font-size: var(--fs-micro);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--caps-track);
   color: var(--dim);
   padding: 5px 6px 3px;
 }
@@ -4148,7 +4175,7 @@ button.activity:focus-visible {
 .theme-check {
   flex: none;
   width: 8px;
-  font-size: 10px;
+  font-size: var(--mark-sm);
   color: var(--accent);
 }
 
@@ -4303,6 +4330,7 @@ button.activity:focus-visible {
    other card gives that line to the name of the thing. */
 .power-state {
   font-family: var(--mono-display);
+  font-variant-ligatures: none;
   font-size: var(--fs-head);
   font-weight: 500;
   color: var(--dim);
@@ -4329,6 +4357,7 @@ button.activity:focus-visible {
 
 .power-label {
   font-size: var(--fs-body);
+  font-variant-numeric: tabular-nums;
   color: var(--soft);
 }
 
@@ -4628,7 +4657,7 @@ button.activity:focus-visible {
 }
 .md-num {
   font-family: var(--mono);
-  font-size: 0.85em;
+  font-size: var(--fs-body);
 }
 
 /*
@@ -4676,13 +4705,19 @@ button.activity:focus-visible {
   text-decoration-color: color-mix(in srgb, var(--dim-mark) 55%, transparent);
 }
 
-/* Headings: the same size as the lines under them — the scale has no step
-   between body and title that a note could use — and weight and air do the
-   ranking instead. `#` is the day; `##` and below are its parts. */
+/* Headings. `#` is the day, and takes `--fs-head`: at the note's own 13px it
+   was ranked by weight alone, a bold sentence rather than a title over the
+   ones below it. In the sans, not the head's mono cut — a note's heading is
+   English. `##` and below are its parts, and stay at the note's size, ranked
+   by weight, tone and air. */
 .md-h {
   font-weight: 600;
   color: var(--text);
   padding-bottom: var(--s1);
+}
+.md-h1 {
+  font-size: var(--fs-head);
+  line-height: 1.3;
 }
 .md-h:not(:first-child) {
   margin-top: var(--s3);
@@ -4697,7 +4732,7 @@ button.activity:focus-visible {
 
 .md code {
   font-family: var(--mono);
-  font-size: 0.9em;
+  font-size: var(--fs-body);
   padding: 0 3px;
   border-radius: 3px;
   background: var(--edge);
@@ -4772,6 +4807,7 @@ body:has(.warning) {
 
 .warning-kicker {
   font-family: var(--mono-display);
+  font-variant-ligatures: none;
   font-size: 18px;
   letter-spacing: 0.24em;
   text-transform: uppercase;
@@ -4787,6 +4823,7 @@ body:has(.warning) {
  */
 .warning-countdown {
   font-family: var(--mono-display);
+  font-variant-ligatures: none;
   font-size: 156px;
   font-weight: 500;
   line-height: 1;
@@ -4820,7 +4857,7 @@ body:has(.warning) {
   border-radius: 999px;
   border: 1px solid var(--danger);
   background: color-mix(in srgb, var(--danger) 16%, transparent);
-  font-size: 17px;
+  font-size: 18px;
   color: var(--text);
 }
 .warning-dismiss:hover {
