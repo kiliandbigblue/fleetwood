@@ -30,15 +30,15 @@ const KEYS: ReadonlyArray<[string, string]> = [
 /** A mark, drawn by the class the list draws it with, and what it says. */
 const MARKS: ReadonlyArray<{ mark: React.JSX.Element; says: string }> = [
   { mark: <span className="attached-dot sev-danger" />, says: 'an agent here is stopped on a permission prompt' },
-  { mark: <span className="attached-dot sev-ok" />, says: 'an agent here is working — filled: you are attached' },
+  { mark: <span className="attached-dot sev-ok" />, says: 'an agent here is working' },
   { mark: <span className="attached-dot sev-quiet detached" />, says: 'every agent here is idle' },
   { mark: <span className="task-status-dot task-status-wip" />, says: 'a parked task, and how far along it is — the ring fills as it lands' },
   { mark: <span className="nested">⤶</span>, says: 'an agent another agent spawned' },
   { mark: <span className="nested">⇢</span>, says: 'runs in the claude daemon, not in the pane' },
   { mark: <span className="subagents">+2</span>, says: 'subagents running under it' },
   {
-    mark: <span className="provenance">~ ? …</span>,
-    says: 'a status nobody reported — read off the screen, a bare process, or gone stale; its dot is hollow',
+    mark: <span className="provenance">guessed</span>,
+    says: 'a status nobody reported — also "no hooks" or "stale"; its dot is hollow',
   },
   { mark: <span className="context-fig warn">312k</span>, says: 'context the next turn re-reads — gold, then red, as it gets costly' },
   { mark: <span className="task-pr-via">⇡ ~ ⇄</span>, says: 'a pull request from the stack, history, or the task itself' },

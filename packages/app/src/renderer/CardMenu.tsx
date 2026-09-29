@@ -231,7 +231,7 @@ export function CardMenu({ session, order, actions, onResult }: Props): React.JS
               })}
               {row({
                 label: 'clear slot',
-                title: 'drop the number — sorted by what it is doing again',
+                title: 'drop the number — back to the default order: sessions with agents first, then tmux order',
                 disabled: slot === undefined,
                 onClick: () => void act({ kind: 'clearSessionOrder', session }),
               })}

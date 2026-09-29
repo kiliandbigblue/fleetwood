@@ -1753,6 +1753,9 @@ button {
 .agents .agent:has(.status-dot),
 .task-repos .agent:has(.status-dot) {
   background: color-mix(in srgb, var(--text) 3%, transparent);
+  /* The dim ink lifted with the row: over the 3% lift, and more over a
+     working row's 9%, the window's `dim` fell under 4.5:1. */
+  --dim: color-mix(in srgb, var(--text) 66%, var(--bg));
 }
 
 /*
@@ -1835,9 +1838,7 @@ button {
 .task-repos .agent:has(.status-working) {
   background: color-mix(in srgb, var(--ok) 9%, transparent);
 }
-.agent:has(.status-working) .tool {
-  color: var(--ok);
-}
+
 .status-blocked_permission {
   background: var(--danger);
 }
@@ -1851,9 +1852,12 @@ button {
 .status-error {
   background: var(--danger);
 }
+/* Gone is a dash, not a ring: a hollow dot means a guessed status, and a dead
+   agent must not pass for a quiet one. */
 .status-gone {
-  background: transparent;
-  border: 1px solid var(--dim-mark);
+  height: 2px;
+  border-radius: 1px;
+  background: var(--dim-mark);
 }
 
 /*
@@ -1890,7 +1894,8 @@ button {
 .provenance {
   flex: none;
   margin-right: auto;
-  font-family: var(--mono);
+  /* English, so the sans: guessed, no hooks, stale. */
+  font-family: inherit;
   font-size: var(--fs-micro);
   color: var(--dim);
 }
@@ -1905,8 +1910,10 @@ button {
   100% {
     opacity: 1;
   }
+  /* Not below 0.7: at 0.35 a working dot spent half its time looking like an
+     idle one, which is the one confusion this dot exists to prevent. */
   50% {
-    opacity: 0.35;
+    opacity: 0.7;
   }
 }
 
@@ -1947,14 +1954,16 @@ button {
   font-size: var(--fs-body);
   flex: none;
 }
-.tool-claude {
-  color: var(--accent);
-}
-.tool-cursor {
-  color: var(--ok);
-}
+/*
+ * One ink for every tool. They were brand colours — claude in iris, cursor in
+ * the teal that means "working", codex in the gold that means "yours to deal
+ * with" — so a cursor row read as working whatever it was doing, and colour
+ * stopped meaning only state. The name is enough to tell the tools apart.
+ */
+.tool-claude,
+.tool-cursor,
 .tool-codex {
-  color: var(--warn);
+  color: var(--text);
 }
 .tool-unknown {
   color: var(--dim);
@@ -2086,6 +2095,16 @@ button.activity:focus-visible {
   border-radius: 4px;
   color: var(--dim);
 }
+/* The target is the row's height, not the 14px glyph: a close button that
+   has to be aimed at, inside a row whose own click goes to the pane. */
+.agent-kill {
+  position: relative;
+}
+.agent-kill::before {
+  content: '';
+  position: absolute;
+  inset: -7px -6px;
+}
 .agent-kill:hover {
   background: color-mix(in srgb, var(--danger) 25%, var(--panel));
   color: var(--danger);
@@ -2176,6 +2195,30 @@ button.activity:focus-visible {
 /* The one live thing in either rail: mid-turn agents, breathing. */
 .vital.ok {
   color: var(--ok);
+}
+.vital.danger {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* The way to the `?` sheet: a key cap and a word, quiet like the rest of the
+   rail, brightening when pointed at. */
+.vital-help {
+  margin-left: var(--s2);
+  color: var(--dim);
+  border-radius: 5px;
+  padding: 0 var(--s2);
+}
+.vital-help:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+/* A narrow rail has no room for it beside the runway gauges, and those are
+   what the rail is for; `?` still opens the sheet. */
+@media (max-width: 460px) {
+  .vital-help {
+    display: none;
+  }
 }
 
 .quotas {
@@ -2533,7 +2576,8 @@ button.activity:focus-visible {
   font-family: var(--mono);
   font-size: var(--fs-micro);
   line-height: 1;
-  color: var(--soft);
+  /* `text`, not `soft`: on the band a soft cap measured 4.1:1. */
+  color: var(--text);
   background: color-mix(in srgb, var(--text) 8%, transparent);
   box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text) 18%, transparent);
 }
@@ -2632,6 +2676,22 @@ button.activity:focus-visible {
  */
 .section-title + .card {
   margin-top: var(--s2);
+}
+
+/*
+ * A group's label starts its group: the seam goes above the label, not under
+ * it. The line was drawn at the top of the card that follows, so the label sat
+ * above that line and read as the tail of the card before — `workspaces · 1`
+ * belonged, to the eye, to the pull request above it.
+ */
+.body > .section-title,
+.body > div > .section-title:first-child {
+  margin: var(--s2) var(--s4) 0;
+  padding: var(--s3) calc(var(--indent) - var(--s4)) 0;
+  border-top: 1px solid var(--edge);
+}
+.section-title + .card::before {
+  content: none;
 }
 
 /*
@@ -3006,7 +3066,8 @@ button.activity:focus-visible {
   gap: var(--s2);
   font-family: var(--mono);
   font-size: var(--fs-micro);
-  color: var(--warn);
+  /* The band's colour: it counts the same thing the band marks. */
+  color: var(--danger);
 }
 
 /*
@@ -3040,7 +3101,11 @@ button.activity:focus-visible {
   transition: opacity 90ms ease-out;
 }
 
-.hidden-group > *:hover {
+.hidden-group > *:hover,
+/* Hiding a card puts it out of the way, not out of reach: one that is stopped
+   on a permission prompt comes back to full strength — faded, the prompt and
+   its buttons fell below readable contrast, often for the riskiest command. */
+.hidden-group > .card.attention {
   opacity: 1;
 }
 

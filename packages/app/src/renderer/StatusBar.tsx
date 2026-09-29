@@ -5,6 +5,8 @@ import { useDismiss } from './useDismiss.ts';
 
 interface Props {
   counts: FleetState['counts'];
+  /** Open the `?` sheet — the rail's one visible way to it. */
+  onHelp: () => void;
   /** Absent unless `limits.tokenCommand` is configured. */
   limits?: PlanLimits;
   /** Absent unless `limits.cursorTokenCommand` is configured. */
@@ -218,19 +220,28 @@ function CursorQuota({ usage }: { usage: CursorUsage }): React.JSX.Element {
  * you and every way to get to it; down here is everything that is merely true —
  * ambient, never actionable, and so never in the way of the list between them.
  */
-export function StatusBar({ counts, limits, cursorUsage }: Props): React.JSX.Element {
+export function StatusBar({ counts, limits, cursorUsage, onHelp }: Props): React.JSX.Element {
   return (
     <footer className="rail rail-bottom">
       {/*
        * Each count only when it has something in it.
        *
        * `0 working` was left out and `0 idle` was not, so the rail said the one
-       * zero and hid the other. Both follow the same rule now; the blocked are
-       * counted on the fleet tab, where the way to them is. A fleet with agents
-       * that are neither — all of them blocked — still says how many there are,
-       * so the rail is never blank while something is running.
+       * zero and hid the other. Every count follows the same rule now. A fleet
+       * whose agents are none of these — starting, compacting, in error —
+       * still says how many there are, so the rail is never blank while
+       * something is running.
        */}
       <div className="vitals">
+        {/* First, and in the band's colour: the bar used to read "2 working
+            2 idle" with two agents stopped on you, a calm summary of a fleet
+            that was not calm. */}
+        {counts.blocked_permission > 0 && (
+          <span className="vital danger" title={`${counts.blocked_permission} waiting on a permission prompt — press n`}>
+            <span className="dot" />
+            {counts.blocked_permission} blocked
+          </span>
+        )}
         {counts.working > 0 && (
           <span className="vital ok" title={`${counts.working} mid-turn`}>
             <span className="dot pulsing" />
@@ -248,12 +259,19 @@ export function StatusBar({ counts, limits, cursorUsage }: Props): React.JSX.Ele
           </span>
         ) : (
           counts.working === 0 &&
-          counts.idle === 0 && (
-            <span className="vital" title="every agent is blocked on a permission prompt — see the fleet tab">
+          counts.idle === 0 &&
+          counts.blocked_permission === 0 && (
+            <span className="vital" title="agents starting, compacting or in error">
               {counts.total} agent{counts.total === 1 ? '' : 's'}
             </span>
           )
         )}
+        {/* The keys and marks, findable without knowing they exist: `?` was
+            only ever mentioned in a tooltip and the empty state. */}
+        <button type="button" className="vital vital-help" onClick={onHelp} title="every key and mark (?)">
+          <kbd className="key-cap">?</kbd>
+          keys
+        </button>
       </div>
       <div className="quotas">
         {limits && <ClaudeQuota limits={limits} />}

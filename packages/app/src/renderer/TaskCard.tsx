@@ -529,7 +529,13 @@ export function TaskCard({
   const severity = liveSeverity(session?.agents ?? []);
   const needsYou = needsYouLabel(session?.agents ?? []);
   const attached = (session?.attached ?? 0) > 0;
-  const folded = compact === true && !expanded;
+  /*
+   * Parked tasks fold, and so does a live session with no agent in it: its
+   * worktrees, pull requests and note are the same furniture a parked task
+   * has, and drawn in full they buried the rows that were actually running.
+   */
+  const foldable = compact === true || (session !== undefined && session.agents.length === 0);
+  const folded = foldable && !expanded;
 
   const openNotes = (): void => {
     setDraft(task.notes ?? '');
@@ -618,7 +624,9 @@ export function TaskCard({
         {live ? (
           /* The session card's mark, drawn by the same rule — see `liveSeverity`. */
           <span
-            className={`attached-dot sev-${severity}${attached ? '' : ' detached'}`}
+            /* Always filled: hollow is kept for one meaning, a guessed status.
+               Whether a client is attached is in the tooltip. */
+            className={`attached-dot sev-${severity}`}
             title={`${SEVERITY_NOTE[severity]} · ${attached ? 'attached' : 'running, not attached'}`}
           />
         ) : (
@@ -650,7 +658,7 @@ export function TaskCard({
         {/* Beside the name and shown at rest, not in the trailing column with the
             other controls: those appear on hover over the summary, and a card
             whose contents are hidden has to say so before you point at it. */}
-        {compact && (
+        {foldable && (
           <button
             className={`card-fold${expanded ? ' open' : ''}`}
             aria-expanded={expanded}

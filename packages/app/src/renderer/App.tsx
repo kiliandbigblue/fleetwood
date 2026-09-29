@@ -135,6 +135,16 @@ export function App(): React.JSX.Element {
   }, [toast]);
 
   useEffect(() => {
+    /*
+     * An answer key with no prompt under focus does nothing — say why, when a
+     * prompt is waiting somewhere else. Otherwise stay quiet: a stray `a`
+     * with nothing blocked is not worth a message.
+     */
+    const hintNoPrompt = (): boolean => {
+      if (!document.querySelector('.prompt')) return false;
+      setToast({ message: 'answer keys act on the focused card — press n to go to the one asking', ok: true });
+      return true;
+    };
     const onKey = (event: KeyboardEvent): void => {
       if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
         event.preventDefault();
@@ -192,9 +202,9 @@ export function App(): React.JSX.Element {
               if (!focusNextAttention(true)) setToast({ message: 'nothing needs you', ok: true });
               return true;
             case 'a':
-              return answerFocusedPrompt('approve');
+              return answerFocusedPrompt('approve') || hintNoPrompt();
             case 'd':
-              return answerFocusedPrompt('deny');
+              return answerFocusedPrompt('deny') || hintNoPrompt();
             case 'm':
               return openFocusedMenu();
             case 'ArrowRight':
@@ -205,7 +215,7 @@ export function App(): React.JSX.Element {
               return true;
             default:
               // The terminal numbers its options, and so does the card.
-              return /^[1-9]$/.test(event.key) && answerFocusedPrompt({ key: event.key });
+              return /^[1-9]$/.test(event.key) && (answerFocusedPrompt({ key: event.key }) || hintNoPrompt());
           }
         })();
         if (handled) event.preventDefault();
@@ -274,8 +284,9 @@ export function App(): React.JSX.Element {
       : 0;
 
   /*
-   * Numbered sessions sit where you put them; the rest are ranked by what they
-   * are doing — attention first, then sessions with agents, then tmux's order.
+   * Numbered sessions sit where you put them; the rest go sessions with agents
+   * first, then tmux's order. Never by attention — a blocked card gets louder
+   * where it is, and the list holds still under your hand.
    * Both halves of that rule live in `sortSessions`, so `fw status` draws the
    * same list.
    */
@@ -438,6 +449,44 @@ export function App(): React.JSX.Element {
     );
   }
 
+  /**
+   * Agents with no card: the ones in the claude daemon, and the ones whose
+   * terminal is gone.
+   *
+   * Two different situations, so not filed under one scary label: a
+   * daemon-hosted one is running fine — we just cannot tell which terminal is
+   * showing it. Said in the panel's own voice; `pane gone — ended without a
+   * closing event` was the collector's state name, verbatim.
+   */
+  function orphanGroup(reason: 'daemon-hosted' | 'pane-gone'): React.JSX.Element | null {
+    const group = (snapshot?.fleet.orphans ?? []).filter((a) => (a.orphanReason ?? 'pane-gone') === reason);
+    if (group.length === 0) return null;
+    return (
+      <div key={reason}>
+        <div
+          className="section-title"
+          title={
+            reason === 'daemon-hosted'
+              ? 'running in the claude daemon — no terminal to attach to'
+              : 'left over — the terminal these ran in is gone'
+          }
+        >
+          {reason === 'daemon-hosted' ? 'running, no terminal' : 'left over'} · {group.length}
+        </div>
+        {/* `orphans` so the list keys reach these rows — see `listKeys.ts`. */}
+        <div className="card orphans">
+          <div className="agents">
+            {group.map((agent) => (
+              /* With no card above it, the row is the only place to say which
+                 work this agent is on: the folder it runs in. */
+              <AgentRow key={agent.key} agent={agent} where={agent.cwd ? folderName(agent.cwd) : undefined} onResult={onResult} />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   /** A task with no session: its card, with the one button that starts one. */
   function dormantRow(task: Task): React.JSX.Element {
     return (
@@ -566,6 +615,9 @@ export function App(): React.JSX.Element {
               </div>
             )}
             {sessions.map((session) => sessionRow(session, order))}
+            {/* Running agents with no terminal belong with the running work, not
+                under the parked tasks; the ones whose terminal is gone go last. */}
+            {orphanGroup('daemon-hosted')}
             {idleWorkspaces.length > 0 && (
               <>
                 {/* A label, not a sentence: it names the group under it, and the
@@ -585,44 +637,7 @@ export function App(): React.JSX.Element {
                 {dormant.map((task) => dormantRow(task))}
               </>
             )}
-            {/* Two different situations, so don't file them under one scary label:
-                a daemon-hosted one is running fine — we just couldn't tell which
-                terminal is showing it. */}
-            {(['daemon-hosted', 'pane-gone'] as const).map((reason) => {
-              const group = snapshot.fleet.orphans.filter(
-                (a) => (a.orphanReason ?? 'pane-gone') === reason,
-              );
-              if (group.length === 0) return null;
-              return (
-                <div key={reason}>
-                  <div className="section-title">
-                    {/* Said in the panel's own voice. `pane gone — ended without a
-                        closing event` was the internal state name and the reason
-                        it was set, verbatim: true, and the only line in the list
-                        written for whoever wrote the collector. */}
-                    {/* Labels, like the two groups above; the sentence that says
-                        what each one means moved to the hover. */}
-                    <span
-                      title={
-                        reason === 'daemon-hosted'
-                          ? 'running in the claude daemon — no terminal to attach to'
-                          : 'left over — the terminal these ran in is gone'
-                      }
-                    >
-                      {reason === 'daemon-hosted' ? 'in the daemon' : 'left over'} · {group.length}
-                    </span>
-                  </div>
-                  {/* `orphans` so the list keys reach these rows — see `listKeys.ts`. */}
-                  <div className="card orphans">
-                    <div className="agents">
-                      {group.map((agent) => (
-                        <AgentRow key={agent.key} agent={agent} onResult={onResult} />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            {orphanGroup('pane-gone')}
           </>
         )}
 
@@ -702,7 +717,14 @@ export function App(): React.JSX.Element {
 
       {/* Pinned below the scrolling body: everything down there is ambient
           context rather than something you act on — see `StatusBar`. */}
-      {counts && <StatusBar counts={counts} limits={snapshot?.limits} cursorUsage={snapshot?.cursorUsage} />}
+      {counts && (
+        <StatusBar
+          counts={counts}
+          limits={snapshot?.limits}
+          cursorUsage={snapshot?.cursorUsage}
+          onHelp={() => setHelpOpen(true)}
+        />
+      )}
 
       <NewTask
         open={newTaskOpen}
@@ -777,4 +799,9 @@ function ToastLine({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
       </button>
     </div>
   );
+}
+
+/** The last segment of a path, for naming a folder in a row. */
+function folderName(path: string): string {
+  return path.split('/').filter(Boolean).pop() ?? path;
 }

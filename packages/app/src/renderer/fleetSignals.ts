@@ -55,7 +55,9 @@ export type Severity = 'danger' | 'ok' | 'quiet';
  * worktree used to outrank a working agent on the card's one mark.
  */
 export function liveSeverity(agents: ReadonlyArray<Pick<FleetAgent, 'status'>>): Severity {
-  if (agents.some((a) => a.status === 'blocked_permission' || a.status === 'error')) return 'danger';
+  // Only a permission prompt: an agent in error keeps its red dot on its own
+  // row, but it is not waiting on you, and the card's mark must not claim it is.
+  if (agents.some((a) => a.status === 'blocked_permission')) return 'danger';
   if (agents.some((a) => a.status === 'working' || a.status === 'compacting')) return 'ok';
   return 'quiet';
 }
@@ -149,14 +151,15 @@ export function stepIndex(current: number, count: number, direction: 1 | -1): nu
  * The panel's first promise is that an inference never looks as solid as a
  * report, and until this the difference lived only in the dot's tooltip: an
  * agent whose hook had died still read as a confident `working`. A reported
- * status wears nothing — it is the ordinary case — and the other three wear
- * the marks the CLI has always printed.
+ * status wears nothing — it is the ordinary case — and the other three say
+ * which kind of guess in a word. The CLI prints `~ ? …`; the panel used those
+ * too, until `…` turned out to be indistinguishable from a truncated line.
  */
 export const PROVENANCE_MARK: Record<StatusProvenance, { mark: string; note: string } | undefined> = {
   hook: undefined,
-  screen: { mark: '~', note: 'read off the pane, not reported' },
-  process: { mark: '?', note: 'a process is running but sent no hooks' },
-  stale: { mark: '…', note: 'last reported a while ago, unconfirmed' },
+  screen: { mark: 'guessed', note: 'read off the pane, not reported' },
+  process: { mark: 'no hooks', note: 'a process is running but sent no hooks' },
+  stale: { mark: 'stale', note: 'last reported a while ago, unconfirmed' },
 };
 
 /**

@@ -166,14 +166,16 @@ test('a numbered session stays in its slot, blocked agent or not', () => {
   assert.deepEqual(names(sortSessions(fleet)), ['10-fleetwood', '20-atlas', '30-blocked']);
 });
 
-test('unnumbered sessions follow, still ranked by what they are doing', () => {
+test('unnumbered sessions follow, those with agents first', () => {
   const fleet = [
     session('HOME'),
     session('20-atlas'),
     session('graphy', { agents: [{}] }),
     session('proto', { needsAttention: true }),
   ];
-  assert.deepEqual(names(sortSessions(fleet)), ['20-atlas', 'proto', 'graphy', 'HOME']);
+  // A blocked session does not jump the queue: the list holds still, and the
+  // card gets louder where it is.
+  assert.deepEqual(names(sortSessions(fleet)), ['20-atlas', 'graphy', 'HOME', 'proto']);
 });
 
 test('an unnumbered fleet is the list fleetwood always drew', () => {
@@ -183,9 +185,9 @@ test('an unnumbered fleet is the list fleetwood always drew', () => {
     session('proto', { needsAttention: true, agents: [{}] }),
     session('dotfiles'),
   ];
-  // Attention, then agents, then tmux's own order — and HOME stays ahead of
-  // dotfiles because that is the order tmux listed them in.
-  assert.deepEqual(names(sortSessions(fleet)), ['proto', 'graphy', 'HOME', 'dotfiles']);
+  // Agents, then tmux's own order — and HOME stays ahead of dotfiles because
+  // that is the order tmux listed them in. Attention moves nothing.
+  assert.deepEqual(names(sortSessions(fleet)), ['graphy', 'proto', 'HOME', 'dotfiles']);
 });
 
 test('the first move numbers the whole fleet and swaps two neighbours', () => {

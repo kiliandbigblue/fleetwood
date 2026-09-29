@@ -195,9 +195,11 @@ export interface Orderable {
  * numbered session sits where you put it, and a blocked agent does not jump the
  * queue, because that is what asking for a hand-edited order means and a list
  * that rearranges itself under you is exactly what the numbers are for.
- * Unnumbered sessions follow, and among *them* fleetwood's own reading still
- * applies: whoever needs you first, then sessions with agents in them, then
- * tmux's creation order.
+ * Unnumbered sessions follow: sessions with agents in them, then tmux's
+ * creation order. Not "whoever needs you first" any more — that rank moved a
+ * card the moment its agent blocked, which is the one moment you are reaching
+ * for it. A blocked card gets louder where it is, and `n` in the panel goes to
+ * it; the list itself holds still.
  *
  * So both markers are opt-in per session. Mark nothing and this is the list
  * fleetwood always drew; number one thing and only that one is placed; pin one
@@ -215,9 +217,6 @@ export function sortSessions<T extends Orderable>(sessions: readonly T[]): T[] {
       else if (b.order !== undefined) return 1;
 
       // Unnumbered, or two sessions sharing a slot: fleetwood's own reading.
-      if (a.session.needsAttention !== b.session.needsAttention) {
-        return a.session.needsAttention ? -1 : 1;
-      }
       const aAgents = a.session.agents.length > 0;
       const bAgents = b.session.agents.length > 0;
       if (aAgents !== bAgents) return aAgents ? -1 : 1;

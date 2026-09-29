@@ -51,9 +51,9 @@ export function AgentRow({ agent, where, onResult }: Props): React.JSX.Element {
    * Whether this status was reported, or pieced together.
    *
    * Marked twice, because each mark reaches someone the other misses: the dot
-   * goes hollow, which reads at a glance down a column of solid ones, and the
-   * CLI's own `~` / `?` / `…` follows the activity, which says *which* kind of
-   * guess it is. Not a column of its own — that was tried and cost more width
+   * goes hollow, which reads at a glance down a column of solid ones, and a
+   * word follows the activity — guessed, no hooks, stale — which says *which*
+   * kind of guess it is. Not a column of its own — that was tried and cost more width
    * than the nuance was worth — just a mark where the sentence ends.
    */
   const inferred = PROVENANCE_MARK[agent.provenance];
@@ -263,7 +263,7 @@ function PromptBlock({
             onClick={() => press(option.key, option.label)}
           >
             <kbd className="key-cap">{option.key}</kbd>
-            {armed === option.key ? `${option.label} — press ${option.key} again` : option.label}
+            {option.label}
           </button>
         ))}
         <button

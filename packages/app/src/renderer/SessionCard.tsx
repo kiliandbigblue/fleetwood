@@ -106,7 +106,7 @@ export function SessionCard({ session, pr, order, onResult }: Props): React.JSX.
       >
         {/* Colour is the state, shape is attachment — as on a task group. */}
         <span
-          className={`attached-dot sev-${state}${session.attached > 0 ? '' : ' detached'}`}
+          className={`attached-dot sev-${state}`}
           title={sevNote(state, session.attached > 0)}
         />
         {/* The label, not the name: an order prefix is fleetwood's own bookkeeping
