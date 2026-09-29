@@ -208,7 +208,7 @@ export function Notes({ notes, editor, open, onToggle, onResult }: Props): React
         <span>
           {editing
             ? 'saved as you type · ~/.fleetwood/notes.md · esc closes'
-            : 'markdown · click a line to write · tick a box to edit it · ~/.fleetwood/notes.md'}
+            : 'markdown · click a line to write · tick a box to check it off · ~/.fleetwood/notes.md'}
         </span>
         {/* The same chip a worktree row has, for the same reason: a line goes in
             the box, a paragraph goes in the editor you live in. It opens in a

@@ -184,7 +184,7 @@ export async function archivePrSession(sessionName: string, force = false): Prom
     const local = await resolveRepo(repo);
     if (local) {
       const removal = await removeWorktree(local.path, worktreePath, force);
-      if (!removal.ok) return { ok: false, created: false, detail: removal.detail };
+      if (!removal.ok) return { ok: false, created: false, detail: `kept ${sessionName} — ${removal.detail}` };
     }
   }
 

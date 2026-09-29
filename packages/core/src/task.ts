@@ -656,6 +656,23 @@ export interface TaskResult {
   repoResults: Array<{ repo: string; ok: boolean; detail: string }>;
 }
 
+function plural(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? '' : 's'}`;
+}
+
+/**
+ * The repos a create could not add, each with its reason.
+ *
+ * First line only: a failed `git worktree add` hands back its whole stderr, and
+ * a toast that is five lines of git says less than the one line that matters.
+ */
+function skippedRepos(results: TaskResult['repoResults']): string {
+  return results
+    .filter((r) => !r.ok)
+    .map((r) => `${r.repo}: ${r.detail.split('\n')[0]}`)
+    .join('; ');
+}
+
 /**
  * Create (or top up) a task: worktrees, brief, tmux session, agent.
  *
@@ -711,7 +728,7 @@ export async function createTask(input: CreateTaskInput): Promise<TaskResult> {
   if (repos.length === 0) {
     // Nothing was created, so leave no empty folder behind.
     await rm(dir, { recursive: true, force: true });
-    return { ok: false, detail: 'no worktree could be created', repoResults };
+    return { ok: false, detail: `no worktree created — ${skippedRepos(repoResults)}`, repoResults };
   }
 
   await writeMeta(dir, record, repos);
@@ -722,7 +739,11 @@ export async function createTask(input: CreateTaskInput): Promise<TaskResult> {
   return {
     ok: true,
     task: { ...record, dir, repos, session },
-    detail: `task ${slug} on ${record.branch} with ${repos.length} repo${repos.length === 1 ? '' : 's'}`,
+    // A partial create is still a create, but the repos it could not add were
+    // being dropped on the floor with a success toast over them.
+    detail: `task ${slug} on ${record.branch} with ${plural(repos.length, 'repo')}${
+      repoResults.some((r) => !r.ok) ? ` — skipped ${skippedRepos(repoResults)}` : ''
+    }`,
     repoResults,
   };
 }
@@ -956,7 +977,9 @@ export async function removeRepoFromTask(
     return {
       ok: false,
       task: { ...record, dir, repos: before },
-      detail: `${repo.name} — ${result.detail}${result.dirty ? '; pass force to discard' : ''}`,
+      // The command, not the flag: the panel never sends force, so "pass
+      // force" was advice only the CLI could take, phrased for neither.
+      detail: `${repo.name} — ${result.detail}${result.dirty ? ` · \`fw task rm ${slug} ${repo.name} --force\` discards them` : ''}`,
       repoResults: [{ repo: repo.name, ok: false, detail: result.detail }],
     };
   }
@@ -1154,7 +1177,7 @@ export async function archiveTask(
     // refusal it actually answers, rather than on every failure.
     return {
       ok: false,
-      detail: `kept ${kept.length} worktree(s): ${kept.join('; ')}${anyDirty ? '; pass force to discard' : ''}`,
+      detail: `kept ${plural(kept.length, 'worktree')}: ${kept.join('; ')}${anyDirty ? ` · \`fw task archive ${slug} --force\` discards them` : ''}`,
       removed,
       kept,
     };
@@ -1184,7 +1207,7 @@ export async function archiveTask(
     : '';
   return {
     ok: true,
-    detail: `archived ${slug}: removed ${removed.length} worktree(s)${sessionNote}`,
+    detail: `archived ${slug}: removed ${plural(removed.length, 'worktree')}${sessionNote}`,
     removed,
     kept,
   };

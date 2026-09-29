@@ -392,7 +392,9 @@ export async function removeWorktree(repoPath: string, worktreePath: string, for
   const dirty = status.trim().length > 0;
   if (dirty && !force) {
     const files = status.trim().split('\n').length;
-    return { ok: false, detail: `refusing: ${files} uncommitted change(s) in ${worktreePath}`, dirty: true };
+    // Counted off porcelain lines, so files. No path: every caller names the
+    // worktree already, and an absolute path was most of the toast.
+    return { ok: false, detail: `${files} uncommitted file${files === 1 ? '' : 's'} — commit or stash them first`, dirty: true };
   }
 
   const args = ['-C', repoPath, 'worktree', 'remove', worktreePath];

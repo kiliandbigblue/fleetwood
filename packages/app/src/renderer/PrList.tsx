@@ -194,7 +194,7 @@ function PrRow({
         <span>{relativeIso(pr.updatedAt)}</span>
         {/* A task's PRs share one head branch, so this recognises the whole set. */}
         {task && (
-          <span className="linked" title={`part of task ${task.slug} (${task.repos.length} repos)`}>
+          <span className="linked" title={`part of task ${task.slug} (${task.repos.length} repo${task.repos.length === 1 ? '' : 's'})`}>
             ⇄ {task.slug}
           </span>
         )}
@@ -303,7 +303,7 @@ function MergedRow({
         {/* Someone else opened it, so you merged or reviewed it — still yours to ship. */}
         {!pr.mine && pr.author && <span title={`opened by ${pr.author}`}>by {pr.author}</span>}
         {task && (
-          <span className="linked" title={`part of task ${task.slug} (${task.repos.length} repos)`}>
+          <span className="linked" title={`part of task ${task.slug} (${task.repos.length} repo${task.repos.length === 1 ? '' : 's'})`}>
             ⇄ {task.slug}
           </span>
         )}

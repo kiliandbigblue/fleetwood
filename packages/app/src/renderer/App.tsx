@@ -655,13 +655,13 @@ export function App(): React.JSX.Element {
         {snapshot && !snapshot.hooksInstalled && (
           <div className="banner">
             <span>
-              Agent hooks aren't installed, so statuses are guessed from the screen rather than reported.
+              agent hooks aren’t installed — statuses are guessed from the screen, not reported
             </span>
             <button
               className="chip"
               onClick={() => void send({ kind: 'installHooks' }).then((r) => onResult(r.detail, r.ok))}
             >
-              install
+              install hooks
             </button>
           </div>
         )}
@@ -791,7 +791,7 @@ export function App(): React.JSX.Element {
                   else, and the drawer is the one place it had been spelling
                   it out in words instead. */}
               {hiddenAttention > 0 && (
-                <span className="hidden-attention" title={`${hiddenAttention} of them is blocked on a permission prompt`}>
+                <span className="hidden-attention" title={`${hiddenAttention} of them ${hiddenAttention === 1 ? 'is' : 'are'} waiting on a permission prompt`}>
                   <span className="dot" />
                   {hiddenAttention}
                 </span>

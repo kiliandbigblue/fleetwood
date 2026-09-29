@@ -98,7 +98,7 @@ export function AgentRow({ agent, where, onResult }: Props): React.JSX.Element {
           </span>
         )}
         {agent.subagents > 0 && (
-          <span className="subagents" title={`${agent.subagents} subagents running`}>
+          <span className="subagents" title={`${agent.subagents} subagent${agent.subagents === 1 ? '' : 's'} running`}>
             +{agent.subagents}
           </span>
         )}

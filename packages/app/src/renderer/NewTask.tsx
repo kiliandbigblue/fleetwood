@@ -52,6 +52,8 @@ export function NewTask({ open, onClose, initialSummary, onResult }: Props): Rea
   const [index, setIndex] = useState(0);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [repos, setRepos] = useState<string[]>([]);
+  /** The repo scan has answered — until then an empty list means "still looking". */
+  const [reposLoaded, setReposLoaded] = useState(false);
   const [query, setQuery] = useState('');
   const [cursor, setCursor] = useState(0);
   const [toggled, setToggled] = useState<string[]>([]);
@@ -69,10 +71,12 @@ export function NewTask({ open, onClose, initialSummary, onResult }: Props): Rea
     setDraft({ ...EMPTY_DRAFT, summary: initialSummary ?? '' });
     setBusy(false);
     setRepos([]);
+    setReposLoaded(false);
     void send({ kind: 'listProjects' }).then((result) => {
       if ('projects' in result) {
         setRepos(result.projects.filter((p: Project) => p.isRepo).map((p: Project) => p.name));
       }
+      setReposLoaded(true);
     });
   }, [open, initialSummary]);
 
@@ -221,7 +225,16 @@ export function NewTask({ open, onClose, initialSummary, onResult }: Props): Rea
               />
             )}
             <div className="choices">
-              {options.length === 0 && <div className="empty">no repo matches</div>}
+              {/* Three different empties, and only the last is about what you typed. */}
+              {options.length === 0 && (
+                <div className="empty">
+                  {!reposLoaded
+                    ? 'looking…'
+                    : repos.length === 0
+                      ? 'no repos under your projectRoots — see ~/.fleetwood/config.json'
+                      : `no repo matches “${query.trim()}”`}
+                </div>
+              )}
               {options.map((name, i) => {
                 const on = toggled.includes(name);
                 return (

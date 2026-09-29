@@ -268,7 +268,7 @@ export function StatusBar({ counts, limits, cursorUsage, onHelp }: Props): React
           )
         )}
         {counts.error > 0 && (
-          <span className="vital danger" title={`${counts.error} agent(s) in error — see its row for what it last said`}>
+          <span className="vital danger" title={counts.error === 1 ? 'an agent is in error — its row says what it last said' : `${counts.error} agents in error — their rows say what each last said`}>
             {counts.error} error
           </span>
         )}

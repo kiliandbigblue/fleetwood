@@ -288,7 +288,7 @@ test('a kept worktree says which one and why, and only offers force when force w
   const dirty = await removeWorktree(checkout, linked, false);
   assert.equal(dirty.ok, false);
   assert.equal(dirty.dirty, true);
-  assert.match(dirty.detail, /uncommitted change/);
+  assert.match(dirty.detail, /uncommitted file/);
 });
 
 /** The three-layer stack, as `readTaskRepos` would report it. */

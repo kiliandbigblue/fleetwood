@@ -144,7 +144,7 @@ export function TopBar({
       tone: 'danger',
       title:
         blocked === 0
-          ? `${fleetCount} running${parkedCount > 0 ? `, ${parkedCount} with nothing running them` : ''} · ? for keys`
+          ? `${fleetCount} running${parkedCount > 0 ? `, ${parkedCount} not running` : ''} · ? for keys`
           : `${blocked} waiting on a permission prompt — press n to go to the next one`,
     },
     {

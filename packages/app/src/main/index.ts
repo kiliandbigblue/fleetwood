@@ -243,6 +243,13 @@ async function buildSnapshot(): Promise<Snapshot> {
   };
 }
 
+/** What installing the hooks did, as a sentence rather than a diff. */
+function hooksReport(claude: number, cursor: number): string {
+  const part = (tool: string, n: number): string =>
+    n === 0 ? `${tool} already had them` : `${n} added for ${tool}`;
+  return `hooks installed — ${part('claude', claude)}, ${part('cursor', cursor)}`;
+}
+
 function summarise(snapshot: Snapshot): string {
   const { counts } = snapshot.fleet;
   const blocked = counts.blocked_permission;
@@ -668,7 +675,7 @@ async function handle(request: Request): Promise<Response> {
       await pushSnapshot();
       return {
         ok: true,
-        detail: `claude: +${report.claude.added.length}, cursor: +${report.cursor.added.length}`,
+        detail: hooksReport(report.claude.added.length, report.cursor.added.length),
       };
     }
 

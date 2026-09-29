@@ -192,7 +192,7 @@ export function RepoRow({
         }}
         title={`remove this worktree from the task — the task and its other repos stay. Refuses while ${repo.name} has uncommitted work.`}
       >
-        {confirmRemove ? 'remove — sure?' : 'remove'}
+        {confirmRemove ? 'remove worktree — sure?' : 'remove worktree'}
       </button>
       {/* Only worth saying when nothing accounts for the branch it is on. A
           stack layer's directory is named for its branch, so it is where it

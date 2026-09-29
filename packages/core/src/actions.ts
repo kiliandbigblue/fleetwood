@@ -369,7 +369,7 @@ export function planKillAgent(agent: AgentTarget): KillPlan {
   const candidates = [agent.hookPid, agent.pid].filter(real);
   return candidates.length > 0
     ? { candidates: [...new Set(candidates)] }
-    : { candidates: [], refusal: `no process known for this ${agent.tool}` };
+    : { candidates: [], refusal: `no process known for this ${agent.tool} — close it from its pane` };
 }
 
 /** Is `pid` still running? EPERM means yes — running, just not ours to poke. */
@@ -449,13 +449,13 @@ export async function killAgent(
     return {
       ok: false,
       detail: running
-        ? `pid ${candidates.join('/')} is no longer ${agent.tool} — refusing to kill it`
+        ? `pid ${candidates.join('/')} is no longer ${agent.tool} — refusing to close it`
         : `${what} is already gone`,
     };
   }
 
   if (!signal(target, 'SIGTERM')) {
-    return { ok: false, detail: `could not signal pid ${target} — it may not be yours to kill` };
+    return { ok: false, detail: `could not signal pid ${target} — it may not be yours to close` };
   }
 
   const graceMs = options.graceMs ?? 2_000;

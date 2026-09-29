@@ -142,6 +142,7 @@ export function AddRepo({ task, onClose, onResult }: Props): React.JSX.Element {
             autoFocus
             value={branchDraft}
             placeholder={task.branch}
+            aria-label={`branch for the ${picked.name} worktree`}
             onChange={(event) => setBranchDraft(event.target.value)}
             onKeyDown={(event) => {
               if (event.key !== 'Escape') return;
@@ -199,7 +200,7 @@ export function AddRepo({ task, onClose, onResult }: Props): React.JSX.Element {
             the same on screen — so say which. */}
         {matches.length === 0 && (
           <div className="add-repo-empty">
-            {candidates.length === 0 ? 'looking…' : 'no repo matches'}
+            {candidates.length === 0 ? 'looking…' : `no repo matches “${query.trim()}”`}
           </div>
         )}
         {matches.map((candidate, index) => {

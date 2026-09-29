@@ -89,8 +89,8 @@ export function SessionCard({ session, pr, order, onResult }: Props): React.JSX.
           onClick: () => void act({ kind: 'archiveSession', session: session.name }),
         }
       : {
-          label: 'kill',
-          title: 'kill this tmux session',
+          label: 'kill session',
+          title: 'kill this tmux session and every pane in it',
           danger: true,
           confirm: true,
           onClick: () => void act({ kind: 'killSession', session: session.name }),
