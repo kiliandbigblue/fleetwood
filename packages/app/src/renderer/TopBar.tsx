@@ -154,7 +154,8 @@ export function TopBar({
       // Merged, image built, and nothing deployed it: the one PR state that is
       // waiting on you rather than on CI.
       alert: toDeploy,
-      tone: 'accent',
+      // Gold, the panel's "yours to deal with": an image nobody deployed.
+      tone: 'warn',
       title:
         toDeploy === 0
           ? 'pull requests — yours, waiting on your review, and recently merged'

@@ -37,8 +37,9 @@ export const CHECK_GLYPH: Record<string, string> = {
  * What each state looks like, and what it asks of you.
  *
  * `built` is the only one that means work, so it is the only one that gets a
- * directional glyph and the accent colour — everything else is either in flight
- * or already answered.
+ * directional glyph and a colour — gold, the panel's "yours to deal with".
+ * Everything in flight is dim, because it asks nothing of you; red is kept for
+ * a trail that broke.
  */
 const DEPLOY_BADGE: Record<DeployState, { glyph: string; label: string; hint: string }> = {
   built: {
@@ -100,10 +101,26 @@ function PrRow({
     void act({ kind: 'openPr', repo: pr.repo, number: pr.number, branch: pr.branch });
   };
 
+  const owes = pr.reviewDecision === 'CHANGES_REQUESTED' && pr.roles.includes('mine');
   return (
-    <div className="pr">
+    /* The row is the target, as on the fleet: Enter or a click does the row's
+       one job — go to its session, or make one. `list-stop` puts it on the
+       j/k walk; `owes` is what `n` looks for. */
+    <div
+      className={`pr list-stop${owes ? ' owes' : ''}`}
+      role="link"
+      tabIndex={0}
+      aria-label={`${pr.repo.split('/').pop()}#${pr.number} ${pr.title}${
+        pr.isDraft ? ', draft' : pr.reviewDecision ? `, ${REVIEW_LABEL[pr.reviewDecision] ?? pr.reviewDecision}` : ''
+      }${pr.checks ? `, checks ${pr.checks}` : ''} — ${session ? 'focus its session' : 'open a worktree for it'}`}
+      onClick={open}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' && event.target === event.currentTarget) open();
+      }}
+    >
       <div className="pr-top">
         <span
+          aria-hidden="true"
           className={`checks-${pr.checks ?? 'none'}`}
           title={
             pr.checksDetail
@@ -129,10 +146,25 @@ function PrRow({
           {pr.title}
         </div>
         <span className="row-act">
-          <button className="chip" onClick={open} title={session ? 'focus its session' : 'create a worktree and session'}>
+          <button
+            className="chip"
+            onClick={(event) => {
+              event.stopPropagation();
+              open();
+            }}
+            title={session ? 'focus its session' : 'create a worktree and session'}
+          >
             {session ? 'focus' : 'open'}
           </button>
-          <button className="chip" onClick={() => void act({ kind: 'openExternal', url: pr.url })} title="open on GitHub">
+          <button
+            className="chip"
+            aria-label="open on GitHub"
+            onClick={(event) => {
+              event.stopPropagation();
+              void act({ kind: 'openExternal', url: pr.url });
+            }}
+            title="open on GitHub"
+          >
             ↗
           </button>
         </span>
@@ -213,10 +245,24 @@ function MergedRow({
   // build log with the tag in it, which is what you check before deploying.
   const target = pr.deploy.decidedBy?.url ?? pr.url;
 
+  const openTarget = (): void => void act({ kind: 'openExternal', url: target });
   return (
-    <div className={`pr${done ? ' quiet' : ''}`}>
+    /* The row opens the run that decided its state — the build log with the
+       tag in it, for an image waiting to ship. */
+    <div
+      className={`pr list-stop${done ? ' quiet' : ''}${needsDeploy(pr) ? ' owes' : ''}`}
+      role="link"
+      tabIndex={0}
+      aria-label={`${pr.repo.split('/').pop()}#${pr.number} ${pr.title}, ${badge.label}${
+        pr.deploy.tag ? ` ${pr.deploy.tag}` : ''
+      } — open ${pr.deploy.decidedBy ? pr.deploy.decidedBy.name : 'on GitHub'}`}
+      onClick={openTarget}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' && event.target === event.currentTarget) openTarget();
+      }}
+    >
       <div className="pr-top">
-        <span className={byHand ? 'deploy-deployed' : `deploy-${pr.deploy.state}`} title={badge.hint}>
+        <span aria-hidden="true" className={byHand ? 'deploy-deployed' : `deploy-${pr.deploy.state}`} title={badge.hint}>
           {badge.glyph}
         </span>
         <span className="pr-number">#{pr.number}</span>
@@ -224,31 +270,26 @@ function MergedRow({
           {pr.title}
         </div>
         <span className="row-act">
-        <button
-          className="chip"
-          onClick={() => void act({ kind: 'openExternal', url: target })}
-          title={pr.deploy.decidedBy ? `open ${pr.deploy.decidedBy.name} on GitHub` : 'open on GitHub'}
-        >
-          ↗
-        </button>
-        <button
-          className="chip"
-          onClick={() => {
-            if (done) {
-              void act({ kind: 'unmarkPrDeployed', key });
-              return;
+          <button
+            className="chip"
+            aria-label={done ? 'not deployed after all — put it back' : undefined}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (done) {
+                void act({ kind: 'unmarkPrDeployed', key });
+                return;
+              }
+              onMarked(key, `#${pr.number}`);
+              void act({ kind: 'markPrDeployed', key });
+            }}
+            title={
+              done
+                ? 'not actually deployed — put it back'
+                : 'I have deployed this — record it and let it sink'
             }
-            onMarked(key, `#${pr.number}`);
-            void act({ kind: 'markPrDeployed', key });
-          }}
-          title={
-            done
-              ? 'not actually deployed — put it back'
-              : 'I have deployed this — record it and let it sink'
-          }
-        >
-          {done ? '↺' : 'mark deployed'}
-        </button>
+          >
+            {done ? '↺' : 'mark deployed'}
+          </button>
         </span>
       </div>
       <div className="pr-meta">
@@ -300,9 +341,10 @@ export function PrList({ prs, merged, tasks, prSessions, onResult }: Props): Rea
     const owed = list.filter((pr) => needsDeploy(pr)).length;
     return (
       <>
-        <div className="section-title section-title-row">
+        <div className="section-title section-title-row" role="heading" aria-level={2}>
           <span>
             recently merged ({list.length}){owed > 0 && <strong className="owed"> · {owed} to deploy</strong>}
+            <Freshness at={merged?.fetchedAt} degraded={merged?.degraded} />
           </span>
           <span className="section-actions">
             {undo && (
@@ -321,17 +363,16 @@ export function PrList({ prs, merged, tasks, prSessions, onResult }: Props): Rea
           </span>
         </div>
         {!merged ? (
-          <div className="empty" style={{ padding: '12px' }}>
-            reading merge history…
-          </div>
-        ) : merged.degraded ? (
-          <div className="empty" style={{ padding: '12px' }}>
-            couldn't read merged pull requests
+          <div className="empty inline">reading merge history…</div>
+        ) : merged.degraded && list.length === 0 ? (
+          <div className="empty inline" role="status">
+            <span>
+              couldn’t read merged pull requests — <code>gh</code> did not answer. Refresh with ⌘R, or
+              check <code>gh auth status</code>.
+            </span>
           </div>
         ) : list.length === 0 ? (
-          <div className="empty" style={{ padding: '12px' }}>
-            nothing merged recently
-          </div>
+          <div className="empty inline">nothing merged recently</div>
         ) : (
           list.map((pr) => (
             <MergedRow
@@ -363,25 +404,28 @@ export function PrList({ prs, merged, tasks, prSessions, onResult }: Props): Rea
     return (
       <>
         {mergedSection()}
-        <div className="empty">
-          <code>gh</code> returned nothing.
-          <br />
-          Check <code>gh auth status</code>.
+        {/* One sentence in one box: `.empty` stacks its children, so the text and
+            each `<code>` used to land on lines of their own. */}
+        <div className="empty" role="status">
+          <span>
+            <code>gh</code> returned nothing, so your reviews and pull requests aren’t listed. Refresh with
+            ⌘R, or check <code>gh auth status</code>.
+          </span>
         </div>
       </>
     );
   }
 
   const everyPr = [...prs.reviewRequested, ...prs.mine];
-  const section = (title: string, list: PullRequest[]): React.JSX.Element => (
+  const section = (title: string, list: PullRequest[], none: string): React.JSX.Element => (
     <>
-      <div className="section-title">
-        {title} ({list.length})
+      <div className="section-title" role="heading" aria-level={2}>
+        {/* The search stops at its cap, so a full list says "or more". */}
+        {title} ({list.length >= SEARCH_CAP ? `${SEARCH_CAP}+` : list.length})
+        <Freshness at={prs.fetchedAt} />
       </div>
       {list.length === 0 ? (
-        <div className="empty" style={{ padding: '12px' }}>
-          nothing here
-        </div>
+        <div className="empty inline">{none}</div>
       ) : (
         // Both sections are handed as `known`, so a stack spanning the two is
         // still counted whole — a layer in `mine` says `2 of 3`, not `1 of 1`.
@@ -409,8 +453,38 @@ export function PrList({ prs, merged, tasks, prSessions, onResult }: Props): Rea
       {/* First, because it is the only one of the three holding work you owe
           rather than work you could pick up. */}
       {mergedSection()}
-      {section('needs my review', prs.reviewRequested)}
-      {section('mine', prs.mine)}
+      {section('needs my review', prs.reviewRequested, 'no reviews waiting on you')}
+      {section('mine', prs.mine, 'you have no open pull requests')}
     </>
   );
+}
+
+/** How many rows one `gh` search returns — see `fetchPrs`. */
+const SEARCH_CAP = 25;
+
+/**
+ * How old a list is, said only once it matters.
+ *
+ * The lists poll on their own; a fresh one needs no stamp, and a stamp on every
+ * header would be one more figure to read past. Past ten minutes — a missed
+ * poll or two — or when the last read failed, the header says so, because a
+ * stale list otherwise looks exactly like a live one.
+ */
+function Freshness({ at, degraded }: { at?: number; degraded?: boolean }): React.JSX.Element | null {
+  if (at === undefined) return null;
+  const age = Math.floor(Date.now() / 1000) - at;
+  if (!degraded && age < 600) return null;
+  return (
+    <span className="freshness" title={degraded ? 'the last refresh failed — this is the previous answer' : undefined}>
+      {' · '}
+      {degraded ? 'couldn’t refresh, ' : ''}as of {relativeEpochSeconds(age)}
+    </span>
+  );
+}
+
+function relativeEpochSeconds(age: number): string {
+  if (age < 60) return 'just now';
+  if (age < 3600) return `${Math.floor(age / 60)}m ago`;
+  if (age < 86400) return `${Math.floor(age / 3600)}h ago`;
+  return `${Math.floor(age / 86400)}d ago`;
 }

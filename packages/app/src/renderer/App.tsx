@@ -160,6 +160,13 @@ export function App(): React.JSX.Element {
       } else if ((event.metaKey || event.ctrlKey) && event.key === 'r') {
         event.preventDefault();
         refresh();
+      } else if ((event.metaKey || event.ctrlKey) && ['1', '2', '3', '4'].includes(event.key)) {
+        // The tabs, in rail order — the one way between them that did not mean
+        // tabbing up into the rail first.
+        event.preventDefault();
+        const tabs: Tab[] = ['fleet', 'prs', 'history', 'power'];
+        setFocusedSlug(undefined);
+        setTab(tabs[Number(event.key) - 1] as Tab);
       } else if ((event.metaKey || event.ctrlKey) && event.key === 'n') {
         event.preventDefault();
         setNotesOpen((open) => !open);
@@ -660,7 +667,7 @@ export function App(): React.JSX.Element {
         )}
 
         {snapshot && !focused && tab === 'power' && (
-          <Power shutdown={snapshot.shutdown} onResult={onResult} />
+          <Power shutdown={snapshot.shutdown} counts={snapshot.fleet.counts} onResult={onResult} />
         )}
       </div>
 

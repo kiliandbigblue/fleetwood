@@ -22,22 +22,24 @@ import { stepIndex } from './fleetSignals.ts';
  * The cards' titles, then the hidden drawer's when it is open — it sits under
  * the list, outside `.body` — and the rows of the agents with no card at all,
  * the daemon-hosted and the left over, which have nothing but their row to
- * land on. Document order is screen order, so one query keeps them in it.
+ * land on. On the other tabs, their rows: every pull request and every
+ * archived one is a `list-stop`. Document order is screen order, so one query
+ * keeps them in it.
  */
 function cardTitles(): HTMLElement[] {
   return [
     ...document.querySelectorAll<HTMLElement>(
-      '.body .card-title, .hidden-group .card-title, .orphans button.activity',
+      '.body .card-title, .hidden-group .card-title, .orphans button.activity, .body .list-stop',
     ),
   ];
 }
 
 /**
  * The card the keyboard is on, if it is on one — or the agent row, for an
- * agent with no card of its own.
+ * agent with no card of its own, or the row itself on the other tabs.
  */
 function focusedCard(): Element | null {
-  return document.activeElement?.closest('.orphans .agent, .card') ?? null;
+  return document.activeElement?.closest('.orphans .agent, .card, .list-stop') ?? null;
 }
 
 /** A card's agent rows that can take focus — the inner level of the tree. */
@@ -96,6 +98,8 @@ export function focusNextAttention(wrap = true): boolean {
   const next = ordered.find(
     (title) =>
       title.closest('.card')?.classList.contains('attention') === true ||
+      // On the pull requests tab: a merge waiting to ship, or changes asked of you.
+      title.classList.contains('owes') ||
       // A cardless agent row: blocked when its own dot says so.
       title.closest('.orphans .agent')?.querySelector('.status-blocked_permission') != null,
   );

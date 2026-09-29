@@ -41,6 +41,9 @@
  * the configured theme, so a cold start never flashes unstyled.
  */
 :root {
+  /* Every theme here is dark, so native controls — the time picker's clock, a
+     number field's arrows, scrollbars — draw for a dark ground. */
+  color-scheme: dark;
   --bg: #191724;
   --panel: #1f1d2e;
   /* `panel`, never thinned: the theme popover stays readable at any opacity. */
@@ -2816,6 +2819,43 @@ button.activity:focus-visible {
   background: color-mix(in srgb, var(--text) 5%, transparent);
 }
 
+/*
+ * A row that is a target, as on the fleet: pointer, focus ring, and its
+ * controls shown while the keyboard is anywhere in it.
+ */
+.list-stop {
+  cursor: pointer;
+}
+.pr.list-stop:focus-visible,
+.history-pr:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--text) 60%, transparent);
+}
+.pr:focus-within .row-act > * {
+  opacity: 1;
+}
+
+/* An identifier inside a sentence-set row: the panel's mono rule. */
+.pr-meta .mono {
+  font-family: var(--mono);
+}
+
+/* An empty or failed section, on the row rail and not a centred block. */
+.empty.inline {
+  padding: var(--s4);
+}
+.empty > span {
+  display: block;
+  max-width: 44ch;
+}
+
+/* How old a list is, once it is old enough to matter — see `Freshness`. */
+.freshness {
+  font-weight: 400;
+  color: var(--dim);
+}
+
 .pr-number {
   /* Secondary, like the branch beside it: `#3788` is what identifies the row
      and what you say out loud, and it was set a tier below its own prefix. */
@@ -2877,8 +2917,9 @@ button.activity:focus-visible {
 .checks-failing {
   color: var(--danger);
 }
+/* Dim, not gold: a check still running asks nothing of you. */
 .checks-pending {
-  color: var(--warn);
+  color: var(--dim);
 }
 .checks-none {
   color: var(--dim);
@@ -2937,15 +2978,21 @@ button.activity:focus-visible {
 }
 
 .section-title-row .owed {
-  color: var(--accent);
+  color: var(--warn);
 }
 
 /* Nothing is owed on these, so they stop competing for attention. */
-.pr.quiet {
-  opacity: 0.55;
+/*
+ * A finished row sinks by ink, not by opacity. At 0.55 it measured 2.3:1 —
+ * finished had become unreadable. It loses its hue and its title steps down to
+ * soft; its text stays at the floor every other row keeps.
+ */
+.pr.quiet .pr-title {
+  color: var(--soft);
 }
-.pr.quiet:hover {
-  opacity: 1;
+.pr.quiet [class^='deploy-'] {
+  color: var(--dim);
+  font-weight: 400;
 }
 
 /*
@@ -2953,16 +3000,18 @@ button.activity:focus-visible {
  * accent colour and weight. Everything else borrows the palette the open-PR
  * check glyphs already use, so the two sections read as one language.
  */
+/* Gold, the panel's "yours to deal with": the one state here that asks. */
 .deploy-built {
-  color: var(--accent);
+  color: var(--warn);
   font-weight: 600;
 }
+/* In flight asks nothing, so it is dim; the ◍ says it is moving. */
 .deploy-building,
 .deploy-deploying {
-  color: var(--warn);
+  color: var(--dim);
 }
 .deploy-deployed {
-  color: var(--ok);
+  color: var(--soft);
 }
 .deploy-failed {
   color: var(--danger);
@@ -3157,6 +3206,46 @@ button.activity:focus-visible {
 }
 
 
+
+/* --- history ----------------------------------------------------------- */
+
+/* The filter on the rail the section title starts on, not out at the edge. */
+.history-filter {
+  margin: 0 var(--s4);
+  width: calc(100% - 2 * var(--s4));
+}
+
+/* A month's heading: a quieter label than the section's, so the list keeps one
+   voice for "what this is" and another for "when". */
+.history-month-title {
+  margin: var(--s3) var(--indent) var(--s1);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+/* A pull request of an archived task: a row of its own, opened like one. */
+.history-pr {
+  /* Vertical only: the meta line's own side padding is what puts it on the
+     rail, and overriding it put these lines out at the window's edge. */
+  padding-block: var(--s1);
+  border-radius: 5px;
+}
+.history-pr:hover {
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+.history-pr .task-pr-open {
+  margin-left: auto;
+}
+.history-pr-title {
+  color: var(--soft);
+}
+
+/* The work landed: said in full ink, not in a hue — it asks nothing. */
+.history-landed {
+  color: var(--text);
+}
 
 .task-repos {
   padding: var(--s3) 0;
@@ -4135,7 +4224,65 @@ button.activity:focus-visible {
   display: flex;
   flex-direction: column;
   gap: var(--s4);
-  padding: var(--s4);
+  /* On the rail every other list's first word starts on. */
+  padding: var(--s4) var(--s4) var(--s4) var(--indent);
+}
+
+/*
+ * The schedule's one switch. Neutral when on — an armed shutdown is the
+ * healthy state, not an alarm — and the thumb says which side it is on.
+ */
+.power-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s3);
+  align-self: flex-start;
+  padding: var(--s1) 0;
+}
+.power-switch-track {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--edge);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 18%, transparent);
+  transition: background 120ms ease-out;
+}
+.power-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--soft);
+  transition: transform 120ms ease-out;
+}
+.power-switch.on .power-switch-track {
+  background: color-mix(in srgb, var(--text) 30%, var(--edge));
+}
+.power-switch.on .power-switch-thumb {
+  transform: translateX(12px);
+  background: var(--text);
+}
+.power-switch:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+@media (prefers-reduced-motion: reduce) {
+  .power-switch-track,
+  .power-switch-thumb {
+    transition: none;
+  }
+}
+
+/* A sentence under a control: why it will not move, or what it will do. */
+.power-hint {
+  font-size: var(--fs-body);
+  color: var(--soft);
+}
+.power-hint-warn {
+  color: var(--warn);
 }
 
 .power-head {

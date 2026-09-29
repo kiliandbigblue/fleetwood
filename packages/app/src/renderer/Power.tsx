@@ -9,6 +9,7 @@ import {
   parseClock,
 } from '@fleetwood/core/shutdown';
 import type { ShutdownConfig, ShutdownState } from '@fleetwood/core/shutdown';
+import type { FleetState } from '@fleetwood/core';
 import { duration, send } from './api.ts';
 import { useNow } from './useNow.ts';
 
@@ -17,6 +18,8 @@ const SUDOERS_LINE = '%admin ALL=(root) NOPASSWD: /sbin/shutdown';
 
 interface Props {
   shutdown: ShutdownState;
+  /** The fleet's agents, for saying what the shutdown will stop. */
+  counts: FleetState['counts'];
   onResult: (message: string, ok: boolean) => void;
 }
 
@@ -28,7 +31,7 @@ interface Props {
  * a switch rather than an empty time meaning "never": you set the hour once and
  * spend the rest of its life turning it on and off.
  */
-export function Power({ shutdown, onResult }: Props): React.JSX.Element {
+export function Power({ shutdown, counts, onResult }: Props): React.JSX.Element {
   /*
    * The fields' own values, so typing is not fighting the 1s snapshot poll — the
    * same arrangement as the opacity slider. They follow the config whenever it
@@ -52,7 +55,8 @@ export function Power({ shutdown, onResult }: Props): React.JSX.Element {
     const { enabled, time: when, warnMinutes: warn } = next;
     void send({ kind: 'setShutdown', shutdown: { enabled, time: when, warnMinutes: warn } }).then(
       (result) => {
-        onResult(result.detail, result.ok);
+        // Only a refusal is worth a toast: success is the head line changing.
+        if (!result.ok) onResult(result.detail, false);
         // Refused — the lock, see `refuseShutdownChange`. Nothing reached the
         // disk, so no snapshot will move the fields back; they are walked back
         // here to the schedule that still stands.
@@ -64,22 +68,40 @@ export function Power({ shutdown, onResult }: Props): React.JSX.Element {
     );
   };
 
-  const onPickTime = (next: string): void => {
-    setTime(next);
-    // A time input hands over `''` while it is being cleared, and half-typed
-    // hours as you arrow through them. Neither is a schedule; the field keeps
-    // them and the config does not.
-    if (parseClock(next)) save({ ...shutdown, time: next, warnMinutes });
+  /*
+   * Saved once the typing stops, not on every keystroke.
+   *
+   * A time field reports each digit as it lands, so typing 2130 armed a real
+   * 02:00 shutdown, then 21:00, then 21:03 on the way to 21:30 — four schedules,
+   * one of them for the middle of the night. A beat after the last change, or
+   * on leaving the field, whichever comes first.
+   */
+  const warnValid = Number.isFinite(warnMinutes) && warnMinutes >= MIN_WARN_MINUTES && warnMinutes <= MAX_WARN_MINUTES;
+  const pending = (time !== shutdown.time && parseClock(time) !== undefined) ||
+    (warnMinutes !== shutdown.warnMinutes && warnValid);
+  const commit = (): void => {
+    if (!pending) return;
+    save({
+      ...shutdown,
+      time: parseClock(time) ? time : shutdown.time,
+      warnMinutes: warnValid ? warnMinutes : shutdown.warnMinutes,
+    });
   };
+  // Keyed on the two values, not on every render: the tab redraws each second
+  // with the clock, and that must not keep pushing the save back.
+  useEffect(() => {
+    if (!pending) return;
+    const timer = setTimeout(commit, 900);
+    return () => clearTimeout(timer);
+  }, [time, warnMinutes, pending]);
 
-  const onPickWarning = (next: number): void => {
-    setWarnMinutes(next);
-    if (Number.isFinite(next) && next >= MIN_WARN_MINUTES && next <= MAX_WARN_MINUTES) {
-      save({ ...shutdown, time, warnMinutes: next });
-    }
-  };
-
-  const onToggleEnabled = (): void => save({ ...shutdown, enabled: !shutdown.enabled, time, warnMinutes });
+  const onToggleEnabled = (): void =>
+    save({
+      ...shutdown,
+      enabled: !shutdown.enabled,
+      time: parseClock(time) ? time : shutdown.time,
+      warnMinutes: warnValid ? warnMinutes : shutdown.warnMinutes,
+    });
 
   const when = describeShutdown(shutdown, now);
   const left = shutdown.at === undefined ? '' : duration(Math.round((shutdown.at - now) / 1000));
@@ -94,17 +116,23 @@ export function Power({ shutdown, onResult }: Props): React.JSX.Element {
   const locked = shutdown.enabled && shutdown.locked;
   const wouldArm = nextShutdownAt(time, now);
   const tooSoon = !shutdown.enabled && wouldArm !== undefined && wouldArm - now < LOCK_MS;
-  const toggleTitle = locked
-    ? `under ${LOCK_MINUTES} minutes to go — too late to call it off`
-    : tooSoon
-      ? `${time} is under ${LOCK_MINUTES} minutes away — pick a later time`
-      : shutdown.enabled
-        ? 'stop shutting this machine down at the end of the day'
-        : 'shut this machine down at the time below, every day';
+  /*
+   * What the shutdown will take with it, said while there is time to act.
+   *
+   * The one fact only this panel has: which agents are mid-turn or waiting on
+   * you right now, and so would be cut off at the hour.
+   */
+  const running = counts.working + counts.compacting;
+  const stopped = [
+    running > 0 ? `${running} agent${running === 1 ? '' : 's'} working` : '',
+    counts.blocked_permission > 0 ? `${counts.blocked_permission} waiting on a permission prompt` : '',
+  ].filter(Boolean);
 
   return (
     <>
-      <div className="section-title">end of day — this machine, not the fleet</div>
+      <div className="section-title" role="heading" aria-level={2}>
+        end of day · this Mac
+      </div>
       <div className="card power">
         <div className="power-head">
           <div className="power-when">
@@ -115,15 +143,40 @@ export function Power({ shutdown, onResult }: Props): React.JSX.Element {
               <span className="power-left">in {left}</span>
             )}
           </div>
-          <button
-            className={`button${shutdown.enabled ? ' deny' : ' approve'}`}
-            onClick={onToggleEnabled}
-            disabled={locked || tooSoon}
-            title={toggleTitle}
-          >
-            {shutdown.enabled ? 'opt out' : 'opt in'}
-          </button>
         </div>
+
+        {/*
+         * A switch, not an "opt in / opt out" pair of buttons. It says what it
+         * is — shut down every day — and whether that is on; red went on the
+         * healthy armed state, and consent-form words on a setting.
+         */}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={shutdown.enabled}
+          className={`power-switch${shutdown.enabled ? ' on' : ''}`}
+          onClick={onToggleEnabled}
+          disabled={locked || tooSoon}
+        >
+          <span className="power-switch-track" aria-hidden="true">
+            <span className="power-switch-thumb" />
+          </span>
+          <span className="power-label">shut down every day</span>
+        </button>
+        {/* Why the switch will not move, said as text — a disabled control
+            cannot take focus, so a reason in its tooltip reached nobody. */}
+        {tooSoon && (
+          <div className="power-hint">
+            {time} is under {LOCK_MINUTES} minutes away — pick a later time to turn it on.
+          </div>
+        )}
+        {shutdown.enabled && shutdown.phase !== 'due' && (
+          <div className="power-hint">
+            {stopped.length > 0
+              ? `at ${shutdown.time} this stops ${stopped.join(' and ')} — your notes are kept.`
+              : `nothing is running now — your notes are kept.`}
+          </div>
+        )}
 
         <label className="power-field">
           <span className="power-label">shut down at</span>
@@ -133,7 +186,11 @@ export function Power({ shutdown, onResult }: Props): React.JSX.Element {
             type="time"
             value={time}
             disabled={locked}
-            onChange={(event) => onPickTime(event.target.value)}
+            // A time input hands over `''` while being cleared and half-typed
+            // hours on the way; the field keeps them, `commit` only saves a
+            // real clock.
+            onChange={(event) => setTime(event.target.value)}
+            onBlur={commit}
           />
         </label>
 
@@ -145,10 +202,23 @@ export function Power({ shutdown, onResult }: Props): React.JSX.Element {
             min={MIN_WARN_MINUTES}
             max={MAX_WARN_MINUTES}
             value={warnMinutes}
-            onChange={(event) => onPickWarning(Number(event.target.value))}
+            aria-invalid={!warnValid}
+            aria-describedby={warnValid ? undefined : 'power-warn-range'}
+            onChange={(event) => setWarnMinutes(Number(event.target.value))}
+            onBlur={() => {
+              // Out of range is walked back to what stands, rather than left
+              // showing a number the schedule never took.
+              if (!warnValid) setWarnMinutes(shutdown.warnMinutes);
+              else commit();
+            }}
           />
           <span className="power-label">minutes before, full screen</span>
         </label>
+        {!warnValid && (
+          <div className="power-hint power-hint-warn" id="power-warn-range" role="status">
+            between {MIN_WARN_MINUTES} and {MAX_WARN_MINUTES} minutes — still {shutdown.warnMinutes} until then.
+          </div>
+        )}
 
         {/* Said once the button has gone grey, so the grey is not a mystery. */}
         {locked && (
@@ -173,7 +243,12 @@ export function Power({ shutdown, onResult }: Props): React.JSX.Element {
           </div>
         )}
 
-        {shutdown.error && <div className="power-error">last attempt failed — {shutdown.error}</div>}
+        {shutdown.error && (
+          <div className="power-error" role="alert">
+            last attempt failed — {shutdown.error}. Check the sudo line above, then turn the switch off and on
+            to try again.
+          </div>
+        )}
       </div>
     </>
   );

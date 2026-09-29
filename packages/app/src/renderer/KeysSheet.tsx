@@ -15,11 +15,13 @@ import { useEffect, useRef } from 'react';
 const KEYS: ReadonlyArray<[string, string]> = [
   ['j  k', 'down and up — the cards, or the agents inside one'],
   ['l  h', 'into a card and back out: unfold, then its agents; out again, then fold (→ ← too)'],
-  ['n', 'the next card that needs you — opening the hidden drawer if one is in it'],
+  ['n', 'the next card that needs you — opening the hidden drawer if one is in it; on pull requests, the next one you owe'],
   ['enter', 'go to the focused card in tmux — on a blocked card, to the pane asking'],
   ['1 – 9', 'answer its prompt, as the terminal numbers it — a lasting yes takes two presses'],
   ['a  d', 'the approve and deny answers'],
   ['m', 'its menu — arrows to move, esc to close'],
+  ['⌘1 – ⌘4', 'the fleet, pull requests, history and power tabs'],
+  ['/', 'on history: filter — esc clears it'],
   ['⌘K', 'jump to any tmux session'],
   ['⌘T', 'new task'],
   ['⌘N', 'your notes'],
@@ -48,6 +50,10 @@ const MARKS: ReadonlyArray<{ mark: React.JSX.Element; says: string }> = [
   },
   { mark: <span className="context-fig warn">312k</span>, says: 'context the next turn re-reads — gold, then red, as it gets costly' },
   { mark: <span className="task-pr-via">⇡ ~ ⇄</span>, says: 'a pull request from the stack, history, or the task itself' },
+  { mark: <span className="checks-passing">✓ <span className="checks-failing">✗</span> <span className="checks-pending">◍</span></span>, says: 'checks passing, failing, running' },
+  { mark: <span className="deploy-built">↑</span>, says: 'merged and built, nobody deployed it — yours to ship' },
+  { mark: <span className="deploy-deploying">◍</span>, says: 'a build or deploy still running' },
+  { mark: <span className="deploy-failed">✗</span>, says: 'the merge’s CI trail broke' },
 ];
 
 /** The `?` sheet. Escape, a click outside, or `?` again puts it away. */

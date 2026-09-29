@@ -27,9 +27,15 @@ export function ShutdownWarning(): React.JSX.Element | null {
 
   // Escape and return both, because this window arrives over whatever you were
   // typing into and the muscle memory for "yes, go away" is one of the two.
+  //
+  // Not in the first moment, though: the window arrives over whatever you were
+  // typing into, so a return already on its way to the terminal would dismiss a
+  // warning you never saw. Keys count once it has been on screen a beat.
   useEffect(() => {
+    const shownAt = Date.now();
     const onKey = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape' && event.key !== 'Enter') return;
+      if (Date.now() - shownAt < 400) return;
       event.preventDefault();
       void send({ kind: 'dismissShutdownWarning' });
     };

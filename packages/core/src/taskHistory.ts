@@ -2,6 +2,7 @@ import { appendFile, readFile } from 'node:fs/promises';
 import { HISTORY_LOG, ensureDirs } from './paths.ts';
 import type { Task, TaskRepo } from './task.ts';
 import type { TaskPr } from './taskPrs.ts';
+import type { PrState } from './github.ts';
 
 /**
  * What a task leaves behind.
@@ -65,6 +66,12 @@ export interface ArchivedPr {
   /** GitHub's own last-updated stamp, so the row can say how stale the snapshot is. */
   updatedAt: string;
   reviewDecision?: string;
+  /**
+   * Open, merged or closed, as it stood at archive time — the one fact the
+   * history is read for: did this work land? Absent on entries archived before
+   * it was recorded, which the row says nothing about rather than guess.
+   */
+  state?: PrState;
 }
 
 /** Copy out only the fields that still mean something without the worktree. */
@@ -81,6 +88,8 @@ function toArchivedPr(pr: TaskPr): ArchivedPr {
     isDraft: pr.isDraft,
     updatedAt: pr.updatedAt,
     ...(pr.reviewDecision ? { reviewDecision: pr.reviewDecision } : {}),
+    // A search result carries no state, and every search here is of open ones.
+    state: pr.state ?? 'OPEN',
   };
 }
 

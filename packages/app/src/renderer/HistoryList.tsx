@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ArchivedPr, ArchivedTask } from '@fleetwood/core';
 import { REVIEW_LABEL } from './PrList.tsx';
 import { duration, send } from './api.ts';
@@ -14,7 +14,8 @@ interface Props {
  *
  * Read-only on purpose, and the only tab that is: every row here describes
  * something that no longer exists on disk, so there is nothing to focus, open or
- * act on. The buttons that would be actions elsewhere are links to GitHub.
+ * act on. What you can reach is each pull request, on GitHub — every one of
+ * them, as a row of its own, rather than one chip that opened the first.
  *
  * The rows are snapshots taken at archive time and never re-fetched — see
  * `taskHistory.ts`. So a pull request reads as it did the day the task ended,
@@ -30,6 +31,22 @@ export function HistoryList({ history, onResult }: Props): React.JSX.Element {
    * summary, goal, microservice and repos covers every way you'd half-remember it.
    */
   const [query, setQuery] = useState('');
+  const filterRef = useRef<HTMLInputElement>(null);
+  /*
+   * `/` to filter, as a search field is reached in most keyboard-driven tools.
+   * Only when nothing else is being typed into, and not with a modifier.
+   */
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      const typing = event.target instanceof HTMLElement && ['INPUT', 'TEXTAREA'].includes(event.target.tagName);
+      if (event.key === '/' && !typing && !event.metaKey && !event.ctrlKey) {
+        event.preventDefault();
+        filterRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -62,29 +79,59 @@ export function HistoryList({ history, onResult }: Props): React.JSX.Element {
 
   return (
     <>
-      <div className="section-title section-title-row">
+      <div className="section-title section-title-row" role="heading" aria-level={2}>
         <span>
           archived ({shown.length}
           {shown.length !== history.length ? ` of ${history.length}` : ''})
         </span>
       </div>
       <input
-        className="field"
-        placeholder="filter by slug, summary, repo…"
+        ref={filterRef}
+        className="field history-filter"
+        aria-label="filter the archived tasks"
+        placeholder="filter by slug, summary, repo…   /"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
+        onKeyDown={(event) => {
+          // Esc clears first, then lets go of the field — and must not reach
+          // the panel's own Escape while there is still something to clear.
+          if (event.key === 'Escape') {
+            event.stopPropagation();
+            if (query) setQuery('');
+            else event.currentTarget.blur();
+          }
+        }}
       />
       {shown.length === 0 ? (
-        <div className="empty" style={{ padding: '12px' }}>
-          nothing matches “{query.trim()}”
-        </div>
+        <div className="empty inline">nothing matches “{query.trim()}”</div>
       ) : (
-        shown.map((entry) => (
-          <ArchivedRow key={`${entry.slug}@${entry.archivedAt}`} entry={entry} onResult={onResult} />
+        byMonth(shown).map(({ month, entries }) => (
+          <div key={month} className="history-month">
+            {/* A heading per month: a log that only grows is read by when, and
+                a hundred rows in one run gave the eye nowhere to land. */}
+            <div className="history-month-title" role="heading" aria-level={3}>
+              {month}
+            </div>
+            {entries.map((entry) => (
+              <ArchivedRow key={`${entry.slug}@${entry.archivedAt}`} entry={entry} onResult={onResult} />
+            ))}
+          </div>
         ))
       )}
     </>
   );
+}
+
+/** Archived entries grouped by the month they were archived in, newest first. */
+function byMonth(entries: ArchivedTask[]): Array<{ month: string; entries: ArchivedTask[] }> {
+  const groups: Array<{ month: string; entries: ArchivedTask[] }> = [];
+  for (const entry of entries) {
+    const month = new Date(entry.archivedAt * 1_000).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+    const last = groups[groups.length - 1];
+    if (last?.month === month) last.entries.push(entry);
+    else groups.push({ month, entries: [entry] });
+  }
+  return groups;
 }
 
 /** Epoch seconds to "3d ago", matching how the PR rows read. */
@@ -112,99 +159,127 @@ function ArchivedRow({
    * The pair of stamps is more use than either alone — "archived 3d ago" says
    * when you stopped, and the span says whether it was an afternoon or a month.
    */
-  const lived = duration(Math.max(0, entry.archivedAt - entry.createdAt));
+  const ran = duration(Math.max(0, entry.archivedAt - entry.createdAt));
+  const merged = entry.prs.filter((pr) => pr.state === 'MERGED').length;
+  const known = entry.prs.some((pr) => pr.state !== undefined);
 
+  /*
+   * Read, not faded. Every row here used to sit at 0.55 opacity — 2.3:1 — to say
+   * nothing needs you; the absence of colour already says that, and a record
+   * you come to look something up in has to be legible.
+   */
   return (
-    <div className="pr quiet">
+    <div className="pr history-entry">
       <div className="pr-top">
         <div className="pr-title" title={entry.goal ?? entry.summary}>
           {entry.summary || entry.slug}
         </div>
-        {entry.prs.length > 0 && (
-          <span className="row-act">
-          <button
-            className="chip"
-            onClick={() => open(entry.prs[0]?.url as string)}
-            title={
-              entry.prs.length === 1
-                ? `open ${entry.prs[0]?.repo}#${entry.prs[0]?.number} on GitHub`
-                : `open the first of ${entry.prs.length} pull requests on GitHub`
-            }
-          >
-            ↗ pr
-          </button>
-          </span>
-        )}
       </div>
 
       <div className="pr-meta">
-        {/* The slug is the name you'd search for, so it leads the meta line. */}
-        <span title={`task slug — its folder was named this`}>{entry.slug}</span>
+        {/* The slug is the name you'd search for, so it leads the meta line —
+            in mono, as every identifier in the panel is. */}
+        <span className="mono" title="task slug — its folder was named this">
+          {entry.slug}
+        </span>
         <span>
           {entry.type} · {entry.microservice}
         </span>
         <span title={`archived ${new Date(entry.archivedAt * 1_000).toLocaleString()}`}>
           archived {relativeEpoch(entry.archivedAt)}
         </span>
-        <span title={`created ${new Date(entry.createdAt * 1_000).toLocaleString()}`}>
-          lived {lived}
-        </span>
+        <span title={`created ${new Date(entry.createdAt * 1_000).toLocaleString()}`}>ran {ran}</span>
+        {/* Did it land — the question this tab is opened for, in one phrase. */}
+        {entry.prs.length > 0 && known && (
+          <span className={merged === entry.prs.length ? 'history-landed' : undefined}>
+            {merged === entry.prs.length
+              ? entry.prs.length === 1
+                ? 'merged'
+                : `all ${entry.prs.length} merged`
+              : `${merged} of ${entry.prs.length} merged`}
+          </span>
+        )}
       </div>
 
       {/*
         Where the work went. The branch matters more than the repo name here: the
         worktree is gone, so this string is the only pointer left to the commits —
         and `pruneEmptyBranch` only ever deleted branches that held nothing.
+        Shown once, in mono; the pull request lines below no longer repeat it.
       */}
       {entry.repos.length > 0 && (
         <div className="pr-meta">
+          <span className="mono" title="the task's own branch">
+            {entry.branch}
+          </span>
           {entry.repos.map((repo) => (
-            <span key={`${repo.repo}/${repo.branch ?? ''}`} title={repo.branch ?? repo.repo}>
-              {repo.repo}
+            <span className="mono" key={`${repo.repo}/${repo.branch ?? ''}`} title={repo.branch ?? repo.repo}>
+              {repo.repo.split('/').pop()}
               {repo.branch && repo.branch !== entry.branch ? ` · ${repo.branch}` : ''}
             </span>
           ))}
-          {/* Shown once, not per repo: the convention reuses one branch across them. */}
-          <span className="badge branch" title="the task's own branch">
-            {entry.branch}
-          </span>
         </div>
       )}
 
       {entry.prs.map((pr) => (
-        <ArchivedPrLine key={`${pr.repo}#${pr.number}`} pr={pr} onOpen={open} />
+        <ArchivedPrLine key={`${pr.repo}#${pr.number}`} pr={pr} branch={entry.branch} onOpen={open} />
       ))}
     </div>
   );
 }
 
+/** How a pull request stood at archive time, in words. */
+const PR_STATE_LABEL: Record<NonNullable<ArchivedPr['state']>, string> = {
+  MERGED: 'merged',
+  CLOSED: 'closed unmerged',
+  OPEN: 'still open',
+};
+
 function ArchivedPrLine({
   pr,
+  branch,
   onOpen,
 }: {
   pr: ArchivedPr;
+  /** The task's branch — a PR titled the same says nothing new by repeating it. */
+  branch: string;
   onOpen: (url: string) => void;
 }): React.JSX.Element {
+  const id = `${pr.repo.split('/').pop()}#${pr.number}`;
+  const snapshot = [
+    pr.state ? PR_STATE_LABEL[pr.state] : undefined,
+    pr.isDraft && pr.state !== 'MERGED' ? 'draft' : undefined,
+    pr.reviewDecision && pr.state !== 'MERGED' ? REVIEW_LABEL[pr.reviewDecision] ?? pr.reviewDecision : undefined,
+  ].filter(Boolean);
   return (
-    <div className="pr-meta">
-      <span className="linked">⇄</span>
-      <span
-        style={{ cursor: 'pointer' }}
-        title={`${pr.title} — open ${pr.repo}#${pr.number} on GitHub`}
-        onClick={() => onOpen(pr.url)}
-      >
-        {pr.repo}#{pr.number} {pr.title}
-      </span>
-      {pr.isDraft && <span>draft</span>}
+    /* A row of its own, reachable and opened by keyboard like every other row. */
+    <div
+      className="pr-meta history-pr list-stop"
+      role="link"
+      tabIndex={0}
+      aria-label={`${id}${pr.title !== branch ? ` ${pr.title}` : ''}${
+        snapshot.length ? `, ${snapshot.join(', ')} when archived` : ''
+      } — open on GitHub`}
+      title={`${pr.title} — open ${pr.repo}#${pr.number} on GitHub`}
+      onClick={() => onOpen(pr.url)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') onOpen(pr.url);
+      }}
+    >
+      <span className="mono">{id}</span>
+      {pr.title !== branch && <span className="history-pr-title">{pr.title}</span>}
       {/* Frozen at archive time, and labelled as such — it may well have moved since. */}
-      {pr.reviewDecision && (
+      {snapshot.length > 0 && (
         <span
-          className={`review-${pr.reviewDecision}`}
-          title="review state when the task was archived — not re-checked since"
+          className={pr.state === 'MERGED' ? 'history-landed' : pr.reviewDecision ? `review-${pr.reviewDecision}` : undefined}
+          title="as it stood when the task was archived — not re-checked since"
         >
-          {REVIEW_LABEL[pr.reviewDecision] ?? pr.reviewDecision} when archived
+          {snapshot.join(' · ')} when archived
         </span>
       )}
+      <span className="task-pr-open" aria-hidden="true">
+        ↗
+      </span>
     </div>
   );
 }

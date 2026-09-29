@@ -391,7 +391,7 @@ test('a hand-mark is what settles a built image, and it outranks the CI state', 
   assert.equal(isDone({ deploy: { state: 'failed' as const }, deployedByHand: 1 }), true);
 });
 
-test('what is still owed sorts above what is finished, newest first inside each', () => {
+test('owed sorts first, then failed, then in flight, then finished, newest first inside each', () => {
   const rows = [
     { deploy: { state: 'deployed' as const }, mergedAt: '2026-08-24T12:00:00Z' },
     { deploy: { state: 'built' as const }, mergedAt: '2026-08-20T12:00:00Z' },
@@ -401,10 +401,21 @@ test('what is still owed sorts above what is finished, newest first inside each'
   const sorted = [...rows].sort(byUrgencyThenRecency);
   assert.deepEqual(
     sorted.map((r) => `${r.deploy.state}${r.deployedByHand ? '+hand' : ''}`),
-    ['building', 'built', 'deployed', 'built+hand'],
+    ['built', 'building', 'deployed', 'built+hand'],
   );
   // The marked one sank below the unmarked build even though it merged later.
   assert.equal(sorted[3]?.deployedByHand, 1);
+  // A failed build sits under what is owed and over what is still moving.
+  assert.deepEqual(
+    [
+      { deploy: { state: 'building' as const }, mergedAt: '2026-08-24T12:00:00Z' },
+      { deploy: { state: 'failed' as const }, mergedAt: '2026-08-20T12:00:00Z' },
+      { deploy: { state: 'built' as const }, mergedAt: '2026-08-19T12:00:00Z' },
+    ]
+      .sort(byUrgencyThenRecency)
+      .map((r) => r.deploy.state),
+    ['built', 'failed', 'building'],
+  );
 });
 
 test('only finished rows are hidden, and only when they were finished before today', () => {

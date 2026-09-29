@@ -193,13 +193,38 @@ export function needsDeploy(pr: { deploy: { state: DeployState }; deployedByHand
   return !isDone(pr) && pr.deploy.state === 'built';
 }
 
-/** Newest first, with anything still owed above anything already finished. */
+/**
+ * Where a merged row sits: what you owe, then what broke, then what is still
+ * moving, then the rest, then what is finished.
+ *
+ * It used to be only finished-last, so a build waiting on you since Tuesday sat
+ * under this morning's deploy that was still running — the one row that asks
+ * something of you, below two that ask nothing.
+ */
+function urgency(pr: { deploy: { state: DeployState }; deployedByHand?: number }): number {
+  if (isDone(pr)) return 4;
+  switch (pr.deploy.state) {
+    case 'built':
+      return 0;
+    case 'failed':
+      return 1;
+    case 'checking':
+    case 'waiting':
+    case 'building':
+    case 'deploying':
+      return 2;
+    case 'none':
+    case 'deployed':
+      return 3;
+  }
+}
+
+/** Most urgent first — see `urgency` — and newest first inside each. */
 export function byUrgencyThenRecency(
   a: { deploy: { state: DeployState }; deployedByHand?: number; mergedAt: string },
   b: { deploy: { state: DeployState }; deployedByHand?: number; mergedAt: string },
 ): number {
-  const done = Number(isDone(a)) - Number(isDone(b));
-  return done !== 0 ? done : b.mergedAt.localeCompare(a.mergedAt);
+  return urgency(a) - urgency(b) || b.mergedAt.localeCompare(a.mergedAt);
 }
 
 /**
