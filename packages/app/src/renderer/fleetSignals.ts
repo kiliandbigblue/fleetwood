@@ -78,6 +78,25 @@ export function workingIsGuessed(
 }
 
 /**
+ * The lead mark in words — one sentence for the tooltip, the hidden text and
+ * the session card's note alike, so a screen reader is never told a guessed
+ * card is working while the eye is shown a hollow ring.
+ */
+export function leadNote(severity: Severity, guessed: boolean): string {
+  return guessed ? 'an agent here seems to be working — not reported' : SEVERITY_NOTE[severity];
+}
+
+/**
+ * The pane of the first agent stopped on you, if one has a pane.
+ *
+ * Where Enter on a blocked card goes: `n` then Enter should land in the
+ * question, not wherever the session's tmux window last happened to be.
+ */
+export function blockedPane(agents: ReadonlyArray<Pick<FleetAgent, 'status' | 'pane'>>): string | undefined {
+  return agents.find((agent) => agent.status === 'blocked_permission' && agent.pane)?.pane;
+}
+
+/**
  * The words the head says when an agent on the card is stopped on you.
  *
  * `undefined` otherwise — the head says nothing about an agent that needs

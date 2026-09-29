@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import type { FleetAgent, TaskPr } from '@fleetwood/core';
 import {
   agentLabel,
+  blockedPane,
+  leadNote,
   blockedAnnouncement,
   byUrgency,
   grantsLastingPermission,
@@ -92,4 +94,15 @@ test("a card's working mark goes hollow only when every working agent is a guess
   assert.equal(workingIsGuessed([a('working', 'stale'), a('idle', 'hook')]), true);
   assert.equal(workingIsGuessed([a('working', 'stale'), a('working', 'hook')]), false);
   assert.equal(workingIsGuessed([a('idle', 'screen')]), false);
+});
+
+test('Enter on a blocked card goes to the pane that is asking', () => {
+  const a = (status: FleetAgent['status'], pane?: string): FleetAgent => ({ status, pane }) as FleetAgent;
+  assert.equal(blockedPane([a('working', '%1'), a('blocked_permission', '%2')]), '%2');
+  assert.equal(blockedPane([a('blocked_permission')]), undefined);
+});
+
+test('a guessed card is described as a guess', () => {
+  assert.equal(leadNote('ok', true), 'an agent here seems to be working — not reported');
+  assert.equal(leadNote('ok', false), 'an agent here is working');
 });

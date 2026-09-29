@@ -1053,6 +1053,9 @@ button {
   padding: 0;
   text-align: left;
   min-width: 0;
+  /* The name is the last thing on the head to give way: at 420px it lost its
+     final letters to a 1px shortfall while the summary beside it kept room. */
+  flex-shrink: 0.2;
 }
 
 /* The head lights up for the keyboard the way it does for the pointer, so the
@@ -1387,12 +1390,10 @@ button {
  * and a half-moon hugging one side of a ring 11px across does not read as "half
  * done"; it reads as a mark that failed to render.
  *
- * Colour seconds the shape rather than carrying it, so a card is still legible
- * to someone who cannot tell the hues apart — which a rank drawn in colour alone
- * never was. Four rungs get four hues, and `--danger` is deliberately not one of
- * them: red stays the colour of something being wrong, which is a different
- * question from how far along this is, and it still has the PR rows and the
- * needs-attention tint to say it on.
+ * The shape carries it alone, in one ink. The rungs had a hue each — gold,
+ * iris, teal — and each of those already means something that asks for you
+ * elsewhere on the panel, so a parked task wore the colours of work it was not
+ * doing. A shape that fills up is legible to anyone, hue or no hue.
  *
  * Same column and same `--dot` / `--dot-mark` split as `.attached-dot`, since
  * `--indent` and every row's text rail are derived from that width.
@@ -1459,7 +1460,10 @@ button {
    the same gold the dirty count uses, which is the fact underneath it most of
    the time. */
 .task-status-dot.task-status-wip {
-  color: var(--warn);
+  /* The fill says how far along; the ring does not add a hue. Gold, iris and
+     teal each already mean something that asks — costly context, merged and
+     waiting to deploy, working — and a parked task asks for none of them. */
+  color: var(--soft);
 }
 .task-status-dot.task-status-wip::before {
   background-color: currentColor;
@@ -1470,7 +1474,7 @@ button {
    the hue changes hands: gold is work you are doing, iris is work that has left
    you. */
 .task-status-dot.task-status-in-review {
-  color: var(--accent);
+  color: var(--soft);
 }
 .task-status-dot.task-status-in-review::before {
   background-color: currentColor;
@@ -1480,7 +1484,7 @@ button {
    gap in it at all — which is what makes it read as finished down a list rather
    than as "in review but greener". */
 .task-status-dot.task-status-done {
-  color: var(--ok);
+  color: var(--soft);
 }
 .task-status-dot.task-status-done::before {
   background-color: currentColor;
@@ -1876,8 +1880,11 @@ button {
 .status-starting {
   background: var(--dim-mark);
 }
+/* A square, not a dot: red on a round dot means "needs your permission", and
+   an agent in error is broken rather than asking — the shape says which. */
 .status-error {
   background: var(--danger);
+  border-radius: 1px;
 }
 /* Gone is a dash, not a ring: a hollow dot means a guessed status, and a dead
    agent must not pass for a quiet one. */
@@ -2231,6 +2238,7 @@ button.activity:focus-visible {
 /* The way to the `?` sheet: a key cap and a word, quiet like the rest of the
    rail, brightening when pointed at. */
 .vital-help {
+  flex: none;
   margin-left: var(--s2);
   color: var(--dim);
   border-radius: 5px;
@@ -2244,15 +2252,15 @@ button.activity:focus-visible {
    gauges, and the way to the sheet still visible. */
 @media (max-width: 460px) {
   /* The rail's spacing gives before any figure does: at 420px the counts ran
-     23px into the claude gauge. The blocked count keeps its colour and word
-     and drops only its dot, which the word already says. */
+     23px into the claude gauge. The counts keep their colour and words and
+     drop only their dots, which the words already say. */
   .rail-bottom {
     gap: var(--s2);
   }
   .vitals {
     gap: var(--s2);
   }
-  .vital.danger .dot {
+  .vital .dot {
     display: none;
   }
   .vital-help {

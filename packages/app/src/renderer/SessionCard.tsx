@@ -7,7 +7,7 @@ import type { MenuItem } from './CardMenu.tsx';
 import { Slug } from './Slug.tsx';
 import { numColStyle, PrRow } from './TaskCard.tsx';
 import { send, shortenPath, tildify } from './api.ts';
-import { byUrgency, liveSeverity, needsYouLabel, SEVERITY_NOTE, workingIsGuessed } from './fleetSignals.ts';
+import { blockedPane, byUrgency, leadNote, liveSeverity, needsYouLabel, workingIsGuessed } from './fleetSignals.ts';
 import type { Severity } from './fleetSignals.ts';
 
 /**
@@ -19,8 +19,8 @@ import type { Severity } from './fleetSignals.ts';
  * card now leads with too — and the sentence says it, and whether you are
  * attached.
  */
-export function sevNote(state: Severity, attached: boolean): string {
-  return `${SEVERITY_NOTE[state]} · ${attached ? 'attached' : 'running, not attached'}`;
+export function sevNote(state: Severity, attached: boolean, guessed = false): string {
+  return `${leadNote(state, guessed)} · ${attached ? 'attached' : 'running, not attached'}`;
 }
 
 interface Props {
@@ -56,6 +56,8 @@ export function SessionCard({ session, pr, order, onResult }: Props): React.JSX.
   // by the same rule a live task card's is, so the two marks mean one thing.
   const state = liveSeverity(session.agents);
   const needsYou = needsYouLabel(session.agents);
+  const guessed = state === 'ok' && workingIsGuessed(session.agents);
+  const askingPane = blockedPane(session.agents);
   const prNumber = session.meta.pr?.split('#')[1];
   const prNumberInName = prNumber !== undefined && sessionLabel(session.name).includes(prNumber);
 
@@ -101,13 +103,19 @@ export function SessionCard({ session, pr, order, onResult }: Props): React.JSX.
           clickable title was two controls for one action. */}
       <div
         className="card-head"
-        onClick={() => void act({ kind: 'focusSession', session: session.name })}
-        title={`focus ${session.name} · ${tildify(session.path)}`}
+        onClick={() =>
+          void act(askingPane ? { kind: 'focusPane', pane: askingPane } : { kind: 'focusSession', session: session.name })
+        }
+        title={
+          askingPane
+            ? `go to the pane asking for permission (${askingPane})`
+            : `focus ${session.name} · ${tildify(session.path)}`
+        }
       >
         {/* Colour is the state, shape is attachment — as on a task group. */}
         <span
-          className={`attached-dot sev-${state}${state === 'ok' && workingIsGuessed(session.agents) ? ' guessed' : ''}`}
-          title={sevNote(state, session.attached > 0)}
+          className={`attached-dot sev-${state}${guessed ? ' guessed' : ''}`}
+          title={sevNote(state, session.attached > 0, guessed)}
         />
         {/* The label, not the name: an order prefix is fleetwood's own bookkeeping
             and reading `20-atlas` on the card would be noise. The tooltip above
@@ -115,7 +123,7 @@ export function SessionCard({ session, pr, order, onResult }: Props): React.JSX.
         {/* The keyboard's way in — see the same button on `TaskCard`. */}
         <button type="button" className="session-name card-title">
           <Slug text={sessionLabel(session.name)} />
-          <span className="sr-only">, {sevNote(state, session.attached > 0)}</span>
+          <span className="sr-only">, {sevNote(state, session.attached > 0, guessed)}</span>
         </button>
         {/* Where a narrow card's head breaks onto a second line — see `.head-break`. */}
         {needsYou && <span className="head-break" aria-hidden="true" />}

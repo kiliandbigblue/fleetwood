@@ -267,22 +267,23 @@ export function StatusBar({ counts, limits, cursorUsage, onHelp }: Props): React
             </span>
           )
         )}
-        {/* The keys and marks, findable without knowing they exist: `?` was
-            only ever mentioned in a tooltip and the empty state. */}
         {counts.error > 0 && (
           <span className="vital danger" title={`${counts.error} agent(s) in error — see its row for what it last said`}>
             {counts.error} error
           </span>
         )}
-        <button type="button" className="vital vital-help" onClick={onHelp} title="every key and mark (?)">
-          <kbd className="key-cap">?</kbd>
-          <span className="vital-help-word">keys</span>
-        </button>
       </div>
       <div className="quotas">
         {limits && <ClaudeQuota limits={limits} />}
         {cursorUsage && <CursorQuota usage={cursorUsage} />}
       </div>
+      {/* The keys and marks, findable without knowing they exist: `?` was
+          only ever mentioned in a tooltip and the empty state. Last on the
+          rail, past the gauges — among the counts it ran into them at 420px. */}
+      <button type="button" className="vital vital-help" onClick={onHelp} title="every key and mark (?)">
+        <kbd className="key-cap">?</kbd>
+        <span className="vital-help-word">keys</span>
+      </button>
     </footer>
   );
 }

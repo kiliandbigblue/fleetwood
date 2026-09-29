@@ -14,8 +14,8 @@ import { useEffect, useRef } from 'react';
 /** A key and what it does, in the list's own words. */
 const KEYS: ReadonlyArray<[string, string]> = [
   ['j  k', 'down and up the cards'],
-  ['n', 'the next card that needs you'],
-  ['enter', 'go to the focused card in tmux'],
+  ['n', 'the next card that needs you — opening the hidden drawer if one is in it'],
+  ['enter', 'go to the focused card in tmux — on a blocked card, to the pane asking'],
   ['1 – 9', 'answer its prompt, as the terminal numbers it — a lasting yes takes two presses'],
   ['a  d', 'the approve and deny answers'],
   ['m', 'its menu — arrows to move, esc to close'],
@@ -37,6 +37,8 @@ const MARKS: ReadonlyArray<{ mark: React.JSX.Element; says: string }> = [
   { mark: <span className="status-dot status-idle inferred" />, says: 'an agent, guessed — hollow always means a guess' },
   { mark: <span className="status-dot status-gone" />, says: 'an agent that has gone' },
   { mark: <span className="task-status-dot task-status-wip" />, says: 'a parked task, and how far along it is — the ring fills as it lands' },
+  { mark: <span className="task-status-dot task-status-not-started" />, says: 'dotted: nothing committed yet, or no session' },
+  { mark: <span className="status-dot status-error" />, says: 'square: an agent in error — see its row' },
   { mark: <span className="nested">⤶</span>, says: 'an agent another agent spawned' },
   { mark: <span className="nested">⇢</span>, says: 'runs in the claude daemon, not in the pane' },
   { mark: <span className="subagents">+2</span>, says: 'subagents running under it' },

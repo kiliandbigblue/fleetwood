@@ -25,7 +25,7 @@ import type { MenuItem } from './CardMenu.tsx';
 import { Slug } from './Slug.tsx';
 import { TaskNotes } from './TaskNotes.tsx';
 import { send } from './api.ts';
-import { byUrgency, liveSeverity, needsYouLabel, prHeadline, SEVERITY_NOTE, workingIsGuessed } from './fleetSignals.ts';
+import { blockedPane, byUrgency, leadNote, liveSeverity, needsYouLabel, prHeadline, workingIsGuessed } from './fleetSignals.ts';
 
 interface Props {
   task: Task;
@@ -533,6 +533,7 @@ export function TaskCard({
   const live = session !== undefined && session.agents.length > 0;
   const severity = liveSeverity(session?.agents ?? []);
   const guessed = severity === 'ok' && workingIsGuessed(session?.agents ?? []);
+  const askingPane = blockedPane(session?.agents ?? []);
   const needsYou = needsYouLabel(session?.agents ?? []);
   const attached = (session?.attached ?? 0) > 0;
   /*
@@ -614,15 +615,20 @@ export function TaskCard({
       <div
         className="card-head"
         onClick={
-          task.session
-            ? () => void act({ kind: 'focusSession', session: task.session as string })
-            : () => void act({ kind: 'startTaskSession', slug: task.slug })
+          // A blocked card opens on the pane that is asking, not the session.
+          askingPane
+            ? () => void act({ kind: 'focusPane', pane: askingPane })
+            : task.session
+              ? () => void act({ kind: 'focusSession', session: task.session as string })
+              : () => void act({ kind: 'startTaskSession', slug: task.slug })
         }
         /* The branch rides along here now that it has no line of its own: the
            slug beside it is that branch minus its type prefix, so `feature/` is
            the only part a second row was spelling out. */
         title={
-          task.session
+          askingPane
+            ? `${task.branch} · go to the pane asking for permission (${askingPane})`
+            : task.session
             ? `${task.branch} · focus ${task.session} · ${task.dir}`
             : `${task.branch} · no session yet — open one on ${task.dir}`
         }
@@ -633,7 +639,7 @@ export function TaskCard({
             /* Always filled: hollow is kept for one meaning, a guessed status.
                Whether a client is attached is in the tooltip. */
             className={`attached-dot sev-${severity}${guessed ? ' guessed' : ''}`}
-            title={`${guessed ? 'an agent here seems to be working — not reported' : SEVERITY_NOTE[severity]} · ${
+            title={`${leadNote(severity, guessed)} · ${
               attached ? 'attached' : 'running, not attached'
             }`}
           />
@@ -650,7 +656,7 @@ export function TaskCard({
         <button type="button" className="session-name card-title">
           <Slug text={task.slug} />
           <span className="sr-only">
-            , {live ? SEVERITY_NOTE[severity] : STATUS_LABEL[status]}
+            , {live ? leadNote(severity, guessed) : `${STATUS_LABEL[status]}${task.session ? '' : ', no session'}`}
           </span>
         </button>
         {/*
