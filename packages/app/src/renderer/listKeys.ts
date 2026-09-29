@@ -1,10 +1,12 @@
 import { stepIndex } from './fleetSignals.ts';
 
 /*
- * The fleet from the keyboard: `j`/`k` down and up the cards, `n` to the next
- * one that needs you, Enter to go to the one you are on, a digit to answer its
- * prompt (`a`/`d` for the approve and deny ones), `m` for its menu, and →/← to
- * unfold and fold a parked card.
+ * The fleet from the keyboard, as a two-level tree the way vim's are: cards,
+ * and the agent rows inside each. `j`/`k` go down and up the level you are
+ * on, `l` goes in — unfolding a folded card first — and `h` comes back out,
+ * folding a card you are already out on. `n` goes to the next card that needs
+ * you, Enter to the one you are on, a digit answers its prompt (`a`/`d` for
+ * the approve and deny ones), and `m` opens its menu. →/← are `l`/`h`.
  *
  * Read off the document rather than held in state, on purpose. The list is
  * redrawn every second from a fresh snapshot — cards appear, fold and leave as
@@ -38,8 +40,38 @@ function focusedCard(): Element | null {
   return document.activeElement?.closest('.orphans .agent, .card') ?? null;
 }
 
-/** Move focus one card down or up the list, keeping it in view. */
+/** A card's agent rows that can take focus — the inner level of the tree. */
+function agentRows(card: Element): HTMLElement[] {
+  return [...card.querySelectorAll<HTMLElement>('.agents button.activity')];
+}
+
+/** Whether focus is on an agent row inside a card, rather than on a card. */
+function onAgentRow(): boolean {
+  const active = document.activeElement;
+  return active instanceof HTMLElement && active.matches('.card:not(.orphans) button.activity');
+}
+
+function focusInView(target: HTMLElement): void {
+  target.focus();
+  target.scrollIntoView({ block: 'nearest' });
+}
+
+/**
+ * Move focus one step down or up the level you are on, keeping it in view.
+ *
+ * On an agent row that is the card's other agents, holding at its first and
+ * last — `h` is the way back out to the cards, and falling off the end of a
+ * card's agents into the next card's title would mix the two levels.
+ */
 export function moveCardFocus(direction: 1 | -1): void {
+  if (onAgentRow()) {
+    const card = document.activeElement?.closest('.card');
+    const rows = card ? agentRows(card) : [];
+    const current = rows.indexOf(document.activeElement as HTMLElement);
+    const next = rows[stepIndex(current, rows.length, direction)];
+    if (next) focusInView(next);
+    return;
+  }
   const titles = cardTitles();
   const card = focusedCard();
   const current = card ? titles.findIndex((title) => card.contains(title)) : -1;
@@ -99,12 +131,37 @@ export function openFocusedMenu(): boolean {
   return true;
 }
 
-/** Unfold (→) or fold (←) the focused parked card, if it is one. */
-export function foldFocusedCard(open: boolean): boolean {
+/** Unfold or fold the focused card, if it folds. */
+function foldFocusedCard(open: boolean): boolean {
   const toggle = focusedCard()?.querySelector<HTMLButtonElement>('.card-fold');
   if (!toggle || (toggle.getAttribute('aria-expanded') === 'true') === open) return false;
   toggle.click();
   return true;
+}
+
+/**
+ * `l`: into the card you are on — unfold it if it is folded, otherwise onto
+ * its first agent row (the most urgent one; agents are listed that way).
+ */
+export function enterFocusedCard(): boolean {
+  if (onAgentRow()) return false;
+  if (foldFocusedCard(true)) return true;
+  const card = focusedCard();
+  const first = card && !card.matches('.orphans .agent') ? agentRows(card)[0] : undefined;
+  if (!first) return false;
+  focusInView(first);
+  return true;
+}
+
+/** `h`: out of an agent row onto its card's title; out on a card, fold it. */
+export function leaveFocusedRow(): boolean {
+  if (onAgentRow()) {
+    const title = document.activeElement?.closest('.card')?.querySelector<HTMLElement>('.card-title');
+    if (!title) return false;
+    focusInView(title);
+    return true;
+  }
+  return foldFocusedCard(false);
 }
 
 /** Keys typed into a field are text, not commands. */

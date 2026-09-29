@@ -25,7 +25,8 @@ import { resolveFocus } from './focus.ts';
 import {
   answerFocusedPrompt,
   focusNextAttention,
-  foldFocusedCard,
+  enterFocusedCard,
+  leaveFocusedRow,
   isTyping,
   moveCardFocus,
   openFocusedMenu,
@@ -207,9 +208,12 @@ export function App(): React.JSX.Element {
               return answerFocusedPrompt('deny') || hintNoPrompt();
             case 'm':
               return openFocusedMenu();
+            case 'l':
             case 'ArrowRight':
+              return enterFocusedCard();
+            case 'h':
             case 'ArrowLeft':
-              return foldFocusedCard(event.key === 'ArrowRight');
+              return leaveFocusedRow();
             case '?':
               setHelpOpen(true);
               return true;

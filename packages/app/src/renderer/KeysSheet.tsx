@@ -13,13 +13,13 @@ import { useEffect, useRef } from 'react';
 
 /** A key and what it does, in the list's own words. */
 const KEYS: ReadonlyArray<[string, string]> = [
-  ['j  k', 'down and up the cards'],
+  ['j  k', 'down and up — the cards, or the agents inside one'],
+  ['l  h', 'into a card and back out: unfold, then its agents; out again, then fold (→ ← too)'],
   ['n', 'the next card that needs you — opening the hidden drawer if one is in it'],
   ['enter', 'go to the focused card in tmux — on a blocked card, to the pane asking'],
   ['1 – 9', 'answer its prompt, as the terminal numbers it — a lasting yes takes two presses'],
   ['a  d', 'the approve and deny answers'],
   ['m', 'its menu — arrows to move, esc to close'],
-  ['→  ←', 'unfold and fold a parked task'],
   ['⌘K', 'jump to any tmux session'],
   ['⌘T', 'new task'],
   ['⌘N', 'your notes'],
