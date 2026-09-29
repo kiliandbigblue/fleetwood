@@ -611,6 +611,10 @@ export function TaskCard({
   return (
     <div
       className={`card${needsYou ? ' attention' : ''}${dormant ? ' dormant' : ''}`}
+      /* For the arranging keys, as on a session card — and only with a session,
+         which is the one thing that can hold a place. */
+      data-session={session?.name}
+      data-session-id={session?.sessionId}
     >
       <div
         className="card-head"

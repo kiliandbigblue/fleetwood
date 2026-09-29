@@ -817,6 +817,38 @@ button {
     inset 0 1px 0 color-mix(in srgb, var(--attention) 45%, transparent),
     inset 0 -1px 0 color-mix(in srgb, var(--attention) 45%, transparent);
 }
+/*
+ * A card the keys just moved, marked where it landed.
+ *
+ * `t` and `b` send a card past the edge of what you were reading, and focus
+ * alone is a ring you have to hunt for. So the card arrives in a wash of the
+ * accent — the hue of a choice you made, not of a state the fleet is in — that
+ * is at full strength the instant it lands and gone within a second. Laid over
+ * the card rather than on its background, so a blocked card keeps its band
+ * underneath and gets both.
+ */
+.card.arrived::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--accent) 50%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--accent) 50%, transparent);
+  animation: arrive 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes arrive {
+  to {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Still marked, without the fade: held briefly, then gone in one step. */
+  .card.arrived::after {
+    animation: arrive 0.9s steps(1, end) forwards;
+  }
+}
 /* The seam is drawn by the band's own edge here; a grey line inside it would
    be a second, weaker edge a pixel away. */
 .card.attention::before {
@@ -1295,6 +1327,38 @@ button {
 .menu-divider {
   margin: 3px 4px;
   border-top: 1px solid var(--edge);
+}
+
+/*
+ * The key that makes the same move from the card, at the row's far end.
+ *
+ * The same cap as the `?` sheet draws, smaller and quieter: it is a reminder
+ * next to the word, not a second label competing with it.
+ */
+.menu-item:has(.menu-key) {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+.menu-key {
+  margin-left: auto;
+  min-width: 16px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.2;
+  text-align: center;
+  color: var(--dim);
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+}
+.menu-item:hover:enabled .menu-key,
+.menu-item:focus-visible .menu-key {
+  color: var(--soft);
+}
+.menu-item:disabled .menu-key {
+  color: inherit;
+  background: none;
 }
 
 /* The row that opens the position moves, and the one that closes them: the

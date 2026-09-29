@@ -14,6 +14,8 @@ export interface MenuItem {
   danger?: boolean;
   /** Two steps, for the items that delete work. The menu is the timer. */
   confirm?: boolean;
+  /** The list key that does the same from the card, without the menu. */
+  shortcut?: string;
 }
 
 interface Props {
@@ -38,7 +40,9 @@ interface Props {
  * and what takes it away. Position only appears for a card with a session to
  * hold one — the slot lives on the tmux session's name, so a dormant task has
  * nowhere to keep one. There is no "up one": two clicks to move a card one
- * place is worse than the arrows this replaced.
+ * place is worse than the arrows this replaced. From the keyboard it is `J`/`K`
+ * on the card itself, and each move here names its own key — the sheet is where
+ * you learn them, and after that you no longer need to open it.
  *
  * Where it sits is one row, `arrange`, that opens onto its four moves in the
  * same sheet. They were four rows of their own, which took a task's menu to
@@ -165,14 +169,26 @@ export function CardMenu({ session, order, actions, onResult }: Props): React.JS
         }}
       >
         {arming ? item.label : item.confirm === true ? `${item.label} — sure?` : item.label}
+        {item.shortcut !== undefined && (
+          <kbd className="menu-key" aria-hidden="true">
+            {item.shortcut}
+          </kbd>
+        )}
       </button>
     );
   };
 
-  const moveItem = (label: string, direction: MoveDirection, disabled: boolean, title: string): MenuItem => ({
+  const moveItem = (
+    label: string,
+    direction: MoveDirection,
+    disabled: boolean,
+    title: string,
+    shortcut: string,
+  ): MenuItem => ({
     label,
     title,
     disabled,
+    shortcut,
     onClick: () => move(direction),
   });
 
@@ -212,6 +228,7 @@ export function CardMenu({ session, order, actions, onResult }: Props): React.JS
                   'top',
                   first,
                   pinned ? 'first of the pinned sessions' : 'first below the pinned sessions',
+                  't',
                 ),
               )}
               {row(
@@ -220,6 +237,7 @@ export function CardMenu({ session, order, actions, onResult }: Props): React.JS
                   'bottom',
                   last,
                   pinned ? 'last of the pinned sessions' : 'last in the fleet',
+                  'b',
                 ),
               )}
               {row({
@@ -227,6 +245,7 @@ export function CardMenu({ session, order, actions, onResult }: Props): React.JS
                 title: pinned
                   ? 'back among the unpinned, at the slot it already has'
                   : 'hold it above every unpinned session, whatever they are doing',
+                shortcut: 'p',
                 onClick: () => void act({ kind: 'setSessionPinned', session, pinned: !pinned }),
               })}
               {row({

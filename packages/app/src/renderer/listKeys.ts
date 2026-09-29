@@ -127,6 +127,52 @@ export function answerFocusedPrompt(answer: 'approve' | 'deny' | { key: string }
   return true;
 }
 
+/**
+ * The session of the card the keyboard is on — the name to ask a move about and
+ * the id to find the card by afterwards — or `undefined` off a card, or on one
+ * with no session to hold a place (a dormant task, a workspace, a list row).
+ */
+export function focusedSession(): { name: string; id: string } | undefined {
+  const card = document.activeElement?.closest<HTMLElement>('.card[data-session]');
+  const name = card?.dataset.session;
+  const id = card?.dataset.sessionId;
+  return name && id ? { name, id } : undefined;
+}
+
+/**
+ * Put focus back on a card after it moved, found by its tmux session id.
+ *
+ * A move renames the session and redraws the list around it, and a node the
+ * list moves can drop focus on `body` on the way — the next `J` would then have
+ * no card to act on. The id is the handle because it is the one thing a rename
+ * keeps. `false` when the card is not drawn (yet).
+ */
+export function refocusSession(id: string): boolean {
+  const title = document.querySelector<HTMLElement>(`.card[data-session-id="${CSS.escape(id)}"] .card-title`);
+  if (!title) return false;
+  if (!title.closest('.card')?.contains(document.activeElement)) title.focus();
+  title.scrollIntoView({ block: 'nearest' });
+  return true;
+}
+
+/**
+ * Mark a card that just arrived, once, so the eye can find where it landed.
+ *
+ * A move to the top or bottom sends it past the edge of what you were looking
+ * at, and focus alone is a thin ring that is easy to lose in a long list. The
+ * mark is a wash that fades out — see `.card.arrived` — restarted if the card
+ * moves again before it has faded.
+ */
+export function markArrived(id: string): void {
+  const card = document.querySelector<HTMLElement>(`.card[data-session-id="${CSS.escape(id)}"]`);
+  if (!card) return;
+  card.classList.remove('arrived');
+  // Reading layout between the two restarts the animation rather than merging them.
+  void card.offsetWidth;
+  card.classList.add('arrived');
+  card.addEventListener('animationend', () => card.classList.remove('arrived'), { once: true });
+}
+
 /** Open the focused card's menu. Its first item takes focus — see `CardMenu`. */
 export function openFocusedMenu(): boolean {
   const trigger = focusedCard()?.querySelector<HTMLButtonElement>('.menu-open');

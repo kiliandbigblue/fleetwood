@@ -98,7 +98,13 @@ export function SessionCard({ session, pr, order, onResult }: Props): React.JSX.
   ];
 
   return (
-    <div className={`card${needsYou ? ' attention' : ''}`}>
+    // The name and the id are for the arranging keys: the name is what a move is
+    // asked about, the id is what finds the card again once the name has changed.
+    <div
+      className={`card${needsYou ? ' attention' : ''}`}
+      data-session={session.name}
+      data-session-id={session.sessionId}
+    >
       {/* The whole header focuses the session — a separate "focus" button next to a
           clickable title was two controls for one action. */}
       <div

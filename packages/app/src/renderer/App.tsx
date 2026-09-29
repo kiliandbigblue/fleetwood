@@ -18,7 +18,7 @@ import { ThemePicker } from './ThemePicker.tsx';
 // The leaf module: the barrel re-exports tmux and process scanning, which fail
 // the renderer bundle on `node:child_process`.
 import { needsDeploy } from '@fleetwood/core/deployState';
-import { isHidden, sessionLabel, sortSessions } from '@fleetwood/core/sessionOrder';
+import { isHidden, isPinned, sessionLabel, sortSessions } from '@fleetwood/core/sessionOrder';
 import { isWorkSession } from '@fleetwood/core/fleetList';
 import { dormantTasks } from '@fleetwood/core/taskView';
 import { resolveFocus } from './focus.ts';
@@ -26,12 +26,16 @@ import {
   answerFocusedPrompt,
   focusNextAttention,
   enterFocusedCard,
+  focusedSession,
   leaveFocusedRow,
+  markArrived,
+  refocusSession,
   isTyping,
   moveCardFocus,
   openFocusedMenu,
 } from './listKeys.ts';
 import { KeysSheet } from './KeysSheet.tsx';
+import { arrangeIntent, inertMove } from './arrangeKeys.ts';
 import { blockedAnnouncement } from './fleetSignals.ts';
 import type { BlockedAgent } from './fleetSignals.ts';
 import { applyTheme } from './theme.ts';
@@ -135,7 +139,91 @@ export function App(): React.JSX.Element {
     return () => clearTimeout(timer);
   }, [toast]);
 
+  /*
+   * The two lists a card can be moved within, as they were last drawn.
+   *
+   * A ref because the key handler below is bound once per overlay change, and a
+   * move has to be planned against the order on screen now, not the one from
+   * when the handler was made. Written further down, where the lists are cut.
+   */
+  const arrangeLists = useRef<{ shown: string[]; hidden: string[] }>({ shown: [], hidden: [] });
+  /** A move is out: the card's name is about to change, so the next key waits. */
+  const arranging = useRef(false);
+  /*
+   * The card a key just moved, and until when to keep focus on it.
+   *
+   * Moving renames the session and reorders the list under it, and the first
+   * redraw after is not always the one with the new order — so focus is put
+   * back on it for the redraws that land in the next moment, not just once.
+   * Any other key or a click lets go: after that, where focus is is yours.
+   */
+  const following = useRef<{ id: string; until: number } | undefined>(undefined);
   useEffect(() => {
+    const pending = following.current;
+    if (!pending) return;
+    if (Date.now() > pending.until) following.current = undefined;
+    else refocusSession(pending.id);
+  }, [snapshot]);
+  useEffect(() => {
+    const letGo = (): void => {
+      following.current = undefined;
+    };
+    window.addEventListener('pointerdown', letGo);
+    return () => window.removeEventListener('pointerdown', letGo);
+  }, []);
+
+  useEffect(() => {
+    /*
+     * `J` `K` `t` `b` `p` on the focused card: move it, or pin it — see
+     * `arrangeKeys.ts`. Always handled once it is one of those keys, so a key
+     * that cannot act says why rather than falling through to nothing.
+     */
+    const arrange = (key: string): boolean => {
+      const intent = arrangeIntent(key);
+      if (!intent) return false;
+      const target = focusedSession();
+      if (!target) {
+        // On a card with no session — a dormant task, a workspace — say so; off
+        // the cards altogether the key is simply not for here.
+        if (!document.activeElement?.closest('.card')) return false;
+        setToast({ message: 'only a card with a session keeps a place — open it first', ok: true });
+        return true;
+      }
+      // Planned against the name on screen, which a move in flight is changing.
+      if (arranging.current) return true;
+      const list = isHidden(target.name) ? arrangeLists.current.hidden : arrangeLists.current.shown;
+      let request: Parameters<typeof send>[0];
+      if (intent.kind === 'move') {
+        const why = inertMove(list, target.name, intent.direction);
+        if (why) {
+          setToast({ message: why, ok: true });
+          return true;
+        }
+        request = { kind: 'reorderSession', session: target.name, direction: intent.direction, order: list };
+      } else {
+        request = { kind: 'setSessionPinned', session: target.name, pinned: !isPinned(target.name) };
+      }
+      arranging.current = true;
+      following.current = { id: target.id, until: Date.now() + 2_000 };
+      void send(request)
+        // A rejected call must not leave `arranging` set, or no key moves again.
+        .catch(() => ({ ok: false, detail: 'the move never reached fleetwood — try again' }))
+        .then((result) => {
+        // The snapshot with the new names is sent before this reply and drawn
+        // in the task after it, so the next key plans against the new list.
+        setTimeout(() => {
+          arranging.current = false;
+          if (following.current?.id === target.id) refocusSession(target.id);
+          if (result.ok) markArrived(target.id);
+        }, 0);
+        // A pin sends the card a long way, so it is worth a line; a move is
+        // there to see. Both are said to a screen reader, which cannot see it.
+        if (!result.ok || intent.kind === 'pin') setToast({ message: result.detail, ok: result.ok });
+        setAnnouncement(result.detail);
+      });
+      return true;
+    };
+
     /*
      * An answer key with no prompt under focus does nothing — say why, when a
      * prompt is waiting somewhere else. Otherwise stay quiet: a stray `a`
@@ -185,7 +273,10 @@ export function App(): React.JSX.Element {
         !themeOpen &&
         !helpOpen
       ) {
+        // Any key but the next move lets go of the card that just moved.
+        if (!arrangeIntent(event.key)) following.current = undefined;
         const handled = ((): boolean => {
+          if (arrange(event.key)) return true;
           switch (event.key) {
             case 'j':
             case 'k':
@@ -331,6 +422,7 @@ export function App(): React.JSX.Element {
    * survives a renumber, so nothing here can push a card back on screen.
    */
   const hiddenOrder = hidden.map((session) => session.name);
+  arrangeLists.current = { shown: order, hidden: hiddenOrder };
 
   /*
    * The focused task, re-found in the snapshot that just landed.
