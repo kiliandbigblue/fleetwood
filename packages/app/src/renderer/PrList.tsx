@@ -322,7 +322,7 @@ export function PrList({ prs, merged, tasks, prSessions, onResult }: Props): Rea
    * made, so having the undo stay put helps.
    */
   const [undo, setUndo] = useState<{ key: string; label: string } | undefined>();
-  const mergedSection = (): React.JSX.Element => {
+  const mergedSection = (): React.JSX.Element | null => {
     /*
      * Anything deployed on a day that is already over is dropped outright.
      *
@@ -339,11 +339,17 @@ export function PrList({ prs, merged, tasks, prSessions, onResult }: Props): Rea
     const list = (merged?.prs ?? []).filter((pr) => !doneBefore(pr, since));
     // Same predicate the header pill uses, so the two numbers always agree.
     const owed = list.filter((pr) => needsDeploy(pr)).length;
+    /*
+     * Nothing merged, nothing to undo: no section at all. It is first on the
+     * tab, so an empty one was a heading and a sentence sitting above the
+     * reviews you owe. Loading and a failed read still draw it — those are news.
+     */
+    if (merged && !merged.degraded && list.length === 0 && !undo) return null;
     return (
       <>
         <div className="section-title section-title-row" role="heading" aria-level={2}>
           <span>
-            recently merged ({list.length}){owed > 0 && <strong className="owed"> · {owed} to deploy</strong>}
+            recently merged · {list.length}{owed > 0 && <strong className="owed"> · {owed} to deploy</strong>}
             <Freshness at={merged?.fetchedAt} degraded={merged?.degraded} />
           </span>
           <span className="section-actions">
@@ -421,7 +427,7 @@ export function PrList({ prs, merged, tasks, prSessions, onResult }: Props): Rea
     <>
       <div className="section-title" role="heading" aria-level={2}>
         {/* The search stops at its cap, so a full list says "or more". */}
-        {title} ({list.length >= SEARCH_CAP ? `${SEARCH_CAP}+` : list.length})
+        {title} · {list.length >= SEARCH_CAP ? `${SEARCH_CAP}+` : list.length}
         <Freshness at={prs.fetchedAt} />
       </div>
       {list.length === 0 ? (

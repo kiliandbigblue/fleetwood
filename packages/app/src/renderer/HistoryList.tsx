@@ -81,8 +81,8 @@ export function HistoryList({ history, onResult }: Props): React.JSX.Element {
     <>
       <div className="section-title section-title-row" role="heading" aria-level={2}>
         <span>
-          archived ({shown.length}
-          {shown.length !== history.length ? ` of ${history.length}` : ''})
+          archived · {shown.length}
+          {shown.length !== history.length ? ` of ${history.length}` : ''}
         </span>
       </div>
       <input

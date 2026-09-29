@@ -701,12 +701,15 @@ export function TaskCard({
          *
          * A live card's mark is its agents now, so its progress is said here in
          * words. A folded card has no rows under it to open, so the one pull
-         * request fact worth crossing the panel for rides here too.
+         * request fact worth crossing the panel for rides here too — and so
+         * does the repo count. An open card's worktree rows sit right under
+         * this line saying which repos and what changed, so there it would be
+         * the same fact twice, and the one that truncated first.
          */}
         <span className="repo-summary">
           {[
             live ? STATUS_LABEL[status] : undefined,
-            repoSummary(task.repos, task.branch),
+            folded ? repoSummary(task.repos, task.branch) : undefined,
             folded && prs ? prHeadline(prs) : undefined,
           ]
             .filter(Boolean)
@@ -778,13 +781,18 @@ export function TaskCard({
       {/* Above the notes, which is where these links were being kept by hand. */}
       {!folded && prs && prs.length > 0 && (
         <div className="task-prs" style={numColStyle(prs)}>
-          <div
-            className="task-prs-head"
-            title={prsStale ? 'gh returned nothing on the last search — this is the previous answer' : undefined}
-          >
-            {prSummary(prs)}
-            {prsStale && <span className="task-pr-via"> · stale</span>}
-          </div>
+          {/* A count over one row is that row's own state said again, so the
+              head waits for a second pull request — or for a stale answer,
+              which only it can say. */}
+          {(prs.length > 1 || prsStale) && (
+            <div
+              className="task-prs-head"
+              title={prsStale ? 'gh returned nothing on the last search — this is the previous answer' : undefined}
+            >
+              {prSummary(prs)}
+              {prsStale && <span className="task-pr-via"> · stale</span>}
+            </div>
+          )}
           {(() => {
             /*
              * Stacked on the open ones alone, then the landed ones underneath.

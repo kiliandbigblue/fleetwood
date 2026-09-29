@@ -173,7 +173,7 @@ export function Power({ shutdown, counts, onResult }: Props): React.JSX.Element 
         {shutdown.enabled && shutdown.phase !== 'due' && (
           <div className="power-hint">
             {stopped.length > 0
-              ? `at ${shutdown.time} this stops ${stopped.join(' and ')} — your notes are kept.`
+              ? `this stops ${stopped.join(' and ')} — your notes are kept.`
               : `nothing is running now — your notes are kept.`}
           </div>
         )}

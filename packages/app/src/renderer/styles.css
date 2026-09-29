@@ -2655,12 +2655,11 @@ button.activity:focus-visible {
 
 /* --- permission prompt --------------------------------------------------- */
 
+/* No box of its own. It only ever draws inside a card that is already tinted
+   and ruled for attention, and a second fill and border in there was a card
+   within a card. On the text rail, under the row that is asking. */
 .prompt {
-  margin: 0 10px 8px;
-  padding: 8px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--danger) 12%, var(--panel));
-  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--edge));
+  margin: 0 var(--s4) var(--s3) var(--row-indent);
 }
 
 .prompt-question {
