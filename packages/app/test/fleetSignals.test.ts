@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import type { FleetAgent, TaskPr } from '@fleetwood/core';
 import {
   agentLabel,
+  blockedAnnouncement,
   byUrgency,
+  grantsLastingPermission,
   liveSeverity,
   needsYouLabel,
   prHeadline,
@@ -57,4 +59,28 @@ test('j and k hold at the ends and enter from the right side', () => {
   assert.equal(stepIndex(2, 3, 1), 2);
   assert.equal(stepIndex(0, 3, -1), 0);
   assert.equal(stepIndex(-1, 0, 1), -1);
+});
+
+test('a standing permission takes two presses, a one-off answer one', () => {
+  assert.equal(grantsLastingPermission("Yes, and don't ask again"), true);
+  assert.equal(grantsLastingPermission('Yes, allow all edits during this session'), true);
+  assert.equal(grantsLastingPermission('Yes, always allow'), true);
+  assert.equal(grantsLastingPermission('Yes'), false);
+  assert.equal(grantsLastingPermission('No'), false);
+});
+
+test('only agents that newly stopped are announced', () => {
+  const now = [
+    { key: 'a', card: 'returns-label-v2', activity: 'Bash: make test' },
+    { key: 'b', card: 'orders' },
+  ];
+  assert.equal(blockedAnnouncement(new Set(['a', 'b']), now), undefined);
+  assert.equal(
+    blockedAnnouncement(new Set(['a']), now),
+    'orders needs permission. Press n to go to it.',
+  );
+  assert.equal(
+    blockedAnnouncement(new Set(), now.slice(0, 1)),
+    'returns-label-v2 needs permission: Bash: make test. Press n to go to it.',
+  );
 });

@@ -14,14 +14,28 @@ import { stepIndex } from './fleetSignals.ts';
  * and a screen reader and a mouse user agree with the keyboard about it.
  */
 
-/** Every card title in the list on screen, top to bottom. */
+/**
+ * Every stop in the list on screen, top to bottom.
+ *
+ * The cards' titles, then the hidden drawer's when it is open — it sits under
+ * the list, outside `.body` — and the rows of the agents with no card at all,
+ * the daemon-hosted and the left over, which have nothing but their row to
+ * land on. Document order is screen order, so one query keeps them in it.
+ */
 function cardTitles(): HTMLElement[] {
-  return [...document.querySelectorAll<HTMLElement>('.body .card-title')];
+  return [
+    ...document.querySelectorAll<HTMLElement>(
+      '.body .card-title, .hidden-group .card-title, .orphans button.activity',
+    ),
+  ];
 }
 
-/** The card the keyboard is on, if it is on one. */
+/**
+ * The card the keyboard is on, if it is on one — or the agent row, for an
+ * agent with no card of its own.
+ */
 function focusedCard(): Element | null {
-  return document.activeElement?.closest('.card') ?? null;
+  return document.activeElement?.closest('.orphans .agent, .card') ?? null;
 }
 
 /** Move focus one card down or up the list, keeping it in view. */
@@ -38,18 +52,25 @@ export function moveCardFocus(direction: 1 | -1): void {
 /**
  * Focus the next card that needs you, after the one you are on.
  *
- * Wraps, unlike `j`/`k`: this is "take me to the next thing", and with the
- * last blocked card focused the next thing is the first one again.
+ * `wrap` lets it come round to the top, unlike `j`/`k`: this is "take me to
+ * the next thing". The caller asks without it first, so a blocked card behind
+ * the closed hidden drawer gets its turn before the list comes round again.
  */
-export function focusNextAttention(): void {
+export function focusNextAttention(wrap = true): boolean {
   const titles = cardTitles();
   const card = focusedCard();
   const current = card ? titles.findIndex((title) => card.contains(title)) : -1;
-  const ordered = [...titles.slice(current + 1), ...titles.slice(0, current + 1)];
-  const next = ordered.find((title) => title.closest('.card')?.classList.contains('attention'));
-  if (!next) return;
+  const ordered = [...titles.slice(current + 1), ...(wrap ? titles.slice(0, current + 1) : [])];
+  const next = ordered.find(
+    (title) =>
+      title.closest('.card')?.classList.contains('attention') === true ||
+      // A cardless agent row: blocked when its own dot says so.
+      title.closest('.orphans .agent')?.querySelector('.status-blocked_permission') != null,
+  );
+  if (!next) return false;
   next.focus();
   next.scrollIntoView({ block: 'nearest' });
+  return true;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FleetSession, Task } from '@fleetwood/core';
 import type { Snapshot } from '../shared/ipc.ts';
 import { SessionCard } from './SessionCard.tsx';
@@ -18,7 +18,7 @@ import { ThemePicker } from './ThemePicker.tsx';
 // The leaf module: the barrel re-exports tmux and process scanning, which fail
 // the renderer bundle on `node:child_process`.
 import { needsDeploy } from '@fleetwood/core/deployState';
-import { isHidden, sortSessions } from '@fleetwood/core/sessionOrder';
+import { isHidden, sessionLabel, sortSessions } from '@fleetwood/core/sessionOrder';
 import { isWorkSession } from '@fleetwood/core/fleetList';
 import { dormantTasks } from '@fleetwood/core/taskView';
 import { resolveFocus } from './focus.ts';
@@ -31,6 +31,8 @@ import {
   openFocusedMenu,
 } from './listKeys.ts';
 import { KeysSheet } from './KeysSheet.tsx';
+import { blockedAnnouncement } from './fleetSignals.ts';
+import type { BlockedAgent } from './fleetSignals.ts';
 import { applyTheme } from './theme.ts';
 import { watchZoom } from './zoom.ts';
 import { Slug } from './Slug.tsx';
@@ -62,6 +64,15 @@ export function App(): React.JSX.Element {
    * make the fleet look like hiding had come undone.
    */
   const [hiddenOpen, setHiddenOpen] = useState(false);
+  /** `n` opened the hidden drawer to reach a blocked card inside it. */
+  const pendingAttention = useRef(false);
+  useEffect(() => {
+    // After the drawer's cards exist, not before: they render with it.
+    if (hiddenOpen && pendingAttention.current) {
+      pendingAttention.current = false;
+      focusNextAttention();
+    }
+  }, [hiddenOpen]);
   /**
    * The one task the panel is showing, if it is showing one.
    *
@@ -163,7 +174,22 @@ export function App(): React.JSX.Element {
               moveCardFocus(event.key === 'j' ? 1 : -1);
               return true;
             case 'n':
-              focusNextAttention();
+              /*
+               * Down the list first; then, past the last blocked card on
+               * screen, the hidden drawer if its door says one of its cards is
+               * blocked — open it and take the key there once its cards are
+               * drawn; then round to the top. And when nothing at all needs
+               * you, say so: a key that does nothing reads as a broken key.
+               */
+              if (focusNextAttention(false)) return true;
+              // Only while the drawer is shut: open, its cards are already in
+              // the walk above, and the door's count must not trap `n` there.
+              if (document.querySelector('.hidden-attention') && !document.querySelector('.hidden-group')) {
+                pendingAttention.current = true;
+                setHiddenOpen(true);
+                return true;
+              }
+              if (!focusNextAttention(true)) setToast({ message: 'nothing needs you', ok: true });
               return true;
             case 'a':
               return answerFocusedPrompt('approve');
@@ -302,6 +328,33 @@ export function App(): React.JSX.Element {
    * No special sort is needed to put tasks near the top — they are the sessions
    * with agents in them, and the sort above already ranks by that.
    */
+  /*
+   * Every agent stopped on a permission prompt, hidden and cardless ones too —
+   * an agent nobody is looking at can still be the one holding everything up.
+   * Joined into a key so the announcement below runs on a change in *who* is
+   * blocked, not on every one-second snapshot.
+   */
+  const blockedAgents: BlockedAgent[] = [
+    ...(snapshot?.fleet.sessions ?? []).flatMap((session) =>
+      session.agents
+        .filter((agent) => agent.status === 'blocked_permission')
+        .map((agent) => ({ key: agent.key, card: sessionLabel(session.name), activity: agent.activity })),
+    ),
+    ...(snapshot?.fleet.orphans ?? [])
+      .filter((agent) => agent.status === 'blocked_permission')
+      .map((agent) => ({ key: agent.key, card: agent.tool, activity: agent.activity })),
+  ];
+  const blockedKeys = blockedAgents.map((agent) => agent.key).join(' ');
+  const announced = useRef<ReadonlySet<string>>(new Set());
+  const [announcement, setAnnouncement] = useState('');
+  useEffect(() => {
+    const said = blockedAnnouncement(announced.current, blockedAgents);
+    announced.current = new Set(blockedAgents.map((agent) => agent.key));
+    if (said) setAnnouncement(said);
+    // Keyed on who is blocked, on purpose: `blockedAgents` is a new array every
+    // snapshot, and re-running on that would diff the same set every second.
+  }, [blockedKeys]);
+
   const taskBySession = new Map(
     (snapshot?.tasks ?? []).filter((t) => t.session).map((t) => [t.session as string, t]),
   );
@@ -559,7 +612,8 @@ export function App(): React.JSX.Element {
                       {reason === 'daemon-hosted' ? 'in the daemon' : 'left over'} · {group.length}
                     </span>
                   </div>
-                  <div className="card">
+                  {/* `orphans` so the list keys reach these rows — see `listKeys.ts`. */}
+                  <div className="card orphans">
                     <div className="agents">
                       {group.map((agent) => (
                         <AgentRow key={agent.key} agent={agent} onResult={onResult} />
@@ -684,6 +738,15 @@ export function App(): React.JSX.Element {
        * one it may not read either. So a region per politeness, each fixed: a
        * failure interrupts, a success waits its turn.
        */}
+      {/*
+       * The fleet's own news, for a screen reader: an agent that just stopped
+       * on you. The rail's red count says it to the eye; nothing said it aloud,
+       * so a blocked agent went unheard until someone happened past its card.
+       */}
+      <div className="sr-only" role="status" aria-live="polite">
+        {announcement}
+      </div>
+
       <div className="toast-region">
         <div role="status" aria-live="polite">
           {toast?.ok && <ToastLine toast={toast} onDismiss={() => setToast(undefined)} />}

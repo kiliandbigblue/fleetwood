@@ -5,7 +5,7 @@ import type { FleetAgent } from '@fleetwood/core';
 // reason the formatter lives apart from the reader in the first place.
 import { describeContext, formatContextTokens } from '@fleetwood/core/contextFormat';
 import { duration, send } from './api.ts';
-import { AGENT_STATUS_LABEL, agentLabel } from './fleetSignals.ts';
+import { AGENT_STATUS_LABEL, agentLabel, grantsLastingPermission, PROVENANCE_MARK } from './fleetSignals.ts';
 
 interface Props {
   agent: FleetAgent;
@@ -19,19 +19,6 @@ interface Props {
   where?: string;
   onResult: (message: string, ok: boolean) => void;
 }
-
-/**
- * How the status was learned, as tooltip prose rather than a glyph.
- *
- * It used to render as its own `~` / `?` / `…` column, which at panel width cost
- * more space than the nuance was worth. The dot still carries it on hover.
- */
-const PROVENANCE_NOTE: Record<string, string> = {
-  hook: 'reported by the agent',
-  screen: 'read off the pane, not reported',
-  process: 'a process is running but sent no hooks',
-  stale: 'last reported a while ago, unconfirmed',
-};
 
 /**
  * What closing this agent will actually do, since it isn't the same act in every
@@ -60,6 +47,16 @@ export function AgentRow({ agent, where, onResult }: Props): React.JSX.Element {
   const prompt = agent.prompt;
   const label = agentLabel(agent);
   const statusLabel = AGENT_STATUS_LABEL[agent.status];
+  /*
+   * Whether this status was reported, or pieced together.
+   *
+   * Marked twice, because each mark reaches someone the other misses: the dot
+   * goes hollow, which reads at a glance down a column of solid ones, and the
+   * CLI's own `~` / `?` / `…` follows the activity, which says *which* kind of
+   * guess it is. Not a column of its own — that was tried and cost more width
+   * than the nuance was worth — just a mark where the sentence ends.
+   */
+  const inferred = PROVENANCE_MARK[agent.provenance];
 
   return (
     <>
@@ -72,12 +69,15 @@ export function AgentRow({ agent, where, onResult }: Props): React.JSX.Element {
         title={agent.pane ? `go to ${agent.pane} — ${label}` : label}
       >
         <span
-          className={`status-dot status-${agent.status}`}
-          title={`${statusLabel} — ${PROVENANCE_NOTE[agent.provenance] ?? agent.provenance}`}
+          className={`status-dot status-${agent.status}${inferred ? ' inferred' : ''}`}
+          title={`${statusLabel} — ${inferred?.note ?? 'reported by the agent'}`}
         />
         {/* The dot's meaning, for whoever cannot see its colour. Said once, here,
             rather than on the activity text, which can be anything. */}
-        <span className="sr-only">{statusLabel},</span>
+        <span className="sr-only">
+          {statusLabel}
+          {inferred ? `, ${inferred.note}` : ''},
+        </span>
         <span className={`tool tool-${agent.tool}`}>{agent.tool}</span>
         {where && (
           <span className="agent-where" title={`working in ${where}`}>
@@ -112,11 +112,16 @@ export function AgentRow({ agent, where, onResult }: Props): React.JSX.Element {
          * a click does: its click bubbles to the row.
          */}
         {agent.pane ? (
-          <button type="button" className="activity">
+          <button type="button" className={`activity${agent.provenance === 'stale' ? ' stale' : ''}`}>
             {label}
           </button>
         ) : (
-          <span className="activity">{label}</span>
+          <span className={`activity${agent.provenance === 'stale' ? ' stale' : ''}`}>{label}</span>
+        )}
+        {inferred && (
+          <span className="provenance" title={inferred.note} aria-hidden="true">
+            {inferred.mark}
+          </span>
         )}
         {/* What the next turn in this pane will re-read, and so what it will
             cost relative to a fresh one. The only number on this row you can
@@ -215,6 +220,19 @@ function PromptBlock({
   onResult: Props['onResult'];
 }): React.JSX.Element {
   const [sent, setSent] = useState<string>();
+  /** The standing-permission option waiting for its second press, by key. */
+  const [armed, setArmed] = useState<string>();
+
+  const press = (key: string, label: string): void => {
+    if (grantsLastingPermission(label) && armed !== key) {
+      setArmed(key);
+      // The same four seconds every other two-step in the panel gives you.
+      setTimeout(() => setArmed((was) => (was === key ? undefined : was)), 4_000);
+      return;
+    }
+    setArmed(undefined);
+    void answer(key, label);
+  };
 
   const answer = async (key: string, label: string): Promise<void> => {
     setSent(`${key} · ${label}`);
@@ -236,16 +254,16 @@ function PromptBlock({
             type="button"
             className={`button prompt-answer${
               option.key === prompt.approve ? ' approve' : option.key === prompt.deny ? ' deny' : ''
-            }`}
+            }${armed === option.key ? ' confirming' : ''}`}
             data-key={option.key}
             disabled={sent !== undefined}
             title={`answer ${option.key} — or press ${option.key} with this card focused${
               option.key === prompt.approve ? ' (a also works)' : option.key === prompt.deny ? ' (d also works)' : ''
-            }`}
-            onClick={() => void answer(option.key, option.label)}
+            }${grantsLastingPermission(option.label) ? '. It lasts, so it takes a second press.' : ''}`}
+            onClick={() => press(option.key, option.label)}
           >
             <kbd className="key-cap">{option.key}</kbd>
-            {option.label}
+            {armed === option.key ? `${option.label} — press ${option.key} again` : option.label}
           </button>
         ))}
         <button
@@ -259,11 +277,15 @@ function PromptBlock({
           open ↗
         </button>
       </div>
-      {sent && (
-        <div className="prompt-sent" role="status">
-          sent {sent} — waiting for the agent to move on
-        </div>
-      )}
+      {/* One line under the buttons for both moments that need saying: an
+          answer armed and waiting for its second press, and one on its way. */}
+      <div className="prompt-sent" role="status">
+        {sent
+          ? `sent ${sent} — waiting for the agent to move on`
+          : armed
+            ? `press ${armed} again — this answer lasts beyond this prompt`
+            : ''}
+      </div>
     </div>
   );
 }

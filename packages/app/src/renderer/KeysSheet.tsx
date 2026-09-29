@@ -16,7 +16,7 @@ const KEYS: ReadonlyArray<[string, string]> = [
   ['j  k', 'down and up the cards'],
   ['n', 'the next card that needs you'],
   ['enter', 'go to the focused card in tmux'],
-  ['1 – 9', 'answer its prompt, as the terminal numbers it'],
+  ['1 – 9', 'answer its prompt, as the terminal numbers it — a lasting yes takes two presses'],
   ['a  d', 'the approve and deny answers'],
   ['m', 'its menu — arrows to move, esc to close'],
   ['→  ←', 'unfold and fold a parked task'],
@@ -36,6 +36,10 @@ const MARKS: ReadonlyArray<{ mark: React.JSX.Element; says: string }> = [
   { mark: <span className="nested">⤶</span>, says: 'an agent another agent spawned' },
   { mark: <span className="nested">⇢</span>, says: 'runs in the claude daemon, not in the pane' },
   { mark: <span className="subagents">+2</span>, says: 'subagents running under it' },
+  {
+    mark: <span className="provenance">~ ? …</span>,
+    says: 'a status nobody reported — read off the screen, a bare process, or gone stale; its dot is hollow',
+  },
   { mark: <span className="context-fig warn">312k</span>, says: 'context the next turn re-reads — gold, then red, as it gets costly' },
   { mark: <span className="task-pr-via">⇡ ~ ⇄</span>, says: 'a pull request from the stack, history, or the task itself' },
 ];
@@ -43,8 +47,23 @@ const MARKS: ReadonlyArray<{ mark: React.JSX.Element; says: string }> = [
 /** The `?` sheet. Escape, a click outside, or `?` again puts it away. */
 export function KeysSheet({ open, onClose }: { open: boolean; onClose: () => void }): React.JSX.Element | null {
   const sheetRef = useRef<HTMLDivElement>(null);
+  /*
+   * Where you were when you asked, and where you go back to.
+   *
+   * A sheet that closes onto `body` throws away your place: the next `j` starts
+   * from the top of the list again. So the focused element at open is kept and
+   * handed focus back on close — if it is still on the page after the redraws
+   * that happened while you read.
+   */
+  const returnTo = useRef<HTMLElement | null>(null);
   useEffect(() => {
-    if (open) sheetRef.current?.focus();
+    if (open) {
+      returnTo.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      sheetRef.current?.focus();
+      return;
+    }
+    if (returnTo.current?.isConnected) returnTo.current.focus();
+    returnTo.current = null;
   }, [open]);
 
   if (!open) return null;
@@ -53,6 +72,7 @@ export function KeysSheet({ open, onClose }: { open: boolean; onClose: () => voi
       <div
         className="modal keys-sheet"
         role="dialog"
+        aria-modal="true"
         aria-label="keys and marks"
         tabIndex={-1}
         ref={sheetRef}
@@ -62,6 +82,10 @@ export function KeysSheet({ open, onClose }: { open: boolean; onClose: () => voi
             event.preventDefault();
             event.stopPropagation();
             onClose();
+          } else if (event.key === 'Tab') {
+            // Nothing in here takes focus but the sheet itself, so the trap is
+            // simply staying put: Tab must not walk out into the list behind.
+            event.preventDefault();
           }
         }}
       >

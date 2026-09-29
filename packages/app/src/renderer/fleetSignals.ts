@@ -1,4 +1,4 @@
-import type { AgentStatus, FleetAgent, TaskPr } from '@fleetwood/core';
+import type { AgentStatus, FleetAgent, StatusProvenance, TaskPr } from '@fleetwood/core';
 
 /*
  * What a card says about the agents in it, before anything else it says.
@@ -141,4 +141,56 @@ export function stepIndex(current: number, count: number, direction: 1 | -1): nu
   if (count === 0) return -1;
   if (current < 0) return direction === 1 ? 0 : count - 1;
   return Math.min(count - 1, Math.max(0, current + direction));
+}
+
+/**
+ * How a status was learned, when it was not reported — the mark it wears.
+ *
+ * The panel's first promise is that an inference never looks as solid as a
+ * report, and until this the difference lived only in the dot's tooltip: an
+ * agent whose hook had died still read as a confident `working`. A reported
+ * status wears nothing — it is the ordinary case — and the other three wear
+ * the marks the CLI has always printed.
+ */
+export const PROVENANCE_MARK: Record<StatusProvenance, { mark: string; note: string } | undefined> = {
+  hook: undefined,
+  screen: { mark: '~', note: 'read off the pane, not reported' },
+  process: { mark: '?', note: 'a process is running but sent no hooks' },
+  stale: { mark: '…', note: 'last reported a while ago, unconfirmed' },
+};
+
+/**
+ * Whether answering with this option grants something that outlives the prompt.
+ *
+ * "Yes, and don't ask again" is a standing permission: once the key reaches the
+ * terminal it cannot be taken back, and it sits one key over from a plain yes —
+ * and, on the keyboard, from `j`/`k`. These take a second press; the one-off
+ * answers do not.
+ */
+export function grantsLastingPermission(label: string): boolean {
+  return /don['’]t ask|always|(during|for) (this|the) session|all future/i.test(label);
+}
+
+/** An agent stopped on a permission prompt, as the announcement names it. */
+export interface BlockedAgent {
+  key: string;
+  card: string;
+  activity?: string;
+}
+
+/**
+ * What to say out loud when agents newly stop on you.
+ *
+ * Only the ones that were not blocked on the previous snapshot — the list is
+ * redrawn every second, and announcing every blocked agent on every redraw
+ * would drown the one that just arrived. `undefined` when nothing is new.
+ */
+export function blockedAnnouncement(
+  previous: ReadonlySet<string>,
+  now: readonly BlockedAgent[],
+): string | undefined {
+  const fresh = now.filter((agent) => !previous.has(agent.key));
+  if (fresh.length === 0) return undefined;
+  const lines = fresh.map((agent) => `${agent.card} needs permission${agent.activity ? `: ${agent.activity}` : ''}`);
+  return `${lines.join('. ')}. Press n to go to it.`;
 }

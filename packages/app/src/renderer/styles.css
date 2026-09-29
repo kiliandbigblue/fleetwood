@@ -866,7 +866,7 @@ button {
   /* On its own line the summary is not under the controls, so it has no
      reason to fade when they appear. */
   .card.attention .card-head:hover .repo-summary,
-  .card.attention .card-head:focus-within .repo-summary {
+  .card.attention .card-head:has(.row-act:focus-within) .repo-summary {
     opacity: 1;
   }
 }
@@ -1573,8 +1573,10 @@ button {
 .card-head:hover .row-act > *,
 .agent:hover .row-act > *,
 .task-pr:hover .row-act > *,
-/* The keyboard's hover: a card or row you tabbed to shows what it can do. */
-.card-head:focus-within .row-act > *,
+/* The keyboard's hover: a row you tabbed to shows what it can do. A card head
+   only once focus is on its controls — landing on the title must not hide
+   the summary beside it, which is what you tabbed there to read. */
+.card-head:has(.row-act:focus-within) .row-act > *,
 .agent:focus-within .row-act > *,
 .task-pr:focus-visible .row-act > *,
 .row-act:focus-within > *,
@@ -1854,6 +1856,50 @@ button {
   border: 1px solid var(--dim-mark);
 }
 
+/*
+ * A status nobody reported: the same dot, hollow.
+ *
+ * Solid is the agent telling us; hollow is us working it out — off the screen,
+ * from a bare process, or from a report gone stale. Down a column of dots the
+ * hollow one reads at a glance, which is the promise: an inference never looks
+ * as solid as a report. The hue still says the status; the fill says how sure.
+ */
+.status-dot.inferred {
+  box-sizing: border-box;
+  background: transparent;
+  border: 1.5px solid var(--dim-mark);
+  animation: none;
+}
+.status-working.inferred {
+  border-color: var(--ok);
+}
+.status-blocked_permission.inferred,
+.status-error.inferred {
+  border-color: var(--danger);
+}
+.status-compacting.inferred {
+  border-color: var(--accent);
+}
+
+/* Which kind of guess, in the CLI's own marks, where the activity ends — so
+   the activity gives up its stretch and the mark takes it, keeping the mark
+   against the words it qualifies and the gutter where it always was. */
+.agent:has(.provenance) .activity {
+  flex: 0 1 auto;
+}
+.provenance {
+  flex: none;
+  margin-right: auto;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  color: var(--dim);
+}
+
+/* Last reported a while ago: what it says it is doing may no longer be true. */
+.activity.stale {
+  color: var(--dim);
+}
+
 @keyframes pulse {
   0%,
   100% {
@@ -2045,7 +2091,8 @@ button.activity:focus-visible {
   color: var(--danger);
 }
 .agent-kill.confirming,
-.chip.confirming {
+.chip.confirming,
+.prompt-answer.confirming {
   position: relative;
   overflow: hidden;
 }
@@ -2059,7 +2106,8 @@ button.activity:focus-visible {
  * is the truth; this is only its picture, and both are four seconds.
  */
 .agent-kill.confirming::after,
-.chip.confirming::after {
+.chip.confirming::after,
+.prompt-answer.confirming::after {
   content: '';
   position: absolute;
   left: 0;
@@ -2077,7 +2125,8 @@ button.activity:focus-visible {
 }
 @media (prefers-reduced-motion: reduce) {
   .agent-kill.confirming::after,
-  .chip.confirming::after {
+  .chip.confirming::after,
+  .prompt-answer.confirming::after {
     animation: none;
   }
 }
@@ -2462,6 +2511,9 @@ button.activity:focus-visible {
 .prompt-answer:disabled {
   opacity: 0.55;
   cursor: default;
+}
+.prompt-sent:empty {
+  margin: 0;
 }
 .prompt-sent {
   margin-top: var(--s3);
@@ -2898,7 +2950,7 @@ button.activity:focus-visible {
  * the controls fading in, so the swap reads as one movement rather than two.
  */
 .card-head:hover .repo-summary,
-.card-head:focus-within .repo-summary {
+.card-head:has(.row-act:focus-within) .repo-summary {
   opacity: 0;
 }
 
