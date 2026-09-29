@@ -185,10 +185,14 @@ function ArchivedRow({
         <span>
           {entry.type} · {entry.microservice}
         </span>
-        <span title={`archived ${new Date(entry.archivedAt * 1_000).toLocaleString()}`}>
-          archived {relativeEpoch(entry.archivedAt)}
+        {/* One item, so the two times wrap together: apart, `ran 17d` was the
+            word most often left alone on a line of its own. */}
+        <span className="history-when">
+          <span title={`archived ${new Date(entry.archivedAt * 1_000).toLocaleString()}`}>
+            archived {relativeEpoch(entry.archivedAt)}
+          </span>
+          <span title={`created ${new Date(entry.createdAt * 1_000).toLocaleString()}`}>ran {ran}</span>
         </span>
-        <span title={`created ${new Date(entry.createdAt * 1_000).toLocaleString()}`}>ran {ran}</span>
         {/* Did it land — the question this tab is opened for, in one phrase. */}
         {entry.prs.length > 0 && known && (
           <span className={merged === entry.prs.length ? 'history-landed' : undefined}>

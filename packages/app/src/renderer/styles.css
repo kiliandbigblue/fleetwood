@@ -2302,7 +2302,14 @@ button.activity:focus-visible {
   /* On the scale, like everything else in this rail. It was 9px — a value with
      no relation to the 8 the whole panel is spaced on. */
   gap: var(--s3);
-  min-width: 0;
+  /*
+   * Never shrinks. This was `min-width: 0` with nothing to clip it, so when
+   * the rail ran short the counts were squeezed to half their width and drawn
+   * straight over the claude gauge — `2 working 2 idle` under `claude 42%`,
+   * at 460px and at 560px alike. The counts are what this rail is for; the
+   * gauges are what gives way (see `.quotas`).
+   */
+  flex: none;
   font-family: var(--mono);
   font-size: var(--fs-micro);
   letter-spacing: 0.03em;
@@ -2342,11 +2349,12 @@ button.activity:focus-visible {
 /* A narrow rail keeps the cap and drops the word: room for the runway
    gauges, and the way to the sheet still visible. */
 @media (max-width: 460px) {
-  /* The rail's spacing gives before any figure does: at 420px the counts ran
-     23px into the claude gauge. The counts keep their colour and words and
-     drop only their dots, which the words already say. */
+  /* The counts keep their colour and words and drop only their dots, which
+     the words already say. The rail's gap steps down one, to `--s3`: that
+     is the 4px that keeps both gauges on a 460px rail with every kind of
+     count showing (see `.quotas`). */
   .rail-bottom {
-    gap: var(--s2);
+    gap: var(--s3);
   }
   .vitals {
     gap: var(--s2);
@@ -2363,18 +2371,73 @@ button.activity:focus-visible {
   }
 }
 
+/*
+ * The part of the rail that yields, in order of what it can spare.
+ *
+ * Which counts show is a fact about the fleet, not the window — a narrow rail
+ * with nothing blocked has room a wide one with three kinds of agent does not
+ * — so a window breakpoint cannot know when to shed. This is sized from what
+ * the counts leave (`flex: 1 1 0`, never from its own content), which is what
+ * lets it be a query container: the `@container quotas` rules below drop
+ * whole figures in order — Cursor's today (its popover still holds it), the
+ * word `resets`, then the seam closes up, then the Cursor gauge — and Claude's
+ * percent and reset time, the two facts that decide whether the fleet stops,
+ * are the last things standing. The reset outlasts Cursor on purpose; see the
+ * note on the narrow panel below for what hiding it cost last time.
+ *
+ * Before this the counts were `min-width: 0` with nothing clipping them and
+ * this was `flex: none`, so a short rail squeezed `2 working 2 idle` to half
+ * its width and drew it over `claude 42%`, at 460px and at 560px alike.
+ *
+ * The thresholds are the gauges' measured widths with a few pixels to spare.
+ * A figure longer than they assume (`100%`, `$134.12`) is caught by
+ * `.quota-gauge`, which wraps what does not fit out of sight rather than cut
+ * it — `$3` for `$34.12` is what a plain clip said.
+ */
 .quotas {
   position: relative;
-  margin-left: auto;
   display: flex;
+  justify-content: flex-end;
   align-items: baseline;
-  gap: var(--s4);
-  flex: none;
+  /* No `gap`: the space between gauges is on `.quota + .quota`, where the
+     container rules can reach it — a container cannot query itself. */
+  flex: 1 1 0;
+  min-width: 0;
+  container: quotas / inline-size;
+}
+
+@container quotas (max-width: 330px) {
+  .quota-gauge:has(.tool-cursor) .quota-sub {
+    display: none;
+  }
+}
+@container quotas (max-width: 290px) {
+  .quota-when {
+    display: none;
+  }
+}
+@container quotas (max-width: 250px) {
+  .quota + .quota {
+    margin-left: var(--s3);
+    padding-left: var(--s3);
+  }
+}
+/* Both gauges at their short forms measure 222px with the seam closed up. */
+@container quotas (max-width: 221px) {
+  .quota:has(.tool-cursor) {
+    display: none;
+  }
+}
+@container quotas (max-width: 118px) {
+  .quota-gauge:has(.tool-claude) .quota-sub {
+    display: none;
+  }
 }
 
 .quota {
   position: relative;
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 /*
@@ -2386,6 +2449,7 @@ button.activity:focus-visible {
  * "different thing" — the same `--edge`, at the height of the type it divides.
  */
 .quota + .quota {
+  margin-left: var(--s4);
   padding-left: var(--s4);
   border-left: 1px solid var(--edge);
 }
@@ -2402,6 +2466,14 @@ button.activity:focus-visible {
    */
   gap: var(--s2);
   height: 20px;
+  max-width: 100%;
+  overflow: hidden;
+  /* The backstop under the container rules: what still does not fit wraps
+     whole onto a second row, and `row-gap` puts that row past the 20px the
+     button shows. A figure is on screen entire or not at all. */
+  flex-wrap: wrap;
+  align-content: flex-start;
+  row-gap: 20px;
   padding: 0;
   border-radius: 0;
   font-family: var(--mono);
@@ -2418,6 +2490,11 @@ button.activity:focus-visible {
 /* The rail's own step, a notch under the agent rows' `.tool`. */
 .quota-gauge .tool {
   font-size: var(--fs-micro);
+}
+
+.quota-gauge .tool,
+.quota-fig {
+  flex: none;
 }
 
 .quota-fig {
@@ -2442,6 +2519,10 @@ button.activity:focus-visible {
 .quota-sub {
   color: var(--dim);
   font-variant-numeric: tabular-nums;
+}
+
+.quota-gauge .quota-sub {
+  white-space: nowrap;
 }
 
 .quota-row-value {
@@ -2587,21 +2668,12 @@ button.activity:focus-visible {
  * tooltip as the only way to learn when it opens again. The gauge lost its bar
  * in the same change, so there is also room for it now.
  *
- * Cursor's second figure is what sheds instead: `today` is one of the two rows
- * its popover holds, so dropping it out here really does leave it somewhere.
- * Then, on a tab that has something waiting on you, the inventory count —
+ * What the gauges shed, and in which order, is decided by the room the counts
+ * leave rather than by the window — see `.quotas`. Here, on a tab that has something waiting on you, the inventory count —
  * `FLEET 5 ●2` becomes `FLEET ●2`, because between those two numbers the one you
  * would act on is not the 5. `minWidth` on the window is 380.
  */
 @media (max-width: 430px) {
-  .quota-gauge:has(.tool-cursor) .quota-sub {
-    display: none;
-  }
-
-  .quota-when {
-    display: none;
-  }
-
   .nav-tab {
     padding: 0 7px;
   }
@@ -3309,9 +3381,17 @@ button.activity:focus-visible {
 .history-month-title {
   margin: var(--s3) var(--indent) var(--s1);
   font-size: var(--fs-micro);
-  letter-spacing: 0.06em;
+  letter-spacing: var(--caps-track);
   text-transform: uppercase;
   color: var(--dim);
+}
+
+/* The row's two times as one item — see `HistoryList`. The meta line's own
+   gap, repeated inside, so the pair reads as two facts and not one phrase. */
+.history-when {
+  display: inline-flex;
+  gap: var(--s3);
+  white-space: nowrap;
 }
 
 /* A pull request of an archived task: a row of its own, opened like one. */
