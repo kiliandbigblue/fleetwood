@@ -2995,6 +2995,38 @@ button.activity:focus-visible {
   opacity: 1;
 }
 
+/*
+ * The pull request tab's three sections, read as three.
+ *
+ * They were the fleet's group labels — dim micro caps — on a tab that is only
+ * three groups long, so `needs my review` and `mine` blurred into the rows.
+ * Here the label takes the text ink and weight, the count stays dim beside it,
+ * and the space goes above the label rather than under it: a section's rows
+ * sit close to their name and far from the section before.
+ */
+.pr-section {
+  color: var(--text);
+  font-weight: 600;
+}
+.pr-section .section-count {
+  color: var(--dim);
+  font-weight: 400;
+}
+.body > .pr-section {
+  margin-top: var(--s4);
+  padding-top: var(--s4);
+}
+.body > .pr-section:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+/* The label is the seam; a hairline under it too cut the name off its rows. */
+.pr-section + .pr {
+  border-top: none;
+  padding-top: var(--s2);
+}
+
 /* An identifier inside a sentence-set row: the panel's mono rule. */
 .pr-meta .mono {
   font-family: var(--mono);

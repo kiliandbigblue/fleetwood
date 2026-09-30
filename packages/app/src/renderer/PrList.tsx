@@ -93,7 +93,9 @@ function PrRow({
     onResult(result.detail, result.ok);
   };
 
-  const open = (): void => {
+  // Reading a pull request is the common case; working on one is the chip.
+  const open = (): void => void act({ kind: 'openExternal', url: pr.url });
+  const work = (): void => {
     if (session) {
       void act({ kind: 'focusSession', session });
       return;
@@ -103,16 +105,16 @@ function PrRow({
 
   const owes = pr.reviewDecision === 'CHANGES_REQUESTED' && pr.roles.includes('mine');
   return (
-    /* The row is the target, as on the fleet: Enter or a click does the row's
-       one job — go to its session, or make one. `list-stop` puts it on the
-       j/k walk; `owes` is what `n` looks for. */
+    /* The row is the target, as on the fleet: Enter or a click opens the pull
+       request on GitHub, and the chip goes to its session or makes one.
+       `list-stop` puts it on the j/k walk; `owes` is what `n` looks for. */
     <div
       className={`pr list-stop${owes ? ' owes' : ''}`}
       role="link"
       tabIndex={0}
       aria-label={`${pr.repo.split('/').pop()}#${pr.number} ${pr.title}${
         pr.isDraft ? ', draft' : pr.reviewDecision ? `, ${REVIEW_LABEL[pr.reviewDecision] ?? pr.reviewDecision}` : ''
-      }${pr.checks ? `, checks ${pr.checks}` : ''} — ${session ? 'focus its session' : 'open a worktree for it'}`}
+      }${pr.checks ? `, checks ${pr.checks}` : ''} — open on GitHub`}
       onClick={open}
       onKeyDown={(event) => {
         if (event.key === 'Enter' && event.target === event.currentTarget) open();
@@ -150,22 +152,11 @@ function PrRow({
             className="chip"
             onClick={(event) => {
               event.stopPropagation();
-              open();
+              work();
             }}
-            title={session ? 'focus its session' : 'create a worktree and session'}
+            title={session ? `focus ${sessionLabel(session)}` : 'create a worktree and a tmux session for it'}
           >
-            {session ? 'focus' : 'open'}
-          </button>
-          <button
-            className="chip"
-            aria-label="open on GitHub"
-            onClick={(event) => {
-              event.stopPropagation();
-              void act({ kind: 'openExternal', url: pr.url });
-            }}
-            title="open on GitHub"
-          >
-            ↗
+            {session ? 'focus' : 'worktree'}
           </button>
         </span>
       </div>
@@ -340,16 +331,17 @@ export function PrList({ prs, merged, tasks, prSessions, onResult }: Props): Rea
     // Same predicate the header pill uses, so the two numbers always agree.
     const owed = list.filter((pr) => needsDeploy(pr)).length;
     /*
-     * Nothing merged, nothing to undo: no section at all. It is first on the
-     * tab, so an empty one was a heading and a sentence sitting above the
-     * reviews you owe. Loading and a failed read still draw it — those are news.
+     * Nothing merged, nothing to undo: no section at all — an empty one is a
+     * heading and a sentence with nothing under it. Loading and a failed read
+     * still draw it — those are news.
      */
     if (merged && !merged.degraded && list.length === 0 && !undo) return null;
     return (
       <>
-        <div className="section-title section-title-row" role="heading" aria-level={2}>
+        <div className="section-title section-title-row pr-section" role="heading" aria-level={2}>
           <span>
-            recently merged · {list.length}{owed > 0 && <strong className="owed"> · {owed} to deploy</strong>}
+            recently merged <span className="section-count">· {list.length}</span>
+            {owed > 0 && <strong className="owed"> · {owed} to deploy</strong>}
             <Freshness at={merged?.fetchedAt} degraded={merged?.degraded} />
           </span>
           <span className="section-actions">
@@ -401,15 +393,14 @@ export function PrList({ prs, merged, tasks, prSessions, onResult }: Props): Rea
   if (!prs) {
     return (
       <>
-        {mergedSection()}
         <div className="empty">loading pull requests…</div>
+        {mergedSection()}
       </>
     );
   }
   if (prs.degraded) {
     return (
       <>
-        {mergedSection()}
         {/* One sentence in one box: `.empty` stacks its children, so the text and
             each `<code>` used to land on lines of their own. */}
         <div className="empty" role="status">
@@ -418,6 +409,7 @@ export function PrList({ prs, merged, tasks, prSessions, onResult }: Props): Rea
             ⌘R, or check <code>gh auth status</code>.
           </span>
         </div>
+        {mergedSection()}
       </>
     );
   }
@@ -425,9 +417,10 @@ export function PrList({ prs, merged, tasks, prSessions, onResult }: Props): Rea
   const everyPr = [...prs.reviewRequested, ...prs.mine];
   const section = (title: string, list: PullRequest[], none: string): React.JSX.Element => (
     <>
-      <div className="section-title" role="heading" aria-level={2}>
+      <div className="section-title pr-section" role="heading" aria-level={2}>
         {/* The search stops at its cap, so a full list says "or more". */}
-        {title} · {list.length >= SEARCH_CAP ? `${SEARCH_CAP}+` : list.length}
+        {title}{' '}
+        <span className="section-count">· {list.length >= SEARCH_CAP ? `${SEARCH_CAP}+` : list.length}</span>
         <Freshness at={prs.fetchedAt} />
       </div>
       {list.length === 0 ? (
@@ -456,11 +449,11 @@ export function PrList({ prs, merged, tasks, prSessions, onResult }: Props): Rea
 
   return (
     <>
-      {/* First, because it is the only one of the three holding work you owe
-          rather than work you could pick up. */}
-      {mergedSection()}
+      {/* Someone is waiting on you first, then your own work in flight, then
+          what has already landed and may still need shipping. */}
       {section('needs my review', prs.reviewRequested, 'no reviews waiting on you')}
       {section('mine', prs.mine, 'you have no open pull requests')}
+      {mergedSection()}
     </>
   );
 }
