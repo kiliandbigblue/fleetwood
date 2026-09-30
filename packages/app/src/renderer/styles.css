@@ -1112,6 +1112,13 @@ button {
   text-align: left;
   min-width: 0;
   /*
+   * The containing block for its `.sr-only` status. Without it that span is
+   * placed against the head, at the end of the name as if nothing were cut, and
+   * `overflow: hidden` here does not clip it: a long slug's hidden words stuck
+   * out past the panel and the list scrolled sideways to reach them.
+   */
+  position: relative;
+  /*
    * The name is the last thing on the head to give way: at 420px it lost its
    * final letters to a 1px shortfall while the summary beside it kept room.
    * That ordering is the summary's 6, not a fraction here: once the summary is
