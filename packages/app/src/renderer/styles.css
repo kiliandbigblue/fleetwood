@@ -1111,9 +1111,14 @@ button {
   padding: 0;
   text-align: left;
   min-width: 0;
-  /* The name is the last thing on the head to give way: at 420px it lost its
-     final letters to a 1px shortfall while the summary beside it kept room. */
-  flex-shrink: 0.2;
+  /*
+   * The name is the last thing on the head to give way: at 420px it lost its
+   * final letters to a 1px shortfall while the summary beside it kept room.
+   * That ordering is the summary's 6, not a fraction here: once the summary is
+   * spent, a factor under 1 takes only that share of what is left, and a long
+   * slug ran out of the head and scrolled the whole list sideways.
+   */
+  flex-shrink: 1;
 }
 
 /* The head lights up for the keyboard the way it does for the pointer, so the
@@ -3309,9 +3314,6 @@ button.activity:focus-visible {
 .repo-summary {
   transition: opacity 120ms ease;
   margin-left: auto;
-  /* Gives way first when the head is short of room: the name says which card
-     this is and `needs permission` what it wants, and this is a caption. */
-  flex-shrink: 6;
   /*
    * Sans, by the panel's own rule: `2 repos · 6 worktrees · 1 dirty` is a
    * sentence about the card, not an identifier off it. It was mono — the only
@@ -3325,7 +3327,10 @@ button.activity:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   text-align: right;
-  flex: 0 1 auto;
+  /* Gives way first when the head is short of room: the name says which card
+     this is and `needs permission` what it wants, and this is a caption. In the
+     shorthand: a `flex-shrink` above it was silently reset to 1. */
+  flex: 0 6 auto;
   min-width: 0;
 }
 
