@@ -47,9 +47,9 @@ export function difitSkinCss(p: Palette): string {
     '--color-github-accent': p.accent,
     '--color-github-danger': p.danger,
     '--color-github-warning': p.warn,
-    '--color-diff-addition-bg': alpha(p.ok, 0.14),
+    '--color-diff-addition-bg': alpha(p.ok, 0.1),
     '--color-diff-addition-border': p.ok,
-    '--color-diff-deletion-bg': alpha(p.danger, 0.14),
+    '--color-diff-deletion-bg': alpha(p.danger, 0.1),
     '--color-diff-deletion-border': p.danger,
     '--color-diff-neutral-bg': p.panel,
     '--color-diff-selected-bg': alpha(p.warn, 0.15),
@@ -70,8 +70,8 @@ export function difitSkinCss(p: Palette): string {
     '--color-editor-btn-text': p.text,
     '--color-editor-btn-hover-bg': alpha(p.text, 0.12),
     '--color-editor-btn-hover-border': alpha(p.text, 0.4),
-    '--word-diff-added-bg': alpha(p.ok, 0.35),
-    '--word-diff-removed-bg': alpha(p.danger, 0.35),
+    '--word-diff-added-bg': alpha(p.ok, 0.28),
+    '--word-diff-removed-bg': alpha(p.danger, 0.28),
     '--word-highlight-color': alpha(p.warn, 0.3),
   };
   const root = Object.entries(vars)
@@ -96,7 +96,12 @@ export function difitSkinCss(p: Palette): string {
     .map(([selector, color, extra]) => `.token.${selector} { color: ${color} !important; ${extra ?? ''}}`)
     .join('\n');
 
-  return `:root, :root[data-theme] {\n${root}\n  color-scheme: dark;\n}\n${syntax}\n`;
+  // The code in the terminal's font, ligatures on, as nvim draws it in Ghostty:
+  // `:=` and `!=` read as the glyphs they are there.
+  const code = `:root { --font-mono: 'FiraCode Nerd Font', 'Fira Code', ui-monospace, monospace !important; }
+.font-mono, pre, code, .prism-code { font-family: var(--font-mono) !important; font-variant-ligatures: contextual; font-feature-settings: 'calt'; }`;
+
+  return `:root, :root[data-theme] {\n${root}\n  color-scheme: dark;\n}\n${code}\n${syntax}\n`;
 }
 
 /**
@@ -277,46 +282,67 @@ export const PAGE_SCRIPT = `(() => {
 
   // "whole file": difit unfolds a gap twenty lines at a time, or all of it once
   // it is twenty or fewer; this presses those until the file has no gaps left.
-  const unfoldLabel = /^Expand (all \d+|\d+) hidden lines?/;
-  const settled = (card) =>
-    new Promise((resolve) => {
-      const wait = () => (card.querySelector('.animate-spin') ? setTimeout(wait, 30) : resolve());
-      setTimeout(wait, 30);
-    });
-  const unfold = async (card, control) => {
-    control.disabled = true;
-    control.textContent = 'unfolding…';
-    const toggle = card.querySelector('button[title^="Expand file"]');
-    if (toggle) {
-      toggle.click();
-      await settled(card);
+  // [0-9], not \\d: this is a template literal, which eats the backslash.
+  const unfoldLabel = /^Expand (all [0-9]+|[0-9]+) hidden lines?/;
+  // difit re-renders a file's card as lines arrive, so neither the card nor
+  // the button on it can be held across a click: both are found again by path.
+  const cardFor = (path) => document.querySelector('main [data-file-path="' + CSS.escape(path) + '"]');
+  const unfolding = new Set();
+  const label = (path) => {
+    const control = cardFor(path)?.querySelector('.fleetwood-unfold');
+    if (!control) return;
+    control.disabled = unfolding.has(path);
+    control.textContent = unfolding.has(path) ? 'unfolding…' : 'whole file';
+  };
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const quiet = async (path) => {
+    for (let calm = 0; calm < 3; ) {
+      await sleep(40);
+      calm = cardFor(path)?.querySelector('.animate-spin') ? 0 : calm + 1;
     }
-    for (let i = 0; i < 2000; i++) {
-      const buttons = [...card.querySelectorAll('button[aria-label]')].filter((b) =>
-        unfoldLabel.test(b.getAttribute('aria-label')),
-      );
-      const next = buttons.find((b) => b.getAttribute('aria-label').startsWith('Expand all')) ?? buttons[0];
-      if (!next) break;
-      next.click();
-      await settled(card);
+  };
+  const expanders = (path) =>
+    [...(cardFor(path)?.querySelectorAll('button[aria-label]') ?? [])].filter(
+      (b) => !b.disabled && unfoldLabel.test(b.getAttribute('aria-label')),
+    );
+  const unfold = async (path) => {
+    if (unfolding.has(path)) return;
+    unfolding.add(path);
+    label(path);
+    cardFor(path)?.querySelector('button[title^="Expand file"]')?.click();
+    try {
+      for (let i = 0; i < 2000; i++) {
+        await quiet(path);
+        let buttons = expanders(path);
+        if (buttons.length === 0) {
+          await sleep(250);
+          await quiet(path);
+          buttons = expanders(path);
+          if (buttons.length === 0) break;
+        }
+        const next = buttons.find((b) => b.getAttribute('aria-label').startsWith('Expand all')) ?? buttons[0];
+        next.click();
+      }
+    } finally {
+      unfolding.delete(path);
+      label(path);
     }
-    control.textContent = 'whole file';
-    control.disabled = false;
   };
   const addUnfold = () => {
     for (const card of document.querySelectorAll('main [data-file-path]')) {
       const title = card.querySelector('h2');
       if (!title || card.querySelector('.fleetwood-unfold')) continue;
+      const path = card.dataset.filePath;
       const control = document.createElement('button');
       control.className = 'fleetwood-unfold';
       control.type = 'button';
-      control.textContent = 'whole file';
       control.title = 'Unfold every hidden line in this file';
       control.addEventListener('click', (event) => {
         event.stopPropagation();
-        unfold(card, control);
+        unfold(path);
       });
       title.after(control);
+      label(path);
     }
   };
 

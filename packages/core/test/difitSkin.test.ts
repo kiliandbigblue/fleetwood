@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { difitSkinCss, injectSkin, reviewPane, reviewPrompt, SKIN_PREFIX } from '../src/difitSkin.ts';
+import { difitSkinCss, injectSkin, PAGE_SCRIPT, reviewPane, reviewPrompt, SKIN_PREFIX } from '../src/difitSkin.ts';
 import type { DifitThread } from '../src/difitSkin.ts';
 import { startReviewProxy } from '../src/difitProxy.ts';
 import type { FleetAgent, FleetSession } from '../src/fleet.ts';
@@ -42,6 +42,19 @@ test("the script lands before difit's module, the stylesheet after its own", () 
   // The script has to ask for dark before difit reads its appearance.
   assert.ok(script > 0 && script < page.indexOf('/assets/index-CARSg-Mi.js'));
   assert.ok(style > page.indexOf('/assets/index-8wvzNuE_.css') && style < page.indexOf('</head>'));
+});
+
+test("whole file finds difit's expand buttons by the labels difit gives them", () => {
+  // The script is a template literal, which turned a `\\d` here into a bare `d`
+  // once already: the regex shipped matching nothing and the button did nothing.
+  const source = /const unfoldLabel = (\/.+\/);/.exec(PAGE_SCRIPT)?.[1];
+  assert.ok(source);
+  const unfoldLabel = new Function(`return ${source}`)() as RegExp;
+  assert.match('Expand all 15 hidden lines', unfoldLabel);
+  assert.match('Expand all 1 hidden lines', unfoldLabel);
+  assert.match('Expand 20 hidden lines above', unfoldLabel);
+  assert.match('Expand 20 hidden lines below', unfoldLabel);
+  assert.doesNotMatch('Expand file (Alt+Click to expand all)', unfoldLabel);
 });
 
 test('a page of a shape difit no longer serves is left alone', () => {
