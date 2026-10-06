@@ -177,8 +177,8 @@ export function RepoRow({
           thing to want — it is how you read what the last one did. */}
       <button
         className="chip repo-review"
-        onClick={() => void act({ kind: 'openDifit', cwd: repo.path, base })}
-        title={`difit on ${repo.path} vs ${base ?? 'its trunk'} — committed and uncommitted work together, from where the branch left it. New files are marked intent-to-add.`}
+        onClick={() => void act({ kind: 'openDifit', cwd: repo.path, base, session })}
+        title={`difit on ${repo.path} vs ${base ?? 'its trunk'} — committed and uncommitted work together, from where the branch left it. Comments go to this task's Claude pane. New files are marked intent-to-add.`}
       >
         review
       </button>

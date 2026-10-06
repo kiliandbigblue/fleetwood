@@ -16,6 +16,12 @@ import {
 } from './sessionOrder.ts';
 import type { SessionRename } from './sessionOrder.ts';
 import * as tmux from './tmux.ts';
+import { startReviewProxy } from './difitProxy.ts';
+import type { SendOutcome } from './difitProxy.ts';
+import { reviewPrompt } from './difitSkin.ts';
+import type { DifitThread } from './difitSkin.ts';
+import { paletteFor } from './theme.ts';
+import type { Palette } from './theme.ts';
 import { resolveBaseRef, reviewBase } from './worktree.ts';
 import type { AgentTool, SessionMeta } from './types.ts';
 
@@ -269,9 +275,14 @@ const DIFIT_STARTUP_MS = 15_000;
  */
 const DIFIT_SETTLE_MS = 400;
 
-/** The arguments a review runs with. One place decides, and the tests read it here. */
+/**
+ * The arguments a review runs with. One place decides, and the tests read it here.
+ *
+ * `--no-open` because the browser is pointed at the review proxy, not at difit:
+ * the proxy is what adds the theme and the send button.
+ */
 export function difitArgs(base: string): string[] {
-  return ['.', base, '--merge-base', '--include-untracked'];
+  return ['.', base, '--merge-base', '--include-untracked', '--no-open'];
 }
 
 const stripAnsi = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, '');
@@ -334,12 +345,19 @@ export interface OpenDifitOptions {
    * use neither.
    */
   base?: string;
+  /** What the page is painted with — the panel's own theme. Rosé Pine without one. */
+  palette?: Palette;
+  /**
+   * Hand the review's comments to the agent; see `startReviewProxy`. Without
+   * one the button puts the prompt on the clipboard instead.
+   */
+  send?: (threads: DifitThread[]) => Promise<SendOutcome>;
   /** Override the startup wait. Tests use it; nothing else needs to. */
   startupMs?: number;
 }
 
 /**
- * Start a difit review server on one worktree, and let difit open the browser.
+ * Start a difit review server on one worktree, and open it in the browser.
  *
  * `difit . <base> --merge-base` is the whole argument for this being one button
  * rather than a menu: `.` is the worktree as it stands — committed branch work and
@@ -360,14 +378,20 @@ export interface OpenDifitOptions {
  * `git status` shows them as added until `git reset --` puts them back.
  *
  * **No terminal is involved.** difit is spawned straight from here: it needs no tty
- * once untracked files are settled by flag, it opens the browser itself, and the
- * browser is where the review is read — a tmux window would only have been a place
+ * once untracked files are settled by flag, and the browser is where the review
+ * is read — a tmux window would only have been a place
  * for the process to sit. What that window did give was a way to stop the server
  * and somewhere to see it fail, and neither is lost: difit holds an SSE stream for
  * the tab and exits when it closes, and a failure to start is read off its output
  * and returned as this call's `detail` rather than buried in a pane nobody opened.
  *
- * Detached and unref'd on purpose, so a review outlives the panel that opened it.
+ * The browser is opened on the review proxy rather than on difit — see
+ * `startReviewProxy` — which paints the page in the panel's theme and adds the
+ * button that sends its comments to the agent. The proxy lives in this process,
+ * so quitting the panel ends the review page with it; difit sees the tab's stream
+ * close and shuts itself down as it would have anyway.
+ *
+ * Detached and unref'd all the same, so the panel never waits on it.
  * The `--background` flag is still deliberately unused: it forces difit's own
  * `--keep-alive`, which is exactly the self-shutdown this depends on.
  */
@@ -419,6 +443,31 @@ export async function openDifit(options: OpenDifitOptions): Promise<ActionResult
     const nothingToReview = (): void =>
       finish({ ok: false, detail: `nothing to review in ${where} against ${base}` }, true);
 
+    // The page goes through the proxy, which lives as long as difit does. If the
+    // proxy cannot start, the review is still worth having unthemed.
+    const present = async (url: string): Promise<void> => {
+      let shown = url;
+      try {
+        const proxy = await startReviewProxy({
+          upstream: url,
+          palette: options.palette ?? paletteFor(undefined),
+          send:
+            options.send ??
+            (async (threads) => ({
+              ok: true,
+              detail: `${threads.length} comment(s) copied to the clipboard — no agent to send to`,
+              clipboard: reviewPrompt(threads, options.cwd),
+            })),
+        });
+        child.once('exit', proxy.close);
+        shown = proxy.url;
+      } catch {
+        // Fall through to difit's own page.
+      }
+      await run('open', [shown]);
+      finish({ ok: true, detail: `difit on ${where} vs ${base} — ${shown}` }, false);
+    };
+
     const read = (chunk: Buffer): void => {
       output += chunk.toString();
       const startup = readDifitStartup(output);
@@ -426,7 +475,7 @@ export async function openDifit(options: OpenDifitOptions): Promise<ActionResult
       if (!startup.url || settle) return;
       settle = setTimeout(() => {
         if (readDifitStartup(output).empty) return nothingToReview();
-        finish({ ok: true, detail: `difit on ${where} vs ${base} — ${startup.url}` }, false);
+        void present(startup.url as string);
       }, DIFIT_SETTLE_MS);
     };
 

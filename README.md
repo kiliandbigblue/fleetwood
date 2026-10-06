@@ -835,6 +835,29 @@ Unlike `+nvim`, `review` is not gated on the task having a tmux session, because
 nothing about it needs one. Reading what the last agent did without first starting
 another is a real thing to want.
 
+**The page goes through fleetwood on its way to the browser.** difit runs with
+`--no-open`, and the browser is pointed at a small local proxy in front of it
+(`difitProxy.ts`) that passes everything through except difit's HTML, which gains
+a stylesheet and a script (`difitSkin.ts`). They add three things difit lacks:
+
+- **The panel's theme.** difit's colours are CSS variables, so the active theme's
+  eleven roles are mapped onto them, syntax tokens included, the same way
+  `helldivers.lua` assigns them in nvim. Switching the theme in the panel applies
+  to the next review.
+- **Send to Claude.** The button pastes every open comment into the task's Claude
+  pane in the shape the nvim review used, then resolves those threads in difit.
+  The pane is looked up when you click, not when the review opens: the agent
+  working in that worktree first, otherwise the task's first Claude. With no
+  pane, or no session, the prompt goes to the clipboard and the comments stay.
+  It is a bracketed `paste-buffer`, not `send-keys`, because a typed newline
+  submits.
+- **whole file**, on each file header. It presses difit's own expand buttons
+  until the file has no hidden lines left, so it shows exactly what difit would.
+
+The proxy streams rather than buffers, which keeps difit's self-shutdown: its
+heartbeat is an SSE stream, and the tab closing still closes it upstream. The
+proxy lives in the panel's process, so quitting the panel ends an open review page.
+
 `notes` on the card writes `NOTES.md` beside the worktrees. It is a file of its own
 because `task.json` is immutable and `TASK.md` is regenerated every time a repo is
 added — notes typed into either would eventually be overwritten. Living beside the

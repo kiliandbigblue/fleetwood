@@ -87,6 +87,7 @@ test('the base branch is compared with merge-base, and new files are included', 
     'origin/dev',
     '--merge-base',
     '--include-untracked',
+    '--no-open',
   ]);
   // `--background` must stay absent: it forces difit's own `--keep-alive`, which
   // is the self-shutdown the whole no-terminal approach rests on.

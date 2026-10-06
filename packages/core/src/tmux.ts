@@ -401,6 +401,23 @@ export async function sendText(paneId: string, text: string, submit = true): Pro
   return ok;
 }
 
+/**
+ * Paste a multi-line text into a pane as one bracketed paste, then submit it.
+ *
+ * `sendText` types, and a typed newline is Enter: a review of five comments
+ * would be submitted at the end of its first line. A bracketed paste arrives as
+ * one input, which Claude folds into a placeholder — and it needs a beat to do
+ * that before the Enter, or the Enter lands inside the paste.
+ */
+export async function pasteText(paneId: string, text: string, settleMs = 300): Promise<boolean> {
+  const buffer = `fleetwood-paste-${process.pid}`;
+  if (!(await tmux(['set-buffer', '-b', buffer, '--', text])).ok) return false;
+  if (!(await tmux(['paste-buffer', '-p', '-d', '-b', buffer, '-t', paneId])).ok) return false;
+  await new Promise((resolve) => setTimeout(resolve, settleMs));
+  const { ok } = await tmux(['send-keys', '-t', paneId, 'Enter']);
+  return ok;
+}
+
 /** Send named keys ("Enter", "Escape", "1", "C-c"). */
 export async function sendKeys(paneId: string, keys: string[]): Promise<boolean> {
   const { ok } = await tmux(['send-keys', '-t', paneId, ...keys]);
