@@ -638,12 +638,11 @@ async function handle(request: Request): Promise<Response> {
       return result;
     }
 
-    case 'openReview': {
-      const result = await actions.openReview({
-        session: request.session,
-        cwd: request.cwd,
-        name: request.name,
-      });
+    case 'openDifit': {
+      const result = await actions.openDifit({ cwd: request.cwd, base: request.base });
+      // difit marks untracked files intent-to-add, which moves the row's dirty
+      // count — so the card has to be told, not left showing the old one.
+      await getTasks(true);
       await pushSnapshot();
       return result;
     }
