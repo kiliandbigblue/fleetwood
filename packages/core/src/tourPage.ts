@@ -168,6 +168,21 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
   color: var(--dim); font: 11px var(--chrome); justify-content: flex-start; }
 .gap:hover:not(:disabled) { color: var(--accent); background: var(--panel); }
 
+/* side by side: the old file on the left, the new one on the right */
+.code.split .row.both { grid-template-columns: 44px 18px minmax(0, 1fr) 44px 18px minmax(0, 1fr); }
+.code.split .row.both::after { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--edge); }
+.pair > :last-child { border-left: 1px solid var(--edge); }
+.pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.code.split .row.half { grid-template-columns: 44px 18px minmax(0, 1fr) auto; }
+.pair .empty { background: repeating-linear-gradient(135deg, transparent 0 6px, ${alpha(p.edge, 0.55)} 6px 7px); }
+.code.split .gap { padding-left: 62px; }
+
+.head-actions { display: flex; align-items: center; gap: var(--s3); flex: none; }
+.layout { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--edge); border-radius: var(--radius); }
+.layout button { border: 0; padding: 3px 8px; border-radius: 4px; color: var(--dim); }
+.layout button:hover:not(:disabled) { background: var(--hover); }
+.layout button.on { background: var(--edge); color: var(--text); }
+
 .fold { margin-bottom: var(--s6); }
 .fold > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: var(--s2); color: var(--soft); padding: var(--s2) 0; }
 .fold > summary::-webkit-details-marker { display: none; }
@@ -266,6 +281,7 @@ textarea::placeholder { color: var(--dim); }
   .stage-head { position: static; flex-wrap: wrap; }
   .row { grid-template-columns: 34px 34px 16px minmax(0, 1fr) auto; }
   .gap { padding-left: 68px; }
+  .layout { display: none; }
   .rail { border-right: 0; border-bottom: 1px solid var(--edge); }
   .sections { display: flex; overflow-x: auto; }
   .sections li { min-width: 200px; }
@@ -288,6 +304,11 @@ var unfolded = {};        // path -> whole file shown
 var opened = {};          // "path:a:b" -> gap expanded
 var stale = false;
 var lastThreadKey = '';
+var layout = 'inline';    // 'inline' or 'split', remembered per browser
+try { if (localStorage.getItem('fw-review-layout') === 'split') layout = 'split'; } catch (e) {}
+// Side by side needs room; a narrow window always reads inline.
+var narrow = matchMedia('(max-width: 960px)');
+narrow.addEventListener('change', function () { if (data && data.sections) renderStage(); });
 var TEST = /(_test\.go|\.test\.[jt]sx?|\.spec\.[jt]sx?|(^|\/)tests?\/|_test\.py|(^|\/)test_[^/]*\.py)$/;
 
 /* ── dom ── */
@@ -324,7 +345,9 @@ var ICONS = {
   sent: '<path d="M20 6 9 17l-5-5"/>',
   trash: '<path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/>',
   raise: '<path d="M12 19V5M6 11l6-6 6 6"/>',
-  refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>'
+  refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>',
+  inline: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 12h8M8 15h5"/>',
+  split: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/>'
 };
 function icon(name) {
   var s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -555,7 +578,8 @@ function renderRail() {
     h('span', {}, h('kbd', { text: 'j' }), ' ', h('kbd', { text: 'k' })), h('span', { text: 'line' }),
     h('span', {}, h('kbd', { text: 'n' }), ' ', h('kbd', { text: 'p' })), h('span', { text: 'section' }),
     h('span', {}, h('kbd', { text: 'c' })), h('span', { text: 'comment on the line' }),
-    h('span', {}, h('kbd', { text: 'x' })), h('span', { text: 'mark reviewed, go on' })));
+    h('span', {}, h('kbd', { text: 'x' })), h('span', { text: 'mark reviewed, go on' }),
+    h('span', {}, h('kbd', { text: 's' })), h('span', { text: 'inline or side by side' })));
 }
 
 /* ── stage ── */
@@ -577,8 +601,15 @@ function renderStage() {
   stage.append(h('header', { class: 'stage-head' },
     h('h1', {}, h('span', { class: 'n', text: '§' + (current + 1) }), h('span', { text: s.title }),
       s.mechanical ? h('span', { class: 'kind', text: 'mechanical' }) : null),
-    h('button', { class: isDone ? 'done' : 'primary', onclick: toggleChecked },
-      icon(isDone ? 'check' : 'done'), isDone ? 'Reviewed' : 'Mark reviewed', h('kbd', { text: 'x' }))));
+    h('div', { class: 'head-actions' },
+      h('div', { class: 'layout', role: 'radiogroup', 'aria-label': 'Diff layout' }, [['inline', 'Inline'], ['split', 'Side by side']].map(function (o) {
+        return h('button', {
+          class: layout === o[0] ? 'on' : '', role: 'radio', 'aria-checked': layout === o[0] ? 'true' : 'false',
+          title: o[1] + ' (s)', onclick: function () { setLayout(o[0]); },
+        }, icon(o[0]), o[0] === 'split' ? 'Split' : 'Inline');
+      })),
+      h('button', { class: isDone ? 'done' : 'primary', onclick: toggleChecked },
+        icon(isDone ? 'check' : 'done'), isDone ? 'Reviewed' : 'Mark reviewed', h('kbd', { text: 'x' })))));
   if (stale) {
     stage.append(h('div', { class: 'banner' },
       h('span', { text: 'The worktree has moved since this review was pinned. What you see is the earlier state.' }),
@@ -623,15 +654,18 @@ function fileEl(sf) {
   var marks = rows.length ? wordDiff(sf.path) : {};
   var whole = unfolded[sf.path];
   var windows = whole ? [[0, rows.length - 1]] : sf.windows;
-  var box = h('div', { class: 'code' });
+  // An added or deleted file has only one side; split would leave half the page blank.
+  var split = layout === 'split' && !narrow.matches && (file.status === 'modified' || file.status === 'renamed');
+  var box = h('div', { class: split ? 'code split' : 'code' });
   var last = -1;
   function gap(from, to) {
     var key = sf.path + ':' + from + ':' + to;
-    if (opened[key]) { for (var i = from; i <= to; i++) line(i); return; }
+    if (opened[key]) { span(from, to); return; }
     box.append(h('button', { class: 'gap', onclick: function () { opened[key] = true; renderStage(); } },
       icon('expand'), (to - from + 1) + ' unchanged line' + (to > from ? 's' : '')));
   }
-  function line(i) {
+  /** Row i; side draws only its old or new half, for side by side. */
+  function rowEl(i, side) {
     var r = rows[i];
     var own = owner(sf.path, i);
     var cls = 'row' + (r.kind === '+' ? ' add' : r.kind === '-' ? ' del' : '');
@@ -640,18 +674,39 @@ function fileEl(sf) {
     if (cursor && cursor.path === sf.path && cursor.row === i) cls += ' cursor';
     var thread = data.comments.filter(function (c) { return c.path === sf.path && c.row === i; });
     var m = marks[i];
-    var row = h('div', { class: cls, 'data-path': sf.path, 'data-row': i, onclick: function () { setCursor(sf.path, i, false); } },
+    var sign = h('span', { class: 'sign', text: r.kind === ' ' ? '' : r.kind === '+' ? '+' : '−' });
+    var src = h('span', { class: 'src' }, paint(r.text, lang, m ? m[0] : null, m ? m[1] : null));
+    var cells;
+    if (!split) cells = [h('span', { class: 'no', text: r.old == null ? '' : r.old }), h('span', { class: 'no', text: r.new == null ? '' : r.new }), sign, src];
+    else if (side) cells = [h('span', { class: 'no', text: side === 'old' ? r.old : r.new }), sign, src];
+    // A kept line is the same text on both sides, so one row holds both.
+    else cells = [h('span', { class: 'no', text: r.old }), h('span', { class: 'sign' }), src,
+      h('span', { class: 'no', text: r.new }), h('span', { class: 'sign' }), h('span', { class: 'src' }, paint(r.text, lang))];
+    if (split) cls += side ? ' half' : ' both';
+    return h('div', { class: cls, 'data-path': sf.path, 'data-row': i, onclick: function () { setCursor(sf.path, i, false); } },
       thread.length ? h('span', { class: 'dot' + (thread.some(function (c) { return c.kind === 'concern'; }) ? ' concern' : '') }) : null,
-      h('span', { class: 'no', text: r.old == null ? '' : r.old }),
-      h('span', { class: 'no', text: r.new == null ? '' : r.new }),
-      h('span', { class: 'sign', text: r.kind === ' ' ? '' : r.kind === '+' ? '+' : '−' }),
-      h('span', { class: 'src' }, paint(r.text, lang, m ? m[0] : null, m ? m[1] : null)),
-      foreign ? h('span', { class: 'own', text: '§' + (own + 1) }) : h('span'));
-    box.append(row);
+      cells,
+      split && !side ? null : foreign ? h('span', { class: 'own', text: '§' + (own + 1) }) : h('span'));
+  }
+  /** Rows a..b. Side by side, each run of removed lines faces the added run after it, line for line. */
+  function span(a, b) {
+    if (!split) { for (var i = a; i <= b; i++) box.append(rowEl(i)); return; }
+    var j = a;
+    while (j <= b) {
+      if (rows[j].kind === ' ') { box.append(rowEl(j++)); continue; }
+      var dels = [], adds = [];
+      while (j <= b && rows[j].kind === '-') dels.push(j++);
+      while (j <= b && rows[j].kind === '+') adds.push(j++);
+      for (var k = 0; k < Math.max(dels.length, adds.length); k++) {
+        box.append(h('div', { class: 'pair' },
+          k < dels.length ? rowEl(dels[k], 'old') : h('div', { class: 'empty', 'aria-hidden': 'true' }),
+          k < adds.length ? rowEl(adds[k], 'new') : h('div', { class: 'empty', 'aria-hidden': 'true' })));
+      }
+    }
   }
   windows.forEach(function (w) {
     if (w[0] > last + 1) gap(last + 1, w[0] - 1);
-    for (var i = w[0]; i <= w[1]; i++) line(i);
+    span(w[0], w[1]);
     last = w[1];
   });
   if (rows.length && last < rows.length - 1) gap(last + 1, rows.length - 1);
@@ -795,7 +850,24 @@ function render() {
   renderInspector();
 }
 
-function visibleRows() { return Array.prototype.slice.call(document.querySelectorAll('#stage .row')).filter(function (el) { return el.offsetParent; }); }
+/** Rows in reading order: side by side puts a removed run's lines before the added ones, though they sit level. */
+function visibleRows() {
+  var out = [];
+  document.querySelectorAll('#stage .code').forEach(function (box) {
+    if (!box.offsetParent) return;
+    out = out.concat(Array.prototype.slice.call(box.querySelectorAll('.row')).sort(function (a, b) { return a.dataset.row - b.dataset.row; }));
+  });
+  return out;
+}
+
+function setLayout(next) {
+  if (next === layout) return;
+  layout = next;
+  try { localStorage.setItem('fw-review-layout', layout); } catch (e) {}
+  renderStage();
+  var el = document.querySelector('#stage .row.cursor');
+  if (el) el.scrollIntoView({ block: 'center' });
+}
 
 function setCursor(path, row, scroll) {
   cursor = { path: path, row: row };
@@ -857,6 +929,7 @@ document.addEventListener('keydown', function (e) {
   else if (e.key === 'n') go(current + 1);
   else if (e.key === 'p') go(current - 1);
   else if (e.key === 'x') toggleChecked();
+  else if (e.key === 's') setLayout(layout === 'split' ? 'inline' : 'split');
   else if (e.key === 'c') { var a = document.getElementById('composer'); if (a) a.focus(); }
   else if (e.key === 'Escape') { cursor = null; render(); }
   else return;
