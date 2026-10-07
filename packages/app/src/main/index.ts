@@ -23,8 +23,8 @@ import {
   taskHistory as taskHistoryApi,
   taskPrs as taskPrsApi,
   paletteFor,
+  concernPrompt,
   reviewPane,
-  reviewPrompt,
   themeSync,
   tmux,
   THEMES,
@@ -643,35 +643,30 @@ async function handle(request: Request): Promise<Response> {
       return result;
     }
 
-    case 'openDifit': {
-      const settings = await configModule.loadConfig();
-      const result = await actions.openDifit({
+    case 'openReview': {
+      return actions.openReview({
         cwd: request.cwd,
         base: request.base,
-        palette: paletteFor(settings.theme),
+        // Read when the page loads, so it follows the panel's theme.
+        palette: async () => paletteFor((await configModule.loadConfig()).theme),
         // Looked up at the click, not now: the task's agent may be started, or
         // replaced, while the review is open.
-        send: async (threads) => {
+        send: async (concerns) => {
           const fleet = await buildFleet({ states: collector?.states });
           const pane = reviewPane(fleet.sessions, request.session, request.cwd);
           if (!pane) {
             return {
               ok: true,
-              detail: `${threads.length} comment(s) copied to the clipboard — no Claude pane in this task`,
-              clipboard: reviewPrompt(threads, request.cwd),
+              detail: `${concerns.length} concern(s) copied to the clipboard — no Claude pane in this task`,
+              clipboard: concernPrompt(concerns, request.cwd),
             };
           }
-          const sent = await tmux.pasteText(pane.paneId, reviewPrompt(threads, request.cwd, pane.cwd));
+          const sent = await tmux.pasteText(pane.paneId, concernPrompt(concerns, request.cwd, pane.cwd));
           return sent
-            ? { ok: true, detail: `${threads.length} comment(s) sent to ${pane.label}` }
+            ? { ok: true, detail: `${concerns.length} concern(s) sent to ${pane.label}` }
             : { ok: false, detail: `could not paste into ${pane.label}` };
         },
       });
-      // difit marks untracked files intent-to-add, which moves the row's dirty
-      // count — so the card has to be told, not left showing the old one.
-      await getTasks(true);
-      await pushSnapshot();
-      return result;
     }
 
     case 'archiveTask': {

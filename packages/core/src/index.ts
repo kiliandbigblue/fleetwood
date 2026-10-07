@@ -14,9 +14,9 @@ export * as hooks from './hookInstall.ts';
 export * as actions from './actions.ts';
 export * as config from './config.ts';
 export * as themeSync from './themeSync.ts';
-// What the review proxy adds to difit: which pane a review goes back to, and as what.
-export { reviewPane, reviewPrompt } from './difitSkin.ts';
-export type { DifitThread } from './difitSkin.ts';
+// Which pane a review's concerns go back to, and as what.
+export { concernPrompt, reviewPane } from './tour.ts';
+export type { Concern } from './tour.ts';
 export * as github from './github.ts';
 export * as deployState from './deployState.ts';
 export * as deployMarks from './deployMarks.ts';

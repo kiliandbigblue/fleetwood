@@ -210,7 +210,7 @@ export async function reviewBase(repoPath: string): Promise<string | undefined> 
  * A pull request reports its base as a bare name — `dev`, or a sibling layer's
  * `fix/orders-helper-order-type-b2b`. Neither is necessarily usable as written: a
  * task worktree holds one branch and its local copy of any other may be stale or
- * absent entirely, and difit fails outright on a ref that does not resolve.
+ * absent entirely, and git fails outright on a ref that does not resolve.
  *
  * The remote-tracking ref is preferred for the reason `localDefaultBranch` keeps
  * the `origin/` prefix — it is current as of the last fetch, where a local copy is
@@ -219,7 +219,7 @@ export async function reviewBase(repoPath: string): Promise<string | undefined> 
  * branch advances past it.
  *
  * `undefined` means neither form exists here, and the caller should fall back
- * rather than hand difit a ref it will refuse.
+ * rather than hand git a ref it will refuse.
  */
 export async function resolveBaseRef(repoPath: string, branch: string): Promise<string | undefined> {
   const name = branch.trim().replace(/^origin\//, '');

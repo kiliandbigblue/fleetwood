@@ -184,9 +184,8 @@ guessed onto the wrong terminal. `fw doctor` reports both numbers.
 Requires tmux ≥ 3.0, Node ≥ 23.6 (it runs the TypeScript directly — no build step
 for core or the CLI), `gh` authenticated for the PR features, and `fzf` for
 `fw switch` — the one `prefix+g` runs, so `fw doctor` fails rather than warns
-without it. `difit` on the
-PATH is optional — only the repo rows' `review` button runs it, and `fw doctor`
-warns rather than fails when it's absent.
+without it. The repo rows' `review` button runs `claude -p` to cut the change
+into sections, so it needs Claude Code on the PATH.
 
 ```sh
 pnpm install
@@ -552,7 +551,7 @@ with. It is fed and read over pipes and finds its own terminal on `/dev/tty`,
 which is what keeps this one process — the selection is acted on by the same
 `actions` calls the app's buttons make, not by a shell script reimplementing
 them. Being a hard dependency of a key you press all day, a missing `fzf` is a
-`fw doctor` **failure** rather than a warning, unlike `difit`.
+`fw doctor` **failure** rather than a warning.
 
 Three details that are load-bearing:
 
@@ -770,15 +769,21 @@ window rather than a split because an editor wants the full height, and the comm
 is typed into a shell, so quitting it leaves you at a prompt in the right directory.
 `editor` in the config names the command, and the button is labelled with it.
 
-Beside it, `review` runs [difit](https://github.com/yoshiko-pg/difit) on that
-worktree — `difit . <base> --merge-base` — and difit opens the browser itself. The
-two arguments are the whole reason this is one button and not a menu: `.` is the
-worktree as it stands, committed branch work and uncommitted edits together, and
-`--merge-base` pins the other side to where the branch left its base, so commits
+Beside it, `review` opens a review page for that worktree in the browser. It
+does not show the diff file by file. An agent (`claude -p`, read-only tools) cuts
+it into sections that follow the change's logic — "register the consumer in
+cmd/worker", then "the consumer" — and the page shows one section at a time, each
+changed line inside the function around it. Reading a diff file by file means
+holding the whole change in your head while jumping between files, and one
+interruption throws it all away; a section is small enough to read in one go, and
+checking it off is where you pick up again.
+
+What it reviews is the worktree as it stands, committed branch work and
+uncommitted edits together, against the merge base with its base, so commits
 landed there since then aren't blamed on this branch. That's the diff the pull
-request will show, plus whatever isn't committed yet — which is what an agent's work
-looks like at the moment you go to read it, and the reason `git diff dev` is the
-wrong question to ask a worktree.
+request will show, plus whatever isn't committed yet — which is what an agent's
+work looks like at the moment you go to read it, and the reason `git diff dev` is
+the wrong question to ask a worktree.
 
 **What it compares against is the head pull request's own base**, and only the
 trunk when there is none. That distinction is the whole of stacked work. A layer's
@@ -787,7 +792,7 @@ underneath it — in `orders-b2b-flag-migration`, reviewing PR2 (`upsert`) again
 `dev` hands it PR1's helper commit as if it were its own. GitHub is the only place
 that fact is written down: the commit graph cannot supply it, because a layer is
 typically cut from its parent's *first* commit and the parent then moves on, so
-neither branch is an ancestor of the other in either direction. `--merge-base` is
+neither branch is an ancestor of the other in either direction. The merge base is
 what makes naming the parent sufficient — the fork point stays the fork point when
 the parent advances past it.
 
@@ -803,60 +808,49 @@ this one's own worktrees — has no origin/HEAD to read, so the local trunks are
 by existence rather than `main` being assumed, which is the same rule `fw` follows
 when it cuts a branch. A base branch is resolved the same way, `origin/` first, and
 a name this worktree holds in neither form is treated as absent rather than handed
-to difit to refuse.
+to git to refuse.
 
-**No terminal is involved.** difit is spawned straight from the main process: it
-needs no tty once untracked files are settled by flag, it opens the browser itself,
-and the browser is where the review is read — a tmux window would only have been a
-place for the process to sit. What such a window would have given is a way to stop
-the server and somewhere to watch it fail, and neither is lost. difit holds an SSE
-stream for the tab and exits when it closes, about a second later; a failure to
-start is read off its output and returned as the click's own result, so `difit:
-Invalid target commit-ish format` lands in the panel instead of scrolling past in a
-pane nobody opened. It is detached and unref'd, so a review outlives the panel that
-opened it.
+**A review is pinned to a snapshot.** The worktree is written to a tree through a
+throwaway copy of the index (`git add -A` + `write-tree` under `GIT_INDEX_FILE`),
+so uncommitted and untracked files are in it and the real index is untouched. The
+merge base and that tree are the review's key: the recap, the checkoffs and the
+comments are kept under it in `~/.fleetwood/tours/`, so reopening the same state
+is instant and lands on the first section not yet checked off. When the worktree
+moves, the page says so and offers a fresh review of the new state; nothing is
+carried across, because a checkoff on code that changed means nothing.
 
-`--background` is still deliberately unused, and this is the trap worth recording:
-it forces difit's own `--keep-alive`, so the flag that looks like the way to run a
-server in the background is the one thing that stops it ever shutting down. Plain
-`spawn` keeps the self-shutdown. The one outcome that cannot clean itself up is an
-empty diff — difit prints `No differences found` and opens no browser, so nothing
-ever connects and nothing ever disconnects — so that line is watched for and the
-process killed, the click reporting `nothing to review` instead.
+**The recap only presents.** The agent says what the code does and how the parts
+connect, never why it was written or what might be wrong with it — a guessed
+intent is an opinion, and it would be read before the code. Sections run
+outside-in (contracts, then wiring, then logic), tests fold under the section
+they test, and generated or mechanical changes go in one collapsed section at
+the end. Unchanged code a section leans on — the caller, the type — comes along
+as folded context.
 
-`--include-untracked` is not optional either. Without it difit stops to ask `(Y/n)`
-about new files, and with no terminal to ask in it would hang rather than prompt —
-quite apart from a review that quietly omitted the files an agent created being
-worse than the question. It marks them `--intent-to-add`, so they show as added
-until `git reset --` puts them back, which is also why the click refreshes the task:
-the row's dirty count moves.
+**Every changed line is shown exactly once.** The agent names line ranges; code
+checks them against the diff, gives each changed line to the first section that
+claims it, and puts whatever no section claimed in a last "Not covered" section.
+An agent that skips a hunk it found boring cannot make you approve code you never
+saw. A range that names nothing real fails the recap, and the page says so with a
+button to run it again.
+
+**Comments are a question or a concern.** A question is for understanding: the
+recap's session is resumed (forked, read-only) and the answer appears under it,
+explaining the code without judging it. A concern is something to fix, and
+"Send" pastes the concerns into the task's Claude pane in the shape the nvim review
+used. The pane is looked up when you click, not when the review opens: the agent
+working in that worktree first, otherwise the task's first Claude. With no pane,
+or no session, the prompt goes to the clipboard. It is a bracketed `paste-buffer`,
+not `send-keys`, because a typed newline submits. A question the answer did not
+settle can be raised as a concern.
+
+**No terminal is involved.** The page is served from one local server in the
+panel's process, started on the first review, in the panel's theme. Quitting the
+panel ends open review pages; the kept state means reopening loses nothing.
 
 Unlike `+nvim`, `review` is not gated on the task having a tmux session, because
 nothing about it needs one. Reading what the last agent did without first starting
 another is a real thing to want.
-
-**The page goes through fleetwood on its way to the browser.** difit runs with
-`--no-open`, and the browser is pointed at a small local proxy in front of it
-(`difitProxy.ts`) that passes everything through except difit's HTML, which gains
-a stylesheet and a script (`difitSkin.ts`). They add three things difit lacks:
-
-- **The panel's theme.** difit's colours are CSS variables, so the active theme's
-  eleven roles are mapped onto them, syntax tokens included, the same way
-  `helldivers.lua` assigns them in nvim. Switching the theme in the panel applies
-  to the next review.
-- **Send to Claude.** The button pastes every open comment into the task's Claude
-  pane in the shape the nvim review used, then resolves those threads in difit.
-  The pane is looked up when you click, not when the review opens: the agent
-  working in that worktree first, otherwise the task's first Claude. With no
-  pane, or no session, the prompt goes to the clipboard and the comments stay.
-  It is a bracketed `paste-buffer`, not `send-keys`, because a typed newline
-  submits.
-- **whole file**, on each file header. It presses difit's own expand buttons
-  until the file has no hidden lines left, so it shows exactly what difit would.
-
-The proxy streams rather than buffers, which keeps difit's self-shutdown: its
-heartbeat is an SSE stream, and the tab closing still closes it upstream. The
-proxy lives in the panel's process, so quitting the panel ends an open review page.
 
 `notes` on the card writes `NOTES.md` beside the worktrees. It is a file of its own
 because `task.json` is immutable and `TASK.md` is regenerated every time a repo is

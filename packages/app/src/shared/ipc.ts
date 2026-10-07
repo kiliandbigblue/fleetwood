@@ -216,16 +216,15 @@ export type Request =
   /** Editor in a fresh pane of an existing session, on one repo's worktree. */
   | { kind: 'openEditor'; session: string; cwd: string; name?: string }
   /**
-   * difit review server on one repo's worktree; difit opens the browser.
+   * Review page on one repo's worktree, opened in the browser.
    *
-   * No session, unlike `openEditor`: difit is spawned straight from main and the
-   * review is read in a browser, so this works on a task that has never been
-   * started. `base` is the head pull request's own base branch when the snapshot
+   * No session, unlike `openEditor`: the page is served from main and read in a
+   * browser, so this works on a task that has never been started. `base` is the head pull request's own base branch when the snapshot
    * holds one — the only record of what a stacked layer sits on — and main falls
    * back to the repo's trunk without it. `session` is the task's, when it has
-   * one: it is where the review's "Send to Claude" looks for the agent.
+   * one: it is where the review's concerns are sent.
    */
-  | { kind: 'openDifit'; cwd: string; base?: string; session?: string }
+  | { kind: 'openReview'; cwd: string; base?: string; session?: string }
   | { kind: 'archiveTask'; slug: string; force?: boolean }
   | { kind: 'listProjects' }
   | { kind: 'openExternal'; url: string }

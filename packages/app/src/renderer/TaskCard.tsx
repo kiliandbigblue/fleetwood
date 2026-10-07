@@ -175,14 +175,14 @@ export function RepoRow({
           +{editorLabel(editor)}
         </button>
       )}
-      {/* Not gated on a session, unlike the editor: difit is spawned from main
-          and read in a browser, so there is nothing a tmux session would be for.
+      {/* Not gated on a session, unlike the editor: the review is served from
+          main and read in a browser, so there is nothing a tmux session would be for.
           Reviewing a worktree without first starting an agent on it is a real
           thing to want — it is how you read what the last one did. */}
       <button
         className="chip repo-review"
-        onClick={() => void act({ kind: 'openDifit', cwd: repo.path, base, session })}
-        title={`difit on ${repo.path} vs ${base ?? 'its trunk'} — committed and uncommitted work together, from where the branch left it. Comments go to this task's Claude pane. New files are marked intent-to-add.`}
+        onClick={() => void act({ kind: 'openReview', cwd: repo.path, base, session })}
+        title={`Review ${repo.path} vs ${base ?? 'its trunk'}, cut into sections by an agent — committed and uncommitted work together, from where the branch left it. Concerns go to this task's Claude pane.`}
       >
         review
       </button>

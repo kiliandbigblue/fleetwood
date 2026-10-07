@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process';
 import { basename } from 'node:path';
 import { FW_HOME, NOTES_FILE, ensureDirs } from './paths.ts';
 import { run } from './exec.ts';
@@ -16,10 +15,8 @@ import {
 } from './sessionOrder.ts';
 import type { SessionRename } from './sessionOrder.ts';
 import * as tmux from './tmux.ts';
-import { startReviewProxy } from './difitProxy.ts';
-import type { SendOutcome } from './difitProxy.ts';
-import { reviewPrompt } from './difitSkin.ts';
-import type { DifitThread } from './difitSkin.ts';
+import { concernPrompt, openTour } from './tour.ts';
+import type { Concern, SendOutcome } from './tour.ts';
 import { paletteFor } from './theme.ts';
 import type { Palette } from './theme.ts';
 import { resolveBaseRef, reviewBase } from './worktree.ts';
@@ -261,77 +258,7 @@ export async function openNotes(editor: string): Promise<ActionResult> {
   return openEditor({ session, cwd: FW_HOME, editor, file: NOTES_FILE, name: 'notes' });
 }
 
-const DIFIT = 'difit';
-
-/** How long difit gets to say it is up before the click is reported as failed. */
-const DIFIT_STARTUP_MS = 15_000;
-
-/**
- * How long to keep listening after difit prints its address.
- *
- * "No differences found" follows the address by microseconds, and the two mean
- * opposite things — see `openDifit`. Settling is what lets one read of the output
- * tell them apart, and at this length it is imperceptible.
- */
-const DIFIT_SETTLE_MS = 400;
-
-/**
- * The arguments a review runs with. One place decides, and the tests read it here.
- *
- * `--no-open` because the browser is pointed at the review proxy, not at difit:
- * the proxy is what adds the theme and the send button.
- */
-export function difitArgs(base: string): string[] {
-  return ['.', base, '--merge-base', '--include-untracked', '--no-open'];
-}
-
-const stripAnsi = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, '');
-
-export interface DifitStartup {
-  /** Where the review is, once difit has bound a port. */
-  url?: string;
-  /**
-   * difit found nothing between the base and the worktree.
-   *
-   * It says so, and pointedly does *not* open a browser — which makes it the one
-   * outcome that never cleans itself up, since nothing will ever connect and so
-   * nothing will ever disconnect. The caller kills it instead.
-   */
-  empty?: boolean;
-}
-
-/**
- * What difit's opening lines say about whether there is a review to look at.
- *
- * Pure, and reading the whole output each time rather than line by line, because
- * both facts can land in the same chunk and the interesting case is the one where
- * they both do.
- */
-export function readDifitStartup(output: string): DifitStartup {
-  const clean = stripAnsi(output);
-  const url = /https?:\/\/\S+/.exec(clean)?.[0]?.replace(/[.,)]+$/, '');
-  const empty = /No differences found/i.test(clean);
-  return { ...(url ? { url } : {}), ...(empty ? { empty: true } : {}) };
-}
-
-/**
- * The line worth showing when difit exits instead of starting.
- *
- * difit reports its own failures as `Error: Error: …`, so the doubled prefix is
- * dropped rather than shown to someone who did not ask how difit is written.
- */
-export function readDifitFailure(output: string, code: number | null): string {
-  const lines = stripAnsi(output)
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-  const said = lines.find((line) => /^Error\b/i.test(line)) ?? lines.at(-1);
-  return said
-    ? `difit: ${said.replace(/^Error:\s*(Error:\s*)?/i, '')}`
-    : `difit exited ${code === null ? 'on a signal' : `with ${code}`} without saying why`;
-}
-
-export interface OpenDifitOptions {
+export interface OpenReviewOptions {
   /** The worktree to review. Its own work, not the task folder's. */
   cwd: string;
   /**
@@ -345,164 +272,48 @@ export interface OpenDifitOptions {
    * use neither.
    */
   base?: string;
-  /** What the page is painted with — the panel's own theme. Rosé Pine without one. */
-  palette?: Palette;
-  /**
-   * Hand the review's comments to the agent; see `startReviewProxy`. Without
-   * one the button puts the prompt on the clipboard instead.
-   */
-  send?: (threads: DifitThread[]) => Promise<SendOutcome>;
-  /** Override the startup wait. Tests use it; nothing else needs to. */
-  startupMs?: number;
+  /** What the page is painted with, read when it loads. Rosé Pine without one. */
+  palette?: () => Promise<Palette>;
+  /** Hand the review's concerns to the agent. Without one they go to the clipboard. */
+  send?: (concerns: Concern[]) => Promise<SendOutcome>;
 }
 
 /**
- * Start a difit review server on one worktree, and open it in the browser.
+ * Open a review of one worktree in the browser: the change cut into sections
+ * by an agent, read one section at a time. See `tour.ts`.
  *
- * `difit . <base> --merge-base` is the whole argument for this being one button
- * rather than a menu: `.` is the worktree as it stands — committed branch work and
- * uncommitted edits together — and `--merge-base` pins the other side to where the
- * branch left its base, so commits landed there since then don't show up as this
- * branch's doing. It is the diff a pull request would show, plus whatever isn't
- * committed yet, which is what an agent's work looks like when you go to read it.
- *
- * `--merge-base` is also what makes a stacked layer work without knowing anything
- * about the shape of the stack. A layer is typically cut from its parent's *first*
- * commit and the parent then moves on, so the two are not ancestors of each other
- * in either direction — but the fork point is still their merge base, and it does
- * not move when the parent advances. Naming the parent is enough; see `base`.
- *
- * `--include-untracked` is not optional in practice. Without it difit stops to ask
- * `(Y/n)` whenever the worktree holds a new file — and there is no terminal here to
- * ask in, so it would hang rather than prompt. It marks them `--intent-to-add`, so
- * `git status` shows them as added until `git reset --` puts them back.
- *
- * **No terminal is involved.** difit is spawned straight from here: it needs no tty
- * once untracked files are settled by flag, and the browser is where the review
- * is read — a tmux window would only have been a place
- * for the process to sit. What that window did give was a way to stop the server
- * and somewhere to see it fail, and neither is lost: difit holds an SSE stream for
- * the tab and exits when it closes, and a failure to start is read off its output
- * and returned as this call's `detail` rather than buried in a pane nobody opened.
- *
- * The browser is opened on the review proxy rather than on difit — see
- * `startReviewProxy` — which paints the page in the panel's theme and adds the
- * button that sends its comments to the agent. The proxy lives in this process,
- * so quitting the panel ends the review page with it; difit sees the tab's stream
- * close and shuts itself down as it would have anyway.
- *
- * Detached and unref'd all the same, so the panel never waits on it.
- * The `--background` flag is still deliberately unused: it forces difit's own
- * `--keep-alive`, which is exactly the self-shutdown this depends on.
+ * The worktree is pinned as it stands, committed and uncommitted work together,
+ * against the merge base with `base`: the diff a pull request would show, plus
+ * whatever isn't committed yet. The merge base is also what makes a stacked
+ * layer work without knowing the stack's shape — naming the parent is enough.
  */
-export async function openDifit(options: OpenDifitOptions): Promise<ActionResult> {
+export async function openReview(options: OpenReviewOptions): Promise<ActionResult> {
   // The pull request's base first, the trunk only when there is none to use. A
   // stacked layer is the case that needs it, and a base that does not resolve here
-  // is treated as absent rather than passed on for difit to reject.
+  // is treated as absent rather than passed on to fail.
   const base =
     (options.base ? await resolveBaseRef(options.cwd, options.base) : undefined) ??
     (await reviewBase(options.cwd));
-  if (!base) {
-    return {
-      ok: false,
-      detail: `no trunk found in ${basename(options.cwd)} — nothing to review against`,
-    };
-  }
-
   const where = basename(options.cwd);
-  const args = difitArgs(base);
-
-  return await new Promise<ActionResult>((resolve) => {
-    const child = spawn(DIFIT, args, {
+  if (!base) return { ok: false, detail: `no trunk found in ${where} — nothing to review against` };
+  try {
+    const url = await openTour({
       cwd: options.cwd,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      detached: true,
+      base,
+      palette: options.palette ?? (async () => paletteFor(undefined)),
+      send:
+        options.send ??
+        (async (concerns) => ({
+          ok: true,
+          detail: `${concerns.length} concern(s) copied to the clipboard — no agent to send to`,
+          clipboard: concernPrompt(concerns, options.cwd),
+        })),
     });
-
-    let output = '';
-    let settle: NodeJS.Timeout | undefined;
-    let settled = false;
-
-    const finish = (result: ActionResult, kill: boolean): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(settle);
-      clearTimeout(deadline);
-      if (kill) {
-        child.kill();
-      } else {
-        // Drained rather than closed: difit still writes on its way out, and a
-        // destroyed pipe would hand it EPIPE instead of letting it finish.
-        child.stdout?.resume();
-        child.stderr?.resume();
-        child.unref();
-      }
-      resolve(result);
-    };
-
-    const nothingToReview = (): void =>
-      finish({ ok: false, detail: `nothing to review in ${where} against ${base}` }, true);
-
-    // The page goes through the proxy, which lives as long as difit does. If the
-    // proxy cannot start, the review is still worth having unthemed.
-    const present = async (url: string): Promise<void> => {
-      let shown = url;
-      try {
-        const proxy = await startReviewProxy({
-          upstream: url,
-          palette: options.palette ?? paletteFor(undefined),
-          send:
-            options.send ??
-            (async (threads) => ({
-              ok: true,
-              detail: `${threads.length} comment(s) copied to the clipboard — no agent to send to`,
-              clipboard: reviewPrompt(threads, options.cwd),
-            })),
-        });
-        child.once('exit', proxy.close);
-        shown = proxy.url;
-      } catch {
-        // Fall through to difit's own page.
-      }
-      await run('open', [shown]);
-      finish({ ok: true, detail: `difit on ${where} vs ${base} — ${shown}` }, false);
-    };
-
-    const read = (chunk: Buffer): void => {
-      output += chunk.toString();
-      const startup = readDifitStartup(output);
-      if (startup.empty) return nothingToReview();
-      if (!startup.url || settle) return;
-      settle = setTimeout(() => {
-        if (readDifitStartup(output).empty) return nothingToReview();
-        void present(startup.url as string);
-      }, DIFIT_SETTLE_MS);
-    };
-
-    child.stdout.on('data', read);
-    child.stderr.on('data', read);
-
-    child.on('error', (error) => {
-      const enoent = (error as NodeJS.ErrnoException).code === 'ENOENT';
-      finish(
-        {
-          ok: false,
-          detail: enoent
-            ? 'difit is not on PATH — install it with `npm i -g difit`'
-            : `could not start difit: ${error.message}`,
-        },
-        false,
-      );
-    });
-
-    // Exited before it was ready, so whatever it printed is the reason.
-    child.on('exit', (code) => finish({ ok: false, detail: readDifitFailure(output, code) }, false));
-
-    const deadline = setTimeout(
-      () => finish({ ok: false, detail: `difit did not start in ${where} — gave up waiting` }, true),
-      options.startupMs ?? DIFIT_STARTUP_MS,
-    );
-  });
+    await run('open', [url]);
+    return { ok: true, detail: `review of ${where} vs ${base} — ${url}` };
+  } catch (error) {
+    return { ok: false, detail: (error as Error).message };
+  }
 }
 
 /** Type a prompt into an agent's pane and submit it. */
