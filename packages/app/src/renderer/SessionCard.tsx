@@ -33,9 +33,13 @@ interface Props {
   /** Session names in fleet order, for the reorder arrows. */
   order: string[];
   onResult: (message: string, ok: boolean) => void;
+  /**
+   * The terminal you are at is showing this session — see `.card.here`.
+   */
+  here?: boolean;
 }
 
-export function SessionCard({ session, pr, order, onResult }: Props): React.JSX.Element {
+export function SessionCard({ session, pr, order, onResult, here }: Props): React.JSX.Element {
   const act = async (request: Parameters<typeof send>[0]): Promise<void> => {
     const result = await send(request);
     onResult(result.detail, result.ok);
@@ -101,7 +105,7 @@ export function SessionCard({ session, pr, order, onResult }: Props): React.JSX.
     // The name and the id are for the arranging keys: the name is what a move is
     // asked about, the id is what finds the card again once the name has changed.
     <div
-      className={`card${needsYou ? ' attention' : ''}`}
+      className={`card${needsYou ? ' attention' : ''}${here ? ' here' : ''}`}
       data-session={session.name}
       data-session-id={session.sessionId}
     >
@@ -129,7 +133,10 @@ export function SessionCard({ session, pr, order, onResult }: Props): React.JSX.
         {/* The keyboard's way in — see the same button on `TaskCard`. */}
         <button type="button" className="session-name card-title">
           <Slug text={sessionLabel(session.name)} />
-          <span className="sr-only">, {sevNote(state, session.attached > 0, guessed)}</span>
+          <span className="sr-only">
+            , {sevNote(state, session.attached > 0, guessed)}
+            {here && ", you're here"}
+          </span>
         </button>
         {/* Where a narrow card's head breaks onto a second line — see `.head-break`. */}
         {needsYou && <span className="head-break" aria-hidden="true" />}

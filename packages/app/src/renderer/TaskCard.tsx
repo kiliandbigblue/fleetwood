@@ -95,6 +95,10 @@ interface Props {
    * click away, and a live card is never folded.
    */
   compact?: boolean;
+  /**
+   * The terminal you are at is showing this session — see `.card.here`.
+   */
+  here?: boolean;
 }
 
 /** `nvim -u NONE` is a legal editor setting; only the command itself names the button. */
@@ -472,6 +476,7 @@ export function TaskCard({
   onFocus,
   onArchive,
   compact,
+  here,
 }: Props): React.JSX.Element {
   const [addingRepo, setAddingRepo] = useState(false);
   /* Window state, like the hidden drawer: opening a parked card to look is not a
@@ -620,7 +625,7 @@ export function TaskCard({
 
   return (
     <div
-      className={`card${needsYou ? ' attention' : ''}${dormant ? ' dormant' : ''}`}
+      className={`card${needsYou ? ' attention' : ''}${dormant ? ' dormant' : ''}${here ? ' here' : ''}`}
       /* For the arranging keys, as on a session card — and only with a session,
          which is the one thing that can hold a place. */
       data-session={session?.name}
@@ -671,6 +676,7 @@ export function TaskCard({
           <Slug text={task.slug} />
           <span className="sr-only">
             , {live ? leadNote(severity, guessed) : `${STATUS_LABEL[status]}${task.session ? '' : ', no session'}`}
+            {here && ", you're here"}
           </span>
         </button>
         {/*

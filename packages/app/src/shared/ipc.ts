@@ -53,6 +53,13 @@ export interface Snapshot {
    * it would lose its row the moment you did the thing it was opened for.
    */
   sessionPrs: Record<string, PullRequest>;
+  /**
+   * The session the terminal you are at is showing — see `tmux.currentSession`.
+   *
+   * A client, not `attached > 0`: two windows on two sessions make both
+   * attached, and only one of them is where you are.
+   */
+  currentSession?: string;
   hooksInstalled: boolean;
   /** The editor `openEditor` will run, so the button says what it does. */
   editor: string;

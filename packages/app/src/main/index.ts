@@ -233,6 +233,7 @@ async function buildSnapshot(): Promise<Snapshot> {
     taskPrs,
     prSessions,
     sessionPrs,
+    currentSession: await tmux.currentSession(),
     hooksInstalled: hookState.claude.installed > 0,
     editor: settings.editor,
     theme: settings.theme,

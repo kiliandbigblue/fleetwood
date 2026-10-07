@@ -796,6 +796,32 @@ button {
 }
 
 /*
+ * The group your terminal is showing.
+ *
+ * The band a card wears when the keys move it, held for good at half the
+ * strength. It is the same hue because it is the same kind of fact: accent marks
+ * where you put yourself, not a state the fleet is in. The edges are the seam
+ * the list already draws, as on a blocked card, so there is no stripe down one
+ * side. The name goes accent too, and that is the part that survives when a
+ * blocked card's band is drawn over this one. Before `.attention` on purpose:
+ * where the two meet, the card that needs you wins the fill.
+ */
+.card.here {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--accent) 40%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.card.here::before {
+  content: none;
+}
+/* Twice, because a hidden card dims its name with a heavier selector. */
+.card.here .session-name,
+.hidden-group .card.here .session-name {
+  color: var(--accent);
+}
+
+/*
  * The one group with a fill: something here is waiting on you and getting
  * nothing done meanwhile. Bled to the full width of the list rather than inset,
  * so it reads as a band across the sheet and not as the card this stopped being.

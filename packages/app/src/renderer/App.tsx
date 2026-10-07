@@ -502,6 +502,7 @@ export function App(): React.JSX.Element {
    */
   function sessionRow(session: FleetSession, rowOrder: string[]): React.JSX.Element {
     const task = taskBySession.get(session.name);
+    const here = session.name === snapshot?.currentSession;
     return task ? (
       <TaskCard
         key={session.sessionId}
@@ -513,6 +514,7 @@ export function App(): React.JSX.Element {
         editor={snapshot?.editor ?? ''}
         onResult={onResult}
         onFocus={() => setFocusedSlug(task.slug)}
+        here={here}
       />
     ) : (
       <SessionCard
@@ -521,6 +523,7 @@ export function App(): React.JSX.Element {
         pr={session.meta.pr ? snapshot?.sessionPrs?.[session.meta.pr] : undefined}
         order={rowOrder}
         onResult={onResult}
+        here={here}
       />
     );
   }
@@ -682,6 +685,7 @@ export function App(): React.JSX.Element {
             editor={snapshot.editor}
             onResult={onResult}
             onArchive={() => setFocusedSlug(undefined)}
+            here={focused.session !== undefined && focused.session.name === snapshot.currentSession}
           />
         )}
 
