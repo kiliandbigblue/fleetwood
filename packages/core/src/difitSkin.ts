@@ -47,9 +47,9 @@ export function difitSkinCss(p: Palette): string {
     '--color-github-accent': p.accent,
     '--color-github-danger': p.danger,
     '--color-github-warning': p.warn,
-    '--color-diff-addition-bg': alpha(p.ok, 0.1),
+    '--color-diff-addition-bg': alpha(p.ok, 0.2),
     '--color-diff-addition-border': p.ok,
-    '--color-diff-deletion-bg': alpha(p.danger, 0.1),
+    '--color-diff-deletion-bg': alpha(p.danger, 0.2),
     '--color-diff-deletion-border': p.danger,
     '--color-diff-neutral-bg': p.panel,
     '--color-diff-selected-bg': alpha(p.warn, 0.15),
@@ -70,8 +70,8 @@ export function difitSkinCss(p: Palette): string {
     '--color-editor-btn-text': p.text,
     '--color-editor-btn-hover-bg': alpha(p.text, 0.12),
     '--color-editor-btn-hover-border': alpha(p.text, 0.4),
-    '--word-diff-added-bg': alpha(p.ok, 0.28),
-    '--word-diff-removed-bg': alpha(p.danger, 0.28),
+    '--word-diff-added-bg': alpha(p.ok, 0.45),
+    '--word-diff-removed-bg': alpha(p.danger, 0.45),
     '--word-highlight-color': alpha(p.warn, 0.3),
   };
   const root = Object.entries(vars)
@@ -101,7 +101,24 @@ export function difitSkinCss(p: Palette): string {
   const code = `:root { --font-mono: 'FiraCode Nerd Font', 'Fira Code', ui-monospace, monospace !important; }
 .font-mono, pre, code, .prism-code { font-family: var(--font-mono) !important; font-variant-ligatures: contextual; font-feature-settings: 'calt'; }`;
 
-  return `:root, :root[data-theme] {\n${root}\n  color-scheme: dark;\n}\n${code}\n${syntax}\n`;
+  // A pastel tint alone is easy to read past on a dark page, so a changed line
+  // also gets a bar down its code edge and its line number in the change's
+  // colour, as a gutter sign does in nvim. difit marks a changed line with
+  // `bg-diff-*-bg` on the `<tr>` in the unified view and on the code `<td>`
+  // side by side, where the line number is the cell just before it. The `+`
+  // in the unified view is `text-github-accent`, which this palette makes the
+  // accent rather than green, so it is set back to the change's colour.
+  const changes = (['addition', 'deletion'] as const)
+    .map((kind) => {
+      const color = kind === 'addition' ? p.ok : p.danger;
+      const bg = `.bg-diff-${kind}-bg`;
+      return `tr${bg} > td:last-child, td${bg} { box-shadow: inset 3px 0 0 ${color}; }
+tr${bg} > td:nth-child(-n+2), td:has(+ td${bg}) { color: ${color} !important; background-color: ${alpha(color, 0.12)} !important; }
+span${bg} { color: ${color} !important; }`;
+    })
+    .join('\n');
+
+  return `:root, :root[data-theme] {\n${root}\n  color-scheme: dark;\n}\n${code}\n${changes}\n${syntax}\n`;
 }
 
 /**

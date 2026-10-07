@@ -35,6 +35,17 @@ test("the skin fills difit's variables from the palette, over its inline theme",
   assert.match(css, /\.token\.keyword[^{]*\{ color: #8aafc4 !important;/);
 });
 
+test('a changed line stands out by more than its tint: a bar, its line number, its sign', () => {
+  const css = difitSkinCss(illuminate);
+  // The tint itself is strong enough to see on the dark page.
+  assert.match(css, /--color-diff-addition-bg: #8fbfa833 !important;/);
+  // Unified marks the row, side by side the code cell: both get the bar.
+  assert.match(css, /tr\.bg-diff-addition-bg > td:last-child, td\.bg-diff-addition-bg \{ box-shadow: inset 3px 0 0 #8fbfa8; \}/);
+  assert.match(css, /td:has\(\+ td\.bg-diff-deletion-bg\) \{ color: #d47373 !important;/);
+  // difit paints the `+` in the accent, which here is purple, not green.
+  assert.match(css, /span\.bg-diff-addition-bg \{ color: #8fbfa8 !important; \}/);
+});
+
 test("the script lands before difit's module, the stylesheet after its own", () => {
   const page = injectSkin(DIFIT_PAGE);
   const script = page.indexOf(`${SKIN_PREFIX}/page.js`);
