@@ -37,6 +37,12 @@ export interface TourComment {
   answer?: string;
   /** The answer is being written. */
   asking?: boolean;
+  /** When the agent was last asked, so the page can say how long it has been reading. */
+  askedAt?: number;
+  /** The answer is an error, not an answer: the page offers to ask again. */
+  failed?: boolean;
+  /** A raised question's own words, kept with the answer it got. */
+  asked?: string;
   /** A concern that reached the agent; it stays, but is not sent twice. */
   sent?: boolean;
 }
@@ -71,6 +77,8 @@ export interface Concern {
   side: 'new' | 'old';
   code: string;
   body: string;
+  /** What the reviewer asked about this line before raising it, and what the agent answered. */
+  asked?: { question: string; answer: string };
 }
 
 export interface TourOptions {
@@ -102,7 +110,12 @@ async function loadState(key: string): Promise<TourState | undefined> {
       state.status = 'error';
       state.error = 'the recap was interrupted';
     }
-    for (const c of state.comments) if (c.asking) delete c.asking;
+    for (const c of state.comments) {
+      if (!c.asking) continue;
+      delete c.asking;
+      c.answer = 'Could not answer: fleetwood quit before the answer came.';
+      c.failed = true;
+    }
     states.set(key, state);
     return state;
   } catch {
@@ -211,12 +224,22 @@ async function prepare(options: TourOptions): Promise<Open> {
 
 async function ask(tour: Open, state: TourState, comment: TourComment): Promise<void> {
   comment.asking = true;
+  comment.askedAt = Date.now();
+  delete comment.answer;
+  delete comment.failed;
+  // Each question forks the recap afresh, so a follow-up only knows the thread it is told.
+  const at = state.comments.indexOf(comment);
+  const earlier = state.comments.filter(
+    (c, i) =>
+      i < at && c.kind === 'question' && c.answer && !c.failed &&
+      c.section === comment.section && c.path === comment.path && c.row === comment.row,
+  );
   const section = state.recap?.sections[comment.section];
   const file = tour.files.find((f) => f.path === comment.path);
   const row = comment.row !== undefined ? file?.rows[comment.row] : undefined;
   const where = row && comment.path ? `${comment.path}:${row.new ?? row.old}${row.kind === '-' ? ' (removed line)' : ''}` : undefined;
   const prompt = `The reviewer has a question while reading the section "${section?.title ?? '?'}".
-${where ? `It is about ${where}:\n${row?.text}\n` : ''}
+${where ? `It is about ${where}:\n${row?.text}\n` : ''}${earlier.length ? `\nEarlier in this thread:\n${earlier.map((c) => `Q: ${c.body}\nA: ${c.answer}`).join('\n\n')}\n` : ''}
 Question: ${comment.body}
 
 Answer it by explaining the code, citing file:line. Stay neutral: explain, do not
@@ -226,6 +249,7 @@ judge, do not suggest changes. Be brief: a short paragraph, plain text.`;
     comment.answer = result.result?.trim() || '(no answer)';
   } catch (error) {
     comment.answer = `Could not answer: ${(error as Error).message}`;
+    comment.failed = true;
   }
   delete comment.asking;
   await save(tour.key);
@@ -288,6 +312,7 @@ export function concernPrompt(concerns: Concern[], worktree: string, paneCwd?: s
     out.push(`## ${path}:${c.line}${c.side === 'old' ? ' (the code before your change)' : ''}`);
     if (c.code) out.push('```', c.code, '```');
     out.push(c.body.trim(), '');
+    if (c.asked) out.push(`Before raising this, the reviewer asked: ${c.asked.question}`, `An agent reading the code answered: ${c.asked.answer}`, '');
   }
   return out.join('\n').trimEnd();
 }
@@ -305,6 +330,7 @@ async function sendConcerns(tour: Open, state: TourState): Promise<SendOutcome> 
       side: row?.kind === '-' ? 'old' : 'new',
       code: row?.text ?? '',
       body: c.body,
+      ...(c.asked && c.answer ? { asked: { question: c.asked, answer: c.answer } } : {}),
     };
   });
   const outcome = await tour.send(concerns);
@@ -379,8 +405,16 @@ async function route(req: IncomingMessage, res: ServerResponse, palette: () => P
     const comment = state.comments.find((c) => c.id === id);
     if (!comment) return json(res, { error: 'no such comment' }, 404);
     if (req.method === 'DELETE') state.comments = state.comments.filter((c) => c !== comment);
-    // A question the answer did not settle becomes something to fix.
-    else if (req.method === 'POST') comment.kind = 'concern';
+    else if (req.method === 'POST') {
+      const input = (await body(req)) as { retry?: boolean; body?: string };
+      if (input.retry && comment.kind === 'question') void ask(tour, state, comment);
+      // A question the answer did not settle becomes something to fix, in the reviewer's words.
+      else if (comment.kind === 'question' && !comment.asking) {
+        comment.kind = 'concern';
+        comment.asked = comment.body;
+        comment.body = input.body?.trim() || comment.body;
+      }
+    }
     await save(tour.key);
     return json(res, { ok: true });
   }

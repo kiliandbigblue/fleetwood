@@ -84,9 +84,9 @@ button.ghost:hover:not(:disabled) { background: var(--hover); border-color: tran
 button.primary { color: var(--bg); background: var(--accent); border-color: var(--accent); font-weight: 600; }
 button.primary:hover:not(:disabled) { color: var(--bg); background: ${alpha(p.accent, 0.88)}; }
 button.done { color: var(--ok); border-color: ${alpha(p.ok, 0.4)}; }
-button.send { color: var(--bg); background: var(--warn); border-color: var(--warn); font-weight: 600; width: 100%; justify-content: center; }
+button.send { color: var(--bg); background: var(--warn); border-color: var(--warn); font-weight: 600; }
 button.send:hover:not(:disabled) { color: var(--bg); background: ${alpha(p.warn, 0.88)}; }
-button.send:disabled { background: transparent; border-color: var(--edge); color: var(--dim); opacity: 1; font-weight: 400; }
+button.send:disabled { background: transparent; border-color: var(--edge); color: var(--soft); opacity: 1; font-weight: 400; }
 kbd { font: 11px var(--chrome); color: var(--dim); border: 1px solid var(--edge); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; min-width: 18px; text-align: center; display: inline-block; }
 button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 
@@ -243,50 +243,76 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 .snippet .no { position: sticky; left: 0; background: var(--bg); color: var(--dim); text-align: right; padding-right: 1ch; user-select: none; font-variant-numeric: tabular-nums; }
 .ctx-more { margin-top: var(--s1); color: var(--dim); }
 
-.thread { display: grid; gap: var(--s3); }
+.line-quote { font: 11.5px/1.5 var(--code); color: var(--soft); background: var(--bg); border-radius: 4px; padding: 3px var(--s2); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 var(--s4); }
+.thread { display: grid; gap: var(--s4); }
+.thread:empty { display: none; }
 .thread.swap { animation: swap .18s var(--ease); }
 @keyframes swap { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
-.comment { display: grid; gap: var(--s1); }
-.comment .who { display: flex; align-items: center; gap: var(--s2); font-size: 11.5px; }
-.comment .kind { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
-.comment.question .kind { color: var(--accent); }
-.comment.concern .kind { color: var(--warn); }
-.comment .who .sent { color: var(--dim); display: inline-flex; align-items: center; gap: 4px; }
-.comment .who .spacer { flex: 1; }
-.comment .who button { font-size: 11px; color: var(--dim); }
-.comment .body { font: 13.5px/1.55 var(--prose); white-space: pre-wrap; overflow-wrap: anywhere; }
-.comment .quote { font: 11.5px/1.5 var(--code); color: var(--soft); background: var(--bg); border-radius: 4px; padding: 2px var(--s2); white-space: pre-wrap; overflow-wrap: anywhere; }
-.answer { font: 13.5px/1.6 var(--prose); color: var(--soft); background: var(--bg); border-radius: var(--radius); padding: var(--s3); white-space: pre-wrap; overflow-wrap: anywhere; }
-.answer.pending { display: flex; align-items: center; gap: var(--s2); color: var(--dim); }
-.pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
-@keyframes pulse { 50% { opacity: .25; } }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-.composer { display: grid; gap: var(--s2); margin-top: var(--s2); }
+/* a turn: what you asked, small, then the agent's answer as the text to read */
+.turn { position: relative; display: grid; gap: var(--s2); }
+.turn + .turn { border-top: 1px solid var(--edge); padding-top: var(--s4); }
+.ask { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: var(--s2); font: 13px/1.5 var(--prose); color: var(--soft); white-space: pre-wrap; overflow-wrap: anywhere; }
+.ask svg { margin-top: 3px; color: var(--accent); }
+.turn.concern .ask { color: var(--text); }
+.turn.concern .ask svg { color: var(--warn); }
+.ask .sent { color: var(--soft); font: 11.5px var(--chrome); white-space: nowrap; }
+.reply { padding-left: 22px; font: 14px/1.6 var(--prose); color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.turn.concern .reply { font-size: 13px; color: var(--soft); }
+.reply code, .reply .cite { font: 12px/1.4 var(--code); border-radius: 3px; padding: 0 2px; white-space: normal; }
+.reply code { background: var(--bg); color: var(--text); }
+.reply .cite { display: inline; border: 0; color: var(--accent); background: var(--accent-soft); cursor: pointer; }
+.reply .cite:hover:not(:disabled) { color: var(--accent); background: ${alpha(p.accent, 0.26)}; }
+.reply.pending { display: flex; align-items: center; gap: var(--s2); font-size: 13px; color: var(--soft); }
+.reply.pending .ask-clock { font: 12px var(--code); color: var(--accent); font-variant-numeric: tabular-nums; }
+.reply.failed { margin-left: 22px; padding: var(--s2) var(--s3); display: grid; gap: var(--s2); justify-items: start; font-size: 13px; color: var(--danger); background: var(--danger-soft); border-radius: var(--radius); }
+.reply.failed button { color: var(--danger); border-color: ${alpha(p.danger, 0.5)}; }
+.tools { position: absolute; top: -3px; right: 0; display: flex; gap: 2px; padding-left: var(--s5); background: linear-gradient(90deg, transparent, var(--panel) var(--s4)); opacity: 0; transition: opacity .15s; }
+.turn + .turn .tools { top: calc(var(--s4) - 3px); }
+.turn:hover .tools, .turn:focus-within .tools { opacity: 1; }
+.tools button { font-size: 11.5px; color: var(--soft); }
+.tools button.armed { color: var(--danger); opacity: 1; }
+.row .dot.pending { background: transparent; box-shadow: inset 0 0 0 1.5px var(--accent); }
+.row .dot.failed { background: var(--danger); }
+.row .dot.draft { background: transparent; box-shadow: inset 0 0 0 1.5px var(--soft); }
+.row.flash { animation: flash 1.4s var(--ease); }
+@keyframes flash { from { background: var(--accent-soft); } }
+
+/* the composer stays at the foot of the inspector however long the thread */
+.composer { position: sticky; bottom: 0; z-index: 1; display: grid; gap: var(--s2); margin: var(--s3) calc(-1 * var(--s5)) calc(-1 * var(--s4)); padding: var(--s3) var(--s5) var(--s4); background: var(--panel); }
+.thread:not(:empty) + .composer { border-top: 1px solid var(--edge); }
 .kinds { display: grid; grid-template-columns: 1fr 1fr; background: var(--bg); border-radius: var(--radius); padding: 3px; gap: 3px; }
-.kinds button { border: 0; justify-content: center; padding: 5px; border-radius: 4px; color: var(--dim); }
+.kinds button { border: 0; justify-content: center; padding: 4px; border-radius: 4px; color: var(--soft); }
 .kinds button.on.question { background: var(--accent-soft); color: var(--accent); }
 .kinds button.on.concern { background: var(--warn-soft); color: var(--warn); }
-.hint { font: 12px/1.45 var(--prose); color: var(--dim); }
-textarea { font: 13.5px/1.55 var(--prose); width: 100%; min-height: 84px; background: var(--bg); color: var(--text); border: 1px solid var(--edge); border-radius: var(--radius);
-  padding: var(--s2) var(--s3); resize: vertical; caret-color: var(--accent); transition: border-color .15s; }
+.hint { font: 12px/1.45 var(--prose); color: var(--soft); }
+.raising { font: 12px/1.45 var(--prose); color: var(--warn); margin: 0; }
+textarea { font: 13.5px/1.55 var(--prose); width: 100%; min-height: 38px; max-height: 240px; background: var(--bg); color: var(--text); border: 1px solid var(--edge); border-radius: var(--radius);
+  padding: var(--s2) var(--s3); resize: none; overflow-y: auto; caret-color: var(--accent); transition: border-color .15s; }
 textarea:focus { outline: none; border-color: var(--accent); }
-textarea::placeholder { color: var(--dim); }
+textarea::placeholder { color: var(--soft); opacity: .8; }
 .composer .actions { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--s3); }
 .composer .hint { flex: 1; min-width: 0; padding-top: 2px; }
+.composer button.primary kbd { opacity: .85; }
 
-.queue { border-top: 1px solid var(--edge); padding: var(--s4) var(--s5) var(--s5); display: grid; gap: var(--s3); background: var(--panel); }
-.queue h2 { font: 600 11.5px var(--chrome); color: var(--soft); margin: 0; display: flex; justify-content: space-between; letter-spacing: .02em; }
-.queue h2 b { color: var(--warn); font-weight: 600; }
-.queue ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 140px; overflow-y: auto; }
-.queue li { display: grid; grid-template-columns: 1fr; padding: 5px var(--s2); margin: 0 calc(-1 * var(--s2)); border-radius: 4px; cursor: pointer; }
-.queue li:hover { background: var(--hover); }
-.queue li .loc { font: 11px var(--code); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.queue li .txt { font: 12.5px/1.4 var(--prose); color: var(--soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* concerns: one line until you reach for it */
+.queue { border-top: 1px solid var(--edge); padding: var(--s3) var(--s5); display: grid; gap: var(--s2); background: var(--panel); }
+.queue-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
+.queue-bar .count { font: 600 11.5px var(--chrome); color: var(--soft); letter-spacing: .02em; }
+.queue-bar .count b { color: var(--warn); }
+.queue ol { list-style: none; margin: 0; padding: 0; display: none; gap: 2px; max-height: 180px; overflow-y: auto; order: -1; }
+.queue:hover ol, .queue:focus-within ol { display: grid; }
+.queue li button { width: 100%; display: grid; gap: 1px; justify-items: start; text-align: left; white-space: normal; border: 0; padding: 5px var(--s2); margin: 0 calc(-1 * var(--s2)); width: calc(100% + 2 * var(--s2)); }
+.queue li button:hover:not(:disabled) { background: var(--hover); }
+.queue li .loc { font: 11px var(--code); color: var(--soft); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue li .txt { font: 12.5px/1.4 var(--prose); color: var(--text); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .toast { position: fixed; left: 50%; bottom: var(--s5); transform: translate(-50%, 12px); opacity: 0; pointer-events: none; background: var(--edge); color: var(--text);
   border-radius: var(--radius); padding: var(--s2) var(--s4); box-shadow: 0 8px 24px ${alpha('#000000', 0.35)}; transition: opacity .2s, transform .2s var(--ease); }
 .toast.on { opacity: 1; transform: translate(-50%, 0); }
 
+@media (min-width: 1600px) { .app { grid-template-columns: 252px minmax(0, 1fr) 440px; } }
 @media (max-width: 1280px) { .app { grid-template-columns: 224px minmax(0, 1fr) 320px; } .stage-head, .stage-body { padding-left: var(--s5); padding-right: var(--s5); } }
 @media (max-width: 960px) {
   .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr auto; height: auto; min-height: 100vh; }
@@ -310,8 +336,14 @@ var base = location.pathname.replace(/\/$/, '');
 var data = null;
 var current = 0;
 var cursor = null;        // { path, row } of the line under the cursor
-var draftKind = 'question';
-var draft = '';
+var drafts = {};          // thread key -> unsent text, per line so a draft never moves
+var kinds = {};           // thread key -> 'question' or 'concern'
+var raising = {};         // thread key -> id of the question being raised
+var sending = false;
+var landed = null;        // the last answer that came in on a line you are not on
+var clockOffset = 0;      // server clock minus ours
+var pollTimer;
+var announced = {};       // "id@askedAt" -> its landing was already said
 var unfolded = {};        // path -> whole file shown
 var opened = {};          // "path:a:b" -> gap expanded
 var ctxOpen = {};         // "section:path:start" -> context ref unfolded
@@ -323,6 +355,9 @@ try { if (localStorage.getItem('fw-review-layout') === 'split') layout = 'split'
 // Side by side needs room; a narrow window always reads inline.
 var narrow = matchMedia('(max-width: 960px)');
 narrow.addEventListener('change', function () { if (data && data.sections) renderStage(); });
+try { drafts = JSON.parse(localStorage.getItem('fw-review-drafts:' + base) || '{}') || {}; } catch (e) {}
+function saveDrafts() { try { localStorage.setItem('fw-review-drafts:' + base, JSON.stringify(drafts)); } catch (e) {} }
+function mmss(ms) { var sec = Math.floor(Math.max(0, ms) / 1000); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); }
 var TEST = /(_test\.go|\.test\.[jt]sx?|\.spec\.[jt]sx?|(^|\/)tests?\/|_test\.py|(^|\/)test_[^/]*\.py)$/;
 
 /* ── dom ── */
@@ -528,7 +563,9 @@ function load(first) {
     // stops, and the word marks have to index the same text that is drawn.
     for (var path in d.files || {}) d.files[path].rows.forEach(function (r) { r.text = r.text.replace(/\t/g, '    '); });
     (d.sections || []).forEach(function (s) { s.refs.forEach(function (r) { r.lines = r.lines.map(function (l) { return l.replace(/\t/g, '    '); }); }); });
+    var before = data;
     data = d;
+    clockOffset = (d.now || Date.now()) - Date.now();
     document.title = 'Review · ' + (d.repo || '');
     if (first && d.sections) {
       // A §n in the address wins, so a reload stays put; else the first not yet reviewed.
@@ -536,10 +573,38 @@ function load(first) {
       var open = d.sections.findIndex(function (_, i) { return d.checked.indexOf(i) < 0; });
       current = asked >= 0 && asked < d.sections.length ? asked : open < 0 ? 0 : open;
     }
-    render();
+    // A poll redraws the code and the thread, never the composer: an answer
+    // arriving must not move the caret, the selection or an open fold.
+    if (first || !before || before.status !== d.status || !document.getElementById('thread')) render();
+    else { renderStage(); refreshThread(); }
+    announce(before, d);
     var busy = d.status === 'building' || (d.comments || []).some(function (c) { return c.asking; });
-    if (busy) setTimeout(load, 2000);
-  }).catch(function () { setTimeout(load, 4000); });
+    clearTimeout(pollTimer);
+    if (busy) pollTimer = setTimeout(load, 2000);
+  }).catch(function () { clearTimeout(pollTimer); pollTimer = setTimeout(load, 4000); });
+}
+
+/** Say when an answer lands; one on another line can be reached with g. */
+function announce(before, d) {
+  if (!before || !before.comments || !d.comments) return;
+  var was = {};
+  before.comments.forEach(function (c) { if (c.asking) was[c.id] = true; });
+  d.comments.forEach(function (c) {
+    if (!was[c.id] || c.asking || announced[c.id + '@' + c.askedAt]) return;
+    announced[c.id + '@' + c.askedAt] = true;
+    var where = c.path ? rowLabel(c.path, c.row) : '§' + (c.section + 1);
+    var on = cursorOn();
+    var here = c.section === current && (on ? c.path === on.path && c.row === on.row : !c.path);
+    if (here) return toast((c.failed ? 'No answer on ' : 'Answered on ') + where);
+    landed = c;
+    toast((c.failed ? 'No answer on ' : 'Answer on ') + where + ' · g to go there');
+  });
+}
+
+function goTo(c) {
+  if (c.section !== current) go(c.section);
+  if (c.path) setCursor(c.path, c.row, true);
+  else { cursor = null; render(); }
 }
 
 function checkStale() {
@@ -592,7 +657,8 @@ function renderRail() {
   rail.append(h('div', { class: 'legend' },
     h('span', {}, h('kbd', { text: 'j' }), ' ', h('kbd', { text: 'k' })), h('span', { text: 'line' }),
     h('span', {}, h('kbd', { text: 'n' }), ' ', h('kbd', { text: 'p' })), h('span', { text: 'section' }),
-    h('span', {}, h('kbd', { text: 'c' })), h('span', { text: 'comment on the line' }),
+    h('span', {}, h('kbd', { text: '[' }), ' ', h('kbd', { text: ']' })), h('span', { text: 'line with a thread' }),
+    h('span', {}, h('kbd', { text: 'c' }), ' ', h('kbd', { text: 'C' })), h('span', { text: 'ask, or raise a concern' }),
     h('span', {}, h('kbd', { text: 'x' })), h('span', { text: 'mark reviewed, go on' }),
     h('span', {}, h('kbd', { text: 's' })), h('span', { text: 'inline or side by side' })));
 }
@@ -647,11 +713,7 @@ var clockTimer;
 function renderBuilding(stage) {
   var clock = h('span', { class: 'clock' });
   var offset = (data.now || Date.now()) - Date.now();
-  function tick() {
-    var ms = Math.max(0, Date.now() + offset - (data.startedAt || Date.now()));
-    var sec = Math.floor(ms / 1000);
-    clock.textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
-  }
+  function tick() { clock.textContent = mmss(Date.now() + offset - (data.startedAt || Date.now())); }
   tick();
   clearInterval(clockTimer);
   clockTimer = setInterval(function () { if (!clock.isConnected) return clearInterval(clockTimer); tick(); }, 1000);
@@ -687,7 +749,6 @@ function fileEl(sf) {
     var foreign = r.kind !== ' ' && own !== current && own >= 0;
     if (foreign) cls += ' other';
     if (cursor && cursor.path === sf.path && cursor.row === i) cls += ' cursor';
-    var thread = data.comments.filter(function (c) { return c.path === sf.path && c.row === i; });
     var m = marks[i];
     var sign = h('span', { class: 'sign', text: r.kind === ' ' ? '' : r.kind === '+' ? '+' : '−' });
     var src = h('span', { class: 'src' }, paint(r.text, lang, m ? m[0] : null, m ? m[1] : null));
@@ -699,7 +760,7 @@ function fileEl(sf) {
       h('span', { class: 'no', text: r.new }), h('span', { class: 'sign' }), h('span', { class: 'src' }, paint(r.text, lang))];
     if (split) cls += side ? ' half' : ' both';
     return h('div', { class: cls, 'data-path': sf.path, 'data-row': i, onclick: function () { setCursor(sf.path, i, false); } },
-      thread.length ? h('span', { class: 'dot' + (thread.some(function (c) { return c.kind === 'concern'; }) ? ' concern' : '') }) : null,
+      dotFor(sf.path, i),
       cells,
       split && !side ? null : foreign ? h('span', { class: 'own', text: '§' + (own + 1) }) : h('span'));
   }
@@ -741,16 +802,22 @@ function fileEl(sf) {
 }
 
 /* ── inspector ── */
+function threadKey(on) { return on ? on.path + ':' + on.row : 'section:' + current; }
+function cursorOn() { return cursor && data.files[cursor.path] ? cursor : null; }
+
 function renderInspector() {
   var insp = document.getElementById('inspector');
-  insp.replaceChildren();
   if (data.status !== 'ready') {
-    insp.append(h('div', { class: 'inspector-scroll' }, h('div', { class: 'pane' },
+    insp.replaceChildren(h('div', { class: 'inspector-scroll' }, h('div', { class: 'pane' },
       h('h2', { text: 'Inspector' }),
       h('p', { class: 'muted', text: 'The section summary, the code it leans on and your comments will show here.' }))));
     return;
   }
   var s = section();
+  var on = cursorOn();
+  var key = threadKey(on);
+  var prev = insp.querySelector('.inspector-scroll');
+  var keepTop = prev && key === lastThreadKey ? prev.scrollTop : 0;
   var scroll = h('div', { class: 'inspector-scroll' });
 
   scroll.append(h('div', { class: 'pane' }, h('h2', { text: 'What this section does' }),
@@ -766,24 +833,42 @@ function renderInspector() {
   }
 
   scroll.append(threadPane());
-  insp.append(scroll);
-  insp.append(queueEl());
+  insp.replaceChildren(scroll, queueEl());
+  scroll.scrollTop = keepTop;
 }
 
 /** The line under the cursor and its thread: the one pane a cursor move redraws. */
 function threadPane() {
-  var focused = document.activeElement && document.activeElement.tagName === 'TEXTAREA';
-  var on = cursor && data.files[cursor.path] ? cursor : null;
-  var thread = on ? threadFor(on.path, on.row) : threadFor(null);
-  var key = on ? on.path + ':' + on.row : 'section:' + current;
-  var list = h('div', { class: 'thread' + (key !== lastThreadKey ? ' swap' : '') }, thread.map(commentEl));
+  var on = cursorOn();
+  var key = threadKey(on);
+  var list = h('div', { class: 'thread' + (key !== lastThreadKey ? ' swap' : ''), id: 'thread' });
+  fillThread(list);
   lastThreadKey = key;
   var quote = on ? data.files[on.path].rows[on.row] : null;
   return h('div', { class: 'pane', id: 'thread-pane' },
     h('h2', {}, on ? 'On this line' : 'On this section', on ? h('span', { class: 'where', text: rowLabel(on.path, on.row) }) : null),
-    quote && !thread.length ? h('div', { class: 'comment' }, h('div', { class: 'quote', text: quote.text.trim() || ' ' })) : null,
+    quote ? h('div', { class: 'line-quote', text: quote.text.trim() || ' ' }) : null,
     list,
-    composerEl(on, focused));
+    composerEl(on));
+}
+
+/**
+ * What a poll changes: the thread and the queue. The composer, its caret and
+ * the open folds are left alone, so an answer arriving never touches what you type.
+ */
+function refreshThread() {
+  var list = document.getElementById('thread');
+  if (!list) return renderInspector();
+  list.classList.remove('swap');
+  list.replaceChildren();
+  fillThread(list);
+  var q = document.getElementById('queue');
+  if (q) q.replaceWith(queueEl());
+}
+
+function fillThread(list) {
+  var on = cursorOn();
+  (on ? threadFor(on.path, on.row) : threadFor(null)).forEach(function (c) { list.append(turnEl(c)); });
 }
 
 var CTX_SHOWN = 5;
@@ -815,74 +900,214 @@ function ctxEl(ref) {
     })));
 }
 
-function commentEl(c) {
-  var answer = null;
-  if (c.kind === 'question') {
-    answer = c.asking
-      ? h('div', { class: 'answer pending' }, h('span', { class: 'pulse' }), 'Reading the code to answer…')
-      : c.answer ? h('div', { class: 'answer', text: c.answer }) : null;
+function turnEl(c) {
+  var reply = null;
+  if (c.asking) {
+    reply = h('div', { class: 'reply pending' }, 'Reading the code to answer',
+      c.askedAt ? h('span', { class: 'ask-clock', 'data-since': c.askedAt, text: mmss(Date.now() + clockOffset - c.askedAt) }) : null);
+  } else if (c.failed) {
+    reply = h('div', { class: 'reply failed' }, h('span', { text: c.answer }),
+      h('button', { onclick: function () { api('POST', 'comments/' + c.id, { retry: true }).then(function () { load(); }); } }, icon('refresh'), 'Ask again'));
+  } else if (c.answer) {
+    reply = h('div', { class: 'reply' }, h('span', { class: 'sr', text: 'The agent answered: ' }), prose(c.answer));
   }
-  return h('div', { class: 'comment ' + c.kind },
-    h('div', { class: 'who' },
-      h('span', { class: 'kind' }, icon(c.kind), c.kind === 'question' ? 'Question' : 'Concern'),
-      c.sent ? h('span', { class: 'sent' }, icon('sent'), 'sent') : null,
-      h('span', { class: 'spacer' }),
-      c.kind === 'question' && !c.asking ? h('button', { class: 'ghost', title: 'Still unsure: make it a concern for the author', onclick: function () { api('POST', 'comments/' + c.id).then(function () { load(); }); } }, icon('raise'), 'Raise as concern') : null,
-      h('button', { class: 'ghost', 'aria-label': 'Delete', title: 'Delete', onclick: function () { api('DELETE', 'comments/' + c.id).then(function () { load(); }); } }, icon('trash'))),
-    h('div', { class: 'body', text: c.body }),
-    answer);
+  var real = c.id !== 'pending';
+  var tools = real ? h('div', { class: 'tools' },
+    c.kind === 'question' && !c.asking ? h('button', { class: 'ghost', title: 'Still unsure: make it a concern for the author', onclick: function () { raise(c); } }, icon('raise'), 'Raise') : null,
+    deleteEl(c)) : null;
+  return h('div', { class: 'turn ' + c.kind },
+    h('div', { class: 'ask' }, icon(c.kind),
+      h('span', {}, h('span', { class: 'sr', text: c.kind === 'question' ? 'You asked: ' : 'Concern: ' }), c.body,
+        c.sent ? h('span', { class: 'sent', text: ' · sent' }) : null,
+        c.kind === 'concern' && c.asked ? h('span', { class: 'sent', text: ' · raised from a question' }) : null)),
+    reply,
+    tools);
 }
 
-function composerEl(on, refocus) {
-  var area = h('textarea', {
-    id: 'composer',
-    'aria-label': draftKind === 'question' ? 'Question' : 'Concern',
-    placeholder: draftKind === 'question' ? 'What do you want to understand?' : 'What should change?',
+/** Delete asks once more in place: no dialog, and no way to lose a thread to a stray click. */
+function deleteEl(c) {
+  var label = h('span', { class: 'sr' });
+  var b = h('button', { class: 'ghost', title: 'Delete', 'aria-label': 'Delete ' + c.kind + ': ' + c.body.slice(0, 80) }, icon('trash'), label);
+  var timer;
+  b.addEventListener('click', function () {
+    if (!b.classList.contains('armed')) {
+      b.classList.add('armed');
+      label.className = '';
+      label.textContent = 'Delete?';
+      timer = setTimeout(function () { b.classList.remove('armed'); label.className = 'sr'; label.textContent = ''; }, 3000);
+      return;
+    }
+    clearTimeout(timer);
+    api('DELETE', 'comments/' + c.id).then(function () { return load(); }).then(focusComposer);
   });
-  area.value = draft;
-  area.addEventListener('input', function () { draft = area.value; });
+  return b;
+}
+
+/** Raise a question: the composer turns to a concern, seeded with it, for you to say what should change. */
+function raise(c) {
+  var key = threadKey(cursorOn());
+  kinds[key] = 'concern';
+  raising[key] = c.id;
+  drafts[key] = c.body;
+  saveDrafts();
+  renderInspector();
+  focusComposer();
+}
+
+/** Answer text: backticks as code, file:line as a link to that line when the review shows it. */
+var CITE = new RegExp(BQ + '([^' + BQ + '\\n]+)' + BQ + '|((?:[\\w.-]+/)*[\\w.-]+\\.[A-Za-z]{1,5}):(\\d+)(?:[-–]\\d+)?', 'g');
+var CITE_IN = /^((?:[\w.-]+\/)*[\w.-]+\.[A-Za-z]{1,5}):(\d+)/;
+function prose(text) {
+  var frag = document.createDocumentFragment();
+  var last = 0, m;
+  CITE.lastIndex = 0;
+  while ((m = CITE.exec(text))) {
+    if (m.index > last) frag.append(text.slice(last, m.index));
+    if (m[1] != null) {
+      var inner = CITE_IN.exec(m[1]);
+      frag.append((inner && citeEl(m[1], inner[1], Number(inner[2]))) || h('code', { text: m[1] }));
+    } else {
+      frag.append(citeEl(m[0], m[2], Number(m[3])) || h('code', { text: m[0] }));
+    }
+    last = CITE.lastIndex;
+  }
+  if (last < text.length) frag.append(text.slice(last));
+  return frag;
+}
+
+/** Where a cited line is drawn: its path, row, and the section to show it in. */
+function resolveCite(file, line) {
+  var path = Object.keys(data.files).find(function (p) { return p === file || p.slice(-file.length - 1) === '/' + file; });
+  if (!path) return null;
+  var rows = data.files[path].rows;
+  var row = rows.findIndex(function (r) { return r.new === line; });
+  if (row < 0) row = rows.findIndex(function (r) { return r.old === line; });
+  if (row < 0) return null;
+  var shows = function (i) { return data.sections[i].files.some(function (f) { return f.path === path && f.windows.some(function (w) { return row >= w[0] && row <= w[1]; }); }); };
+  var has = function (i) { return data.sections[i].files.some(function (f) { return f.path === path; }); };
+  var at = shows(current) ? current : owner(path, row) >= 0 ? owner(path, row) : data.sections.findIndex(function (_, i) { return shows(i); });
+  if (at < 0 && has(current)) at = current;
+  return at < 0 ? null : { path: path, row: row, section: at };
+}
+
+function citeEl(label, file, line) {
+  var at = resolveCite(file, line);
+  if (!at) return null;
+  return h('button', { class: 'cite', title: 'Show ' + label + ' in the code', onclick: function () { jump(at); } }, label);
+}
+
+/** Show a cited line. In this section the thread stays put and the line flashes; elsewhere the cursor goes there. */
+function jump(at) {
+  if (at.section !== current) { go(at.section); setCursor(at.path, at.row, true); return; }
+  if (!document.querySelector('#stage .row[data-path="' + CSS.escape(at.path) + '"][data-row="' + at.row + '"]')) { unfolded[at.path] = true; renderStage(); }
+  document.querySelectorAll('#stage .row[data-path="' + CSS.escape(at.path) + '"][data-row="' + at.row + '"]').forEach(function (el, i) {
+    if (i === 0) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+  });
+}
+
+function composerEl(on) {
+  var key = threadKey(on);
+  var kind = kinds[key] || 'question';
+  var raised = raising[key];
+  var area = h('textarea', {
+    id: 'composer', rows: 1,
+    'aria-label': kind === 'question' ? 'Question' : 'Concern',
+    placeholder: kind === 'question' ? 'What do you want to understand?' : 'What should change?',
+  });
+  area.value = drafts[key] || '';
+  function grow() { area.style.height = 'auto'; area.style.height = Math.min(area.scrollHeight + 2, 240) + 'px'; }
+  requestAnimationFrame(grow);
+  area.addEventListener('input', function () {
+    if (area.value) drafts[key] = area.value; else delete drafts[key];
+    saveDrafts();
+    grow();
+  });
+  var send = h('button', { class: 'primary', onclick: submit }, kind === 'question' ? 'Ask' : raised ? 'Raise' : 'Add', h('kbd', { text: '⌘↵', 'aria-hidden': 'true' }));
   function submit() {
     var text = area.value.trim();
-    if (!text) return;
-    var body = { section: current, kind: draftKind, body: text };
-    if (on) { body.path = on.path; body.row = on.row; }
-    draft = '';
-    api('POST', 'comments', body).then(function () { load(); });
+    if (!text || sending) return;
+    // Cleared before the request, so a second ⌘↵ has nothing to send.
+    sending = true;
+    send.disabled = true;
+    area.value = '';
+    delete drafts[key];
+    saveDrafts();
+    grow();
+    var req;
+    if (raised) {
+      delete raising[key];
+      kinds[key] = 'question';
+      req = api('POST', 'comments/' + raised, { body: text });
+    } else {
+      var body = { section: current, kind: kind, body: text };
+      if (on) { body.path = on.path; body.row = on.row; }
+      // The turn shows at once; the next load replaces it with the stored one.
+      data.comments.push(Object.assign({ id: 'pending', asking: kind === 'question', askedAt: Date.now() + clockOffset }, body));
+      refreshThread();
+      req = api('POST', 'comments', body);
+    }
+    req.then(function () { return load(); }).finally(function () {
+      sending = false;
+      if (raised) renderInspector(); else send.disabled = false;
+      focusComposer();
+    });
   }
   area.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); }
     if (e.key === 'Escape') { area.blur(); }
     e.stopPropagation();
   });
-  if (refocus) setTimeout(function () { area.focus(); area.setSelectionRange(area.value.length, area.value.length); });
-  var kinds = h('div', { class: 'kinds', role: 'radiogroup', 'aria-label': 'Kind' }, ['question', 'concern'].map(function (k) {
+  function pick(k) {
+    kinds[key] = k;
+    if (k === 'question') delete raising[key];
+    renderInspector();
+    var radio = document.querySelector('.kinds [aria-checked="true"]');
+    if (radio) radio.focus();
+  }
+  var kindsEl = h('div', { class: 'kinds', role: 'radiogroup', 'aria-label': 'Kind' }, ['question', 'concern'].map(function (k) {
     return h('button', {
-      class: k + (draftKind === k ? ' on' : ''), role: 'radio', 'aria-checked': draftKind === k ? 'true' : 'false',
-      onclick: function () { draftKind = k; renderInspector(); var a = document.getElementById('composer'); if (a) a.focus(); },
+      class: k + (kind === k ? ' on' : ''), role: 'radio', 'aria-checked': kind === k ? 'true' : 'false', tabindex: kind === k ? '0' : '-1',
+      onclick: function () { pick(k); area.focus(); },
     }, icon(k), k === 'question' ? 'Question' : 'Concern');
   }));
-  var hint = draftKind === 'question'
-    ? 'Answered here by the agent, citing the code. Never sent to the author.'
-    : 'Something to fix. Queued below and sent to the author together.';
-  return h('div', { class: 'composer' }, kinds, area,
-    h('div', { class: 'actions' }, h('span', { class: 'hint', text: hint }),
-      h('button', { class: 'primary', onclick: submit }, draftKind === 'question' ? 'Ask' : 'Add', h('kbd', { text: '⌘↵' }))));
+  kindsEl.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault(); e.stopPropagation();
+      pick(kind === 'question' ? 'concern' : 'question');
+    }
+  });
+  var hint = raised
+    ? 'Say what should change. Your question and the agent’s answer go with it.'
+    : kind === 'question'
+      ? 'Answered here by the agent, citing the code. Never sent to the author.'
+      : 'Something to fix. Queued below and sent to the author together.';
+  return h('div', { class: 'composer' }, kindsEl, area,
+    h('div', { class: 'actions' }, h('span', { class: raised ? 'raising' : 'hint', text: hint }), send));
+}
+
+function focusComposer() {
+  var a = document.getElementById('composer');
+  if (!a) return;
+  a.focus();
+  a.setSelectionRange(a.value.length, a.value.length);
 }
 
 function queueEl() {
   var pending = data.comments.filter(function (c) { return c.kind === 'concern' && !c.sent; });
-  var box = h('div', { class: 'queue' },
-    h('h2', {}, h('span', { text: 'Concerns to send' }), h('b', { text: String(pending.length) })));
+  var box = h('div', { class: 'queue', id: 'queue' },
+    h('div', { class: 'queue-bar' },
+      h('span', { class: 'count' }, pending.length ? h('b', { text: String(pending.length) }) : null,
+        pending.length ? ' concern' + (pending.length > 1 ? 's' : '') + ' to send' : 'No concerns to send'),
+      h('button', { class: 'send', disabled: !pending.length, onclick: send }, icon('send'), 'Send to the author')));
   if (pending.length) {
-    box.append(h('ol', {}, pending.map(function (c) {
+    box.append(h('ol', { 'aria-label': 'Concerns to send' }, pending.map(function (c) {
       var where = c.path ? rowLabel(c.path, c.row) : '§' + (c.section + 1);
-      return h('li', { onclick: function () { if (c.section !== current) go(c.section); if (c.path) setCursor(c.path, c.row, true); } },
+      return h('li', {}, h('button', { onclick: function () { goTo(c); } },
         h('span', { class: 'loc', text: '§' + (c.section + 1) + ' · ' + where }),
-        h('span', { class: 'txt', text: c.body }));
+        h('span', { class: 'txt', text: c.body })));
     })));
   }
-  box.append(h('button', { class: 'send', disabled: !pending.length, onclick: send }, icon('send'),
-    pending.length ? 'Send ' + pending.length + ' concern' + (pending.length > 1 ? 's' : '') + ' to the author' : 'Nothing to send yet'));
   return box;
 }
 
@@ -913,8 +1138,39 @@ function setLayout(next) {
   if (el) el.scrollIntoView({ block: 'center' });
 }
 
+/** A line's gutter mark: a draft, a question being read, a failed answer, a concern, or a thread. */
+function dotFor(path, row) {
+  var thread = data.comments.filter(function (c) { return c.path === path && c.row === row; });
+  var cls = thread.some(function (c) { return c.failed; }) ? ' failed'
+    : thread.some(function (c) { return c.asking; }) ? ' pending'
+    : thread.some(function (c) { return c.kind === 'concern'; }) ? ' concern'
+    : thread.length ? '' : drafts[path + ':' + row] ? ' draft' : null;
+  return cls === null ? null : h('span', { class: 'dot' + cls });
+}
+
+function refreshDot(path, row) {
+  document.querySelectorAll('#stage .row[data-path="' + CSS.escape(path) + '"][data-row="' + row + '"]').forEach(function (el) {
+    var old = el.querySelector('.dot');
+    var dot = dotFor(path, row);
+    if (old) old.remove();
+    if (dot) el.prepend(dot);
+  });
+}
+
+/** The next line with a thread, after (or before) the cursor. */
+function nextThread(step) {
+  var rows = visibleRows();
+  var at = cursor ? rows.findIndex(function (el) { return el.dataset.path === cursor.path && Number(el.dataset.row) === cursor.row; }) : -1;
+  for (var i = at < 0 && step < 0 ? rows.length - 1 : at + step; i >= 0 && i < rows.length; i += step) {
+    if (rows[i].querySelector('.dot:not(.draft)')) return setCursor(rows[i].dataset.path, Number(rows[i].dataset.row), true);
+  }
+  toast(step > 0 ? 'No thread below in this section' : 'No thread above in this section');
+}
+
 function setCursor(path, row, scroll) {
+  var was = cursor;
   cursor = { path: path, row: row };
+  if (was) refreshDot(was.path, was.row);
   document.querySelectorAll('#stage .row.cursor').forEach(function (el) { el.classList.remove('cursor'); });
   var el = document.querySelector('#stage .row[data-path="' + CSS.escape(path) + '"][data-row="' + row + '"]');
   if (el) {
@@ -978,7 +1234,11 @@ document.addEventListener('keydown', function (e) {
   else if (e.key === 'p') go(current - 1);
   else if (e.key === 'x') toggleChecked();
   else if (e.key === 's') setLayout(layout === 'split' ? 'inline' : 'split');
-  else if (e.key === 'c') { var a = document.getElementById('composer'); if (a) a.focus(); }
+  else if (e.key === 'c') focusComposer();
+  else if (e.key === 'C') { kinds[threadKey(cursorOn())] = 'concern'; renderInspector(); focusComposer(); }
+  else if (e.key === ']') nextThread(1);
+  else if (e.key === '[') nextThread(-1);
+  else if (e.key === 'g' && landed) { var c = landed; landed = null; goTo(c); }
   else if (e.key === 'Escape') { cursor = null; render(); }
   else return;
   e.preventDefault();
@@ -986,4 +1246,8 @@ document.addEventListener('keydown', function (e) {
 
 load(true);
 setInterval(checkStale, 30000);
+// How long each question has been with the agent, ticking in place.
+setInterval(function () {
+  document.querySelectorAll('.ask-clock').forEach(function (el) { el.textContent = mmss(Date.now() + clockOffset - Number(el.dataset.since)); });
+}, 1000);
 `;
