@@ -35,6 +35,7 @@ ${pageCss(p)}
   <nav class="rail" id="rail" aria-label="Sections"></nav>
   <main class="stage" id="stage"></main>
   <aside class="inspector" id="inspector" aria-label="Inspector"></aside>
+  <div class="grip" id="grip" role="separator" aria-orientation="vertical" aria-controls="inspector" aria-label="Inspector width" tabindex="0" title="Drag to resize · double-click to reset · w to widen"></div>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script>
@@ -90,7 +91,7 @@ button.send:disabled { background: transparent; border-color: var(--edge); color
 kbd { font: 11px var(--chrome); color: var(--dim); border: 1px solid var(--edge); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; min-width: 18px; text-align: center; display: inline-block; }
 button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 
-.app { display: grid; grid-template-columns: 252px minmax(0, 1fr) 380px; height: 100vh; }
+.app { --inspector-w: 380px; position: relative; display: grid; grid-template-columns: 252px minmax(0, 1fr) var(--inspector-w); height: 100vh; }
 
 /* ── rail ── */
 .rail { background: var(--panel); border-right: 1px solid var(--edge); display: flex; flex-direction: column; min-height: 0; min-width: 0; }
@@ -211,6 +212,13 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 .failure { font: 12.5px/1.6 var(--code); color: var(--danger); background: var(--danger-soft); border-radius: var(--radius); padding: var(--s4); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 var(--s4); }
 
 /* ── inspector ── */
+/* the inspector's left edge drags; the width it is left at is remembered per browser */
+.grip { position: absolute; top: 0; bottom: 0; right: var(--inspector-w); width: 9px; margin-right: -5px; z-index: 4; cursor: col-resize; touch-action: none; }
+.grip::after { content: ''; position: absolute; top: 0; bottom: 0; left: 4px; width: 1px; background: transparent; transition: background .15s, box-shadow .15s; }
+.grip:hover::after, .grip:focus-visible::after, .grip.dragging::after { background: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft); }
+.grip:focus-visible { outline: none; }
+body.resizing { cursor: col-resize; user-select: none; }
+body.resizing iframe, body.resizing .stage, body.resizing .inspector { pointer-events: none; }
 .inspector { background: var(--panel); border-left: 1px solid var(--edge); display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .inspector-scroll { overflow-y: auto; flex: 1; }
 .pane { padding: var(--s5) var(--s5) var(--s4); border-bottom: 1px solid var(--edge); }
@@ -237,7 +245,7 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 .ctx > summary:hover .copy, .ctx .copy:focus-visible { opacity: 1; }
 .ctx .copy:hover:not(:disabled) { color: var(--text); }
 /* too narrow to wrap code readably: it scrolls in its own box, numbers pinned, capped so the thread below stays in reach */
-.snippet { font: 12px/1.6 var(--code); background: var(--bg); border-radius: var(--radius); padding: var(--s2) 0; margin: var(--s1) 0 var(--s2); max-height: 24em; overflow: auto; }
+.snippet { font: 12px/1.6 var(--code); background: var(--bg); border-radius: var(--radius); padding: var(--s2) 0; margin: var(--s1) 0 var(--s2); max-height: max(24em, 45vh); overflow: auto; }
 .snippet div { display: grid; grid-template-columns: 6ch max-content; }
 .snippet .src { white-space: pre; padding-right: var(--s3); }
 .snippet .no { position: sticky; left: 0; background: var(--bg); color: var(--dim); text-align: right; padding-right: 1ch; user-select: none; font-variant-numeric: tabular-nums; }
@@ -312,8 +320,8 @@ textarea::placeholder { color: var(--soft); opacity: .8; }
   border-radius: var(--radius); padding: var(--s2) var(--s4); box-shadow: 0 8px 24px ${alpha('#000000', 0.35)}; transition: opacity .2s, transform .2s var(--ease); }
 .toast.on { opacity: 1; transform: translate(-50%, 0); }
 
-@media (min-width: 1600px) { .app { grid-template-columns: 252px minmax(0, 1fr) 440px; } }
-@media (max-width: 1280px) { .app { grid-template-columns: 224px minmax(0, 1fr) 320px; } .stage-head, .stage-body { padding-left: var(--s5); padding-right: var(--s5); } }
+@media (min-width: 1600px) { .app { --inspector-w: 440px; } }
+@media (max-width: 1280px) { .app { --inspector-w: 320px; grid-template-columns: 224px minmax(0, 1fr) var(--inspector-w); } .stage-head, .stage-body { padding-left: var(--s5); padding-right: var(--s5); } }
 @media (max-width: 960px) {
   .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr auto; height: auto; min-height: 100vh; }
   .stage-head { position: static; flex-wrap: wrap; }
@@ -325,6 +333,7 @@ textarea::placeholder { color: var(--soft); opacity: .8; }
   .sections li { min-width: 200px; }
   .legend { display: none; }
   .inspector { border-left: 0; border-top: 1px solid var(--edge); }
+  .grip { display: none; }
   .stage { overflow: visible; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
@@ -660,7 +669,8 @@ function renderRail() {
     h('span', {}, h('kbd', { text: '[' }), ' ', h('kbd', { text: ']' })), h('span', { text: 'line with a thread' }),
     h('span', {}, h('kbd', { text: 'c' }), ' ', h('kbd', { text: 'C' })), h('span', { text: 'ask, or raise a concern' }),
     h('span', {}, h('kbd', { text: 'x' })), h('span', { text: 'mark reviewed, go on' }),
-    h('span', {}, h('kbd', { text: 's' })), h('span', { text: 'inline or side by side' })));
+    h('span', {}, h('kbd', { text: 's' })), h('span', { text: 'inline or side by side' }),
+    h('span', {}, h('kbd', { text: 'w' })), h('span', { text: 'widen the inspector' })));
 }
 
 /* ── stage ── */
@@ -1129,6 +1139,66 @@ function visibleRows() {
   return out;
 }
 
+/* ── inspector width ── */
+// Null means the breakpoint's default; a drag or w pins a width, kept per browser.
+var app = document.querySelector('.app');
+var grip = document.getElementById('grip');
+var inspectorW = null;
+var WIDE = 0.55;          // w opens the inspector to this share of the window
+try { inspectorW = Number(localStorage.getItem('fw-review-inspector')) || null; } catch (e) {}
+// The stage keeps room to read code, the inspector room for its own head.
+function clampW(w) { return Math.round(Math.max(280, Math.min(w, innerWidth - 252 - 420))); }
+function currentW() { return document.getElementById('inspector').getBoundingClientRect().width; }
+function setInspectorW(w, keep) {
+  inspectorW = w == null ? null : clampW(w);
+  if (inspectorW == null) app.style.removeProperty('--inspector-w');
+  else app.style.setProperty('--inspector-w', inspectorW + 'px');
+  grip.setAttribute('aria-valuenow', String(Math.round(currentW())));
+  grip.setAttribute('aria-valuemax', String(clampW(Infinity)));
+  if (keep === false) return;
+  try {
+    if (inspectorW == null) localStorage.removeItem('fw-review-inspector');
+    else localStorage.setItem('fw-review-inspector', String(inspectorW));
+  } catch (e) {}
+}
+function toggleWide() {
+  var wide = clampW(innerWidth * WIDE);
+  setInspectorW(currentW() >= wide - 8 ? null : wide);
+}
+setInspectorW(inspectorW, false);
+grip.setAttribute('aria-valuemin', '280');
+addEventListener('resize', function () { if (inspectorW != null) setInspectorW(inspectorW, false); });
+grip.addEventListener('pointerdown', function (e) {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  grip.setPointerCapture(e.pointerId);
+  grip.classList.add('dragging');
+  document.body.classList.add('resizing');
+  var startX = e.clientX, startW = currentW();
+  function move(ev) { setInspectorW(startW + startX - ev.clientX, false); }
+  function up() {
+    grip.removeEventListener('pointermove', move);
+    grip.removeEventListener('pointerup', up);
+    grip.removeEventListener('pointercancel', up);
+    grip.classList.remove('dragging');
+    document.body.classList.remove('resizing');
+    setInspectorW(inspectorW);
+  }
+  grip.addEventListener('pointermove', move);
+  grip.addEventListener('pointerup', up);
+  grip.addEventListener('pointercancel', up);
+});
+grip.addEventListener('dblclick', function () { setInspectorW(null); });
+grip.addEventListener('keydown', function (e) {
+  var step = e.shiftKey ? 80 : 20;
+  if (e.key === 'ArrowLeft') setInspectorW(currentW() + step);
+  else if (e.key === 'ArrowRight') setInspectorW(currentW() - step);
+  else if (e.key === 'Home') setInspectorW(null);
+  else return;
+  e.preventDefault();
+  e.stopPropagation();
+});
+
 function setLayout(next) {
   if (next === layout) return;
   layout = next;
@@ -1234,6 +1304,7 @@ document.addEventListener('keydown', function (e) {
   else if (e.key === 'p') go(current - 1);
   else if (e.key === 'x') toggleChecked();
   else if (e.key === 's') setLayout(layout === 'split' ? 'inline' : 'split');
+  else if (e.key === 'w') toggleWide();
   else if (e.key === 'c') focusComposer();
   else if (e.key === 'C') { kinds[threadKey(cursorOn())] = 'concern'; renderInspector(); focusComposer(); }
   else if (e.key === ']') nextThread(1);
