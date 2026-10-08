@@ -1,4 +1,4 @@
-import type { SessionMeta } from './types.ts';
+import type { AgentStatus, SessionMeta } from './types.ts';
 
 /*
  * Which tmux sessions the fleet list is for.
@@ -15,6 +15,11 @@ import type { SessionMeta } from './types.ts';
  * fleetwood knows why those sessions exist and has something to say about them,
  * and a session it never created is a terminal you opened, which it does not.
  * Nothing is marked; a session qualifies by what it is.
+ *
+ * A session with an agent running in it is in the list too, whatever started
+ * it. Claude opened in a plain terminal is still an agent spending tokens and
+ * able to get stuck, and its card is the only place that says so. It drops back
+ * out once the agent exits, and the terminal is just a terminal again.
  *
  * The one thing configured is a workspace: a folder you coordinate from, like
  * `~/projects/os`, where no task is ever made and so nothing stamps a kind. It
@@ -49,6 +54,18 @@ export function isWorkSession(meta: SessionMeta): boolean {
   return (
     meta.kind === 'task' || meta.kind === 'pr' || meta.kind === 'workspace' || meta.task !== undefined
   );
+}
+
+/**
+ * Whether the fleet list shows this session: work fleetwood set up, or any
+ * session an agent is live in. A `gone` agent is a process that already died,
+ * so it keeps no session on the list.
+ */
+export function isFleetSession(session: {
+  meta: SessionMeta;
+  agents: readonly { status: AgentStatus }[];
+}): boolean {
+  return isWorkSession(session.meta) || session.agents.some((agent) => agent.status !== 'gone');
 }
 
 /** One spelling per directory: `~/projects/os/` and `~/projects/os` are one place. */

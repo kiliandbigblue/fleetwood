@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { dormantWorkspaces, isWorkSession, markWorkspaces } from '../src/fleetList.ts';
+import { dormantWorkspaces, isFleetSession, isWorkSession, markWorkspaces } from '../src/fleetList.ts';
 import type { SessionMeta } from '../src/types.ts';
 
 const at = (path: string, meta: SessionMeta = {}): { path: string; meta: SessionMeta } => ({ path, meta });
@@ -61,4 +61,13 @@ test('a workspace with no session is offered to start', () => {
     ),
     ['/Users/me/projects/ops'],
   );
+});
+
+test('a session with a live agent is in the list, whatever started it', () => {
+  // Claude opened in a plain terminal: no task, no workspace, still an agent.
+  assert.equal(isFleetSession({ meta: {}, agents: [{ status: 'idle' }] }), true);
+  // Without one it is a terminal again; a dead agent keeps nothing on the list.
+  assert.equal(isFleetSession({ meta: {}, agents: [] }), false);
+  assert.equal(isFleetSession({ meta: {}, agents: [{ status: 'gone' }] }), false);
+  assert.equal(isFleetSession({ meta: { kind: 'task' }, agents: [] }), true);
 });

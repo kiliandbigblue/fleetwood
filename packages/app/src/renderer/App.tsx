@@ -19,7 +19,7 @@ import { ThemePicker } from './ThemePicker.tsx';
 // the renderer bundle on `node:child_process`.
 import { needsDeploy } from '@fleetwood/core/deployState';
 import { isHidden, isPinned, sessionLabel, sortSessions } from '@fleetwood/core/sessionOrder';
-import { isWorkSession } from '@fleetwood/core/fleetList';
+import { isFleetSession } from '@fleetwood/core/fleetList';
 import { dormantTasks } from '@fleetwood/core/taskView';
 import { resolveFocus } from './focus.ts';
 import {
@@ -394,8 +394,8 @@ export function App(): React.JSX.Element {
    */
   const ranked = snapshot ? sortSessions(snapshot.fleet.sessions) : [];
   /*
-   * Then down to the sessions the list is about — a task or a pull request, see
-   * `fleetList.ts`. The shell in `~`, the one you spawned to try a command, every
+   * Then down to the sessions the list is about — a task, a pull request, or one
+   * with an agent running in it, see `fleetList.ts`. The shell in `~`, the one you spawned to try a command, every
    * project you have ever attached to: tmux has them and the fleet is not about
    * them, and they were pushing the rows that are down the page.
    *
@@ -403,8 +403,8 @@ export function App(): React.JSX.Element {
    * about a session that belongs here, and these never did. They still reach the
    * header, which is read off `fleet.counts` — every session, these included.
    */
-  const offList = ranked.filter((session) => !isWorkSession(session.meta));
-  const fleet = ranked.filter((session) => isWorkSession(session.meta));
+  const offList = ranked.filter((session) => !isFleetSession(session));
+  const fleet = ranked.filter((session) => isFleetSession(session));
   /*
    * Split off the sessions marked hidden — a dash on the front of the tmux name,
    * see `sessionOrder.ts`. Only the list is split: the fleet's counts and the
