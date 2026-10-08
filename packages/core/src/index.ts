@@ -10,6 +10,7 @@ export * as spool from './spool.ts';
 export * as screen from './screen.ts';
 export * as limits from './limits.ts';
 export * as cursorUsage from './cursorUsage.ts';
+export * as notion from './notion.ts';
 export * as hooks from './hookInstall.ts';
 export * as actions from './actions.ts';
 export * as config from './config.ts';
@@ -155,6 +156,9 @@ export type { ArchivedTask, ArchivedRepo, ArchivedPr } from './taskHistory.ts';
 export type { ActionResult } from './actions.ts';
 export type { PromptOption, ScreenRead } from './screen.ts';
 export type { PlanLimits, LimitWindow } from './limits.ts';
+// Types only: the renderer draws plans off the leaf module, `@fleetwood/core/plan`.
+export type { Blocker, FleetRow, Plan, PlanTicket, Plans, ResolvedBlocker, Ticket, TicketGroup, TicketLink } from './plan.ts';
+export { ticketIdOf } from './plan.ts';
 export type { CursorUsage } from './cursorUsage.ts';
 export { formatUsd } from './cursorUsage.ts';
 export type { DaemonWorker } from './claudeDaemon.ts';

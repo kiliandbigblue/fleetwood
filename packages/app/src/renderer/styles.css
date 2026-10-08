@@ -5089,3 +5089,141 @@ body:has(.warning) {
   font-size: 13px;
   color: var(--dim);
 }
+
+/* --- Plans ---------------------------------------------------------------- */
+
+/*
+ * A plan's row, and the tasks folded under it.
+ *
+ * The mark is a hollow square rather than a dot: every dot in this list is an
+ * agent's state or a task's progress, and a plan is neither — it is a heading
+ * over tasks, so it gets a shape nothing else uses. Boxed at `--dot` so the
+ * title starts on the same rail as every task title under it.
+ */
+.plan-mark {
+  flex: none;
+  align-self: center;
+  display: grid;
+  place-items: center;
+  width: var(--dot);
+  height: var(--dot);
+}
+.plan-mark::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--dim);
+  border-radius: 2px;
+}
+
+/* Indented one step, so the folded tasks read as under the row, not beside it. */
+.plan-tasks {
+  margin-left: var(--s4);
+  border-left: 1px solid var(--edge);
+}
+/* The rule on the left already says these belong together. */
+.plan-tasks > .card:first-child::before {
+  content: none;
+}
+
+.plan-view {
+  display: flex;
+  flex-direction: column;
+}
+
+.plan-view-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  padding: var(--s3) var(--indent);
+}
+
+.plan-view-name {
+  font-size: var(--fs-body);
+  color: var(--soft);
+  text-align: left;
+}
+.plan-view-name:hover {
+  color: var(--text);
+}
+
+/* Each group starts with the list's own seam, as the fleet's sections do. */
+.plan-group > .section-title {
+  margin: var(--s2) var(--s4) 0;
+  padding: var(--s3) calc(var(--indent) - var(--s4)) var(--s2);
+  border-top: 1px solid var(--edge);
+}
+
+/* On the rows' geometry: the mark in the mark column, the id on the rail. */
+.plan-ticket {
+  padding: 0 var(--s4) var(--s2) calc(var(--row-indent) - var(--mark-col));
+  font-size: var(--fs-body);
+}
+
+/* Landed work has stopped asking for anything, so it steps back like a merged PR row. */
+.plan-ticket-done {
+  opacity: 0.6;
+}
+
+.plan-ticket-line {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  /* The 28px row floor — see `.agent`, which sets it for the same reason. */
+  min-height: 28px;
+  min-width: 0;
+}
+/* The dot's lift is tuned for the title face; on a body-size row it centres. */
+.plan-ticket .task-status-dot {
+  transform: none;
+  align-self: center;
+}
+
+/* An identifier, so mono like every other one — and a column, so titles line up. */
+.plan-ticket-id {
+  flex: none;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--dim);
+  border-radius: 4px;
+}
+.plan-ticket-id:hover {
+  color: var(--text);
+}
+.plan-ticket-id:focus-visible {
+  outline: none;
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+}
+
+.plan-ticket-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The board disagrees: loud enough to be seen, a marker rather than an alarm. */
+.plan-drift {
+  flex: none;
+  font-size: var(--fs-micro);
+  color: var(--warn);
+}
+
+.plan-ticket-meta {
+  padding-left: var(--mark-col);
+  font-size: var(--fs-micro);
+  color: var(--soft);
+}
+
+/* A chip that cannot act says so at rest and under the pointer. */
+.chip:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.chip:disabled:hover {
+  background: none;
+  color: var(--dim);
+}

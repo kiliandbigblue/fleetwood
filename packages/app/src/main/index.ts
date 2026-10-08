@@ -9,6 +9,7 @@ import {
   hooks,
   cursorUsage as cursorUsageApi,
   limits as limitsApi,
+  notion as notionApi,
   notes as notesApi,
   parsePrRef,
   paths,
@@ -28,12 +29,14 @@ import {
   themeSync,
   tmux,
   THEMES,
+  ticketIdOf,
 } from '@fleetwood/core';
 import type {
   MergedPr,
   MergedPrs,
   CursorUsage,
   PlanLimits,
+  Plans,
   PrLists,
   PullRequest,
   Task,
@@ -118,9 +121,26 @@ let limitsAt = 0;
  * snapshot.
  */
 let shutdown: ShutdownScheduler | undefined;
+/**
+ * The Notion milestones the fleet's tasks belong to, on Notion's own slow clock.
+ *
+ * Kept across a failed fetch and flagged `stale`, for the reason the quota gauges
+ * are: a plan that blanks on one flaky request reads as the milestone emptying.
+ */
+let plans: Plans | undefined;
+/** The ticket ids the last successful fetch asked about, so a newly linked task need not wait a poll. */
+let plansAskedFor = new Set<string>();
+/** When a fetch last started, so a failing one is not retried on every one-second snapshot. */
+let plansTriedAt = 0;
+const PLANS_RETRY_MS = 30_000;
+/** The fetch in flight, shared by everyone who asks while it is out. */
+let plansRefresh: Promise<PlansOutcome> | undefined;
+/** What a refresh came to: read, Notion did not answer, or no token command set. */
+type PlansOutcome = 'read' | 'failed' | 'off';
 let fleetTimer: NodeJS.Timeout | undefined;
 let prTimer: NodeJS.Timeout | undefined;
 let mergedTimer: NodeJS.Timeout | undefined;
+let plansTimer: NodeJS.Timeout | undefined;
 
 interface WindowState {
   x?: number;
@@ -202,6 +222,54 @@ async function refreshLimits(settings: Awaited<ReturnType<typeof configModule.lo
   else if (cursorUsage) cursorUsage = { ...cursorUsage, stale: true };
 }
 
+/** The tickets the fleet's tasks are linked to — see `linkTickets`. */
+function linkedTicketIds(tasks: Task[]): string[] {
+  return tasks
+    .map((task) => ticketIdOf(task.slug) ?? ticketIdOf(task.branch))
+    .filter((id): id is string => id !== undefined);
+}
+
+/**
+ * Re-read every plan from Notion.
+ *
+ * Not inside `buildSnapshot`, unlike the quota: a plan is a page read per
+ * ticket, seconds rather than milliseconds, and the one-second fleet poll must
+ * not wait on it. One fetch at a time, and a second caller is handed the one
+ * already out rather than an instant answer — the drawer's refresh button must
+ * not say "re-read" before Notion has replied.
+ */
+function refreshPlans(): Promise<PlansOutcome> {
+  plansRefresh ??= readPlans().finally(() => {
+    plansRefresh = undefined;
+  });
+  return plansRefresh;
+}
+
+async function readPlans(): Promise<PlansOutcome> {
+  plansTriedAt = Date.now();
+  const settings = await configModule.loadConfig();
+  const command = settings.notion.tokenCommand.trim();
+  let outcome: PlansOutcome = 'off';
+  if (!command) {
+    plans = undefined;
+  } else {
+    const ids = linkedTicketIds(await getTasks());
+    const fetched = await notionApi.fetchPlans({ tokenCommand: command, ticketIds: ids });
+    if (fetched) {
+      plans = { plans: fetched, fetchedAt: Math.floor(Date.now() / 1000) };
+      // Only once Notion answered: a failed fetch asked nothing, and must not
+      // hold a newly linked task back for a whole poll.
+      plansAskedFor = new Set(ids);
+      outcome = 'read';
+    } else {
+      if (plans) plans = { ...plans, stale: true };
+      outcome = 'failed';
+    }
+  }
+  await pushSnapshot();
+  return outcome;
+}
+
 async function buildSnapshot(): Promise<Snapshot> {
   const settings = await configModule.loadConfig();
   await refreshLimits(settings);
@@ -223,10 +291,22 @@ async function buildSnapshot(): Promise<Snapshot> {
     void refreshSessionPrs();
   }
 
+  const tasks = await getTasks();
+  // A task just made from a ticket should fold under its plan now, not in five
+  // minutes — the same reason a new PR session does not wait for the PR clock.
+  // Spaced out after an attempt, so a Notion that keeps failing is not asked again every second.
+  if (
+    settings.notion.tokenCommand.trim() &&
+    Date.now() - plansTriedAt >= PLANS_RETRY_MS &&
+    linkedTicketIds(tasks).some((id) => !plansAskedFor.has(id))
+  ) {
+    void refreshPlans();
+  }
+
   const hookState = await hooks.hookStatus();
   return {
     fleet,
-    tasks: await getTasks(),
+    tasks,
     dormantWorkspaces: dormantWorkspaces(fleet.sessions, settings.workspaces),
     prs,
     merged,
@@ -240,6 +320,7 @@ async function buildSnapshot(): Promise<Snapshot> {
     bgOpacity: settings.bgOpacity,
     limits: planLimits,
     cursorUsage,
+    plans,
     // Off until the scheduler is up, which is a few milliseconds at boot — and
     // "no shutdown scheduled" is the truth during them.
     shutdown: shutdown?.state() ?? { ...settings.shutdown, phase: 'off', locked: false },
@@ -445,6 +526,19 @@ async function handle(request: Request): Promise<Response> {
       // and the task cards must not answer it differently.
       await Promise.all([refreshPrs(), refreshTaskPrs(), refreshSessionPrs()]);
       return { ok: true, detail: 'pull requests refreshed' };
+
+    case 'refreshPlans':
+      switch (await refreshPlans()) {
+        case 'read':
+          return { ok: true, detail: 'plans re-read from Notion' };
+        case 'failed':
+          return {
+            ok: false,
+            detail: plans ? 'Notion did not answer — showing the plans as they were' : 'Notion did not answer — no plans read yet',
+          };
+        case 'off':
+          return { ok: false, detail: 'no notion.tokenCommand in ~/.fleetwood/config.json — plans are off' };
+      }
 
     case 'refreshMerged':
       await refreshMerged(request.force ?? false);
@@ -871,10 +965,13 @@ app.whenReady().then(async () => {
     () => void refreshMerged(),
     settings.github.merged.pollSeconds * 1_000,
   );
+  // Read once at launch like the others: a changed poll takes a relaunch.
+  plansTimer = setInterval(() => void refreshPlans(), settings.notion.pollSeconds * 1_000);
   await pushSnapshot();
   void refreshPrs();
   void refreshTaskPrs();
   void refreshMerged();
+  void refreshPlans();
 
   globalShortcut.register('Alt+Shift+F', toggleWindow);
 
@@ -895,4 +992,5 @@ app.on('will-quit', () => {
   if (fleetTimer) clearInterval(fleetTimer);
   if (prTimer) clearInterval(prTimer);
   if (mergedTimer) clearInterval(mergedTimer);
+  if (plansTimer) clearInterval(plansTimer);
 });

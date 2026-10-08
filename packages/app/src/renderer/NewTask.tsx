@@ -24,12 +24,12 @@ interface Props {
   open: boolean;
   onClose: () => void;
   /**
-   * Summary the flow opens with — what was typed into ⌘K before choosing to make
-   * a task of it. It is answered in step four rather than skipped to: the repos
+   * What the flow opens with — the summary typed into ⌘K, or a plan ticket's id,
+   * title and body. Answered in its own step rather than skipped to: the repos
    * still have to be picked, and arriving at a question already answered is a
    * better outcome than being dropped into the middle of a form.
    */
-  initialSummary?: string;
+  initialDraft?: Draft;
   onResult: (message: string, ok: boolean) => void;
 }
 
@@ -48,7 +48,7 @@ interface Props {
  * set I built" is what keeps Tab from being a mode you have to enter — see
  * `confirmChoice`.
  */
-export function NewTask({ open, onClose, initialSummary, onResult }: Props): React.JSX.Element | null {
+export function NewTask({ open, onClose, initialDraft, onResult }: Props): React.JSX.Element | null {
   const [index, setIndex] = useState(0);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [repos, setRepos] = useState<string[]>([]);
@@ -68,7 +68,7 @@ export function NewTask({ open, onClose, initialSummary, onResult }: Props): Rea
   useEffect(() => {
     if (!open) return;
     setIndex(0);
-    setDraft({ ...EMPTY_DRAFT, summary: initialSummary ?? '' });
+    setDraft(initialDraft ?? EMPTY_DRAFT);
     setBusy(false);
     setRepos([]);
     setReposLoaded(false);
@@ -78,7 +78,7 @@ export function NewTask({ open, onClose, initialSummary, onResult }: Props): Rea
       }
       setReposLoaded(true);
     });
-  }, [open, initialSummary]);
+  }, [open, initialDraft]);
 
   const options = useMemo(() => {
     if (step.kind !== 'choose') return [];

@@ -174,6 +174,18 @@ export interface Config {
     pollSeconds: number;
   };
   /**
+   * Plans — the Notion milestones the fleet's tasks belong to. See `notion.ts`.
+   *
+   * Off until `tokenCommand` is set, like `limits`: it prints an internal
+   * integration token, shared with the Tasks and Milestones databases. Empty
+   * means no plans at all. The poll is slow because a plan costs a page read per
+   * ticket, and a board moved by hand does not move by the minute.
+   */
+  notion: {
+    tokenCommand: string;
+    pollSeconds: number;
+  };
+  /**
    * Where an agent's context stops being unremarkable and starts being loud.
    *
    * Settings rather than constants because the line is a judgement about your
@@ -230,6 +242,7 @@ export const DEFAULT_CONFIG: Config = {
   bgOpacity: DEFAULT_BG_OPACITY,
   themeSync: DEFAULT_THEME_SYNC,
   limits: { tokenCommand: '', cursorTokenCommand: '', pollSeconds: 300 },
+  notion: { tokenCommand: '', pollSeconds: 300 },
   context: { warnTokens: 250_000, criticalTokens: 450_000 },
   shutdown: DEFAULT_SHUTDOWN,
 };
@@ -262,6 +275,7 @@ export async function loadConfig(): Promise<Config> {
       },
       poll: { ...DEFAULT_CONFIG.poll, ...raw.poll },
       limits: { ...DEFAULT_CONFIG.limits, ...raw.limits },
+      notion: { ...DEFAULT_CONFIG.notion, ...raw.notion },
       context: { ...DEFAULT_CONFIG.context, ...raw.context },
       repoGroups: { ...DEFAULT_CONFIG.repoGroups, ...raw.repoGroups },
       workspaces: normaliseWorkspaces(raw.workspaces),

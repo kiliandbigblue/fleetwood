@@ -4,6 +4,7 @@ import {
   buildBranch,
   canAdvance,
   confirmChoice,
+  draftFromTicket,
   EMPTY_DRAFT,
   moveCursor,
   previewBranch,
@@ -109,4 +110,19 @@ test('every answer the flow accepts builds a usable branch name', () => {
     );
     assert.equal(slugify(summary), slugify(slugify(summary)));
   }
+});
+
+test('starting a ticket opens the flow on its id and title, with its body as the goal', () => {
+  const draft = draftFromTicket({
+    id: 'DEV-1779',
+    title: "Script: set Yasmina's past fake-transfer orders to TRANSFER",
+    body: '**What to build:** the B2B orders become transfers.',
+  });
+  assert.equal(draft.summary, "dev-1779 Script: set Yasmina's past fake-transfer orders to TRANSFER");
+  assert.equal(draft.goal, '**What to build:** the B2B orders become transfers.');
+  // Repos and microservice are still yours to pick.
+  assert.deepEqual(draft.repos, []);
+  assert.equal(draft.microservice, '');
+  // The id survives into the branch, which is how Notion links the PR back.
+  assert.match(buildBranch(draft.type, 'orders', draft.summary), /^feature\/orders-dev-1779-script/);
 });

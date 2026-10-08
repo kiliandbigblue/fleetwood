@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { FleetSession, Task } from '@fleetwood/core';
+import type { FleetSession, Task, Ticket } from '@fleetwood/core';
 import type { Snapshot } from '../shared/ipc.ts';
 import { SessionCard } from './SessionCard.tsx';
 import { AgentRow } from './AgentRow.tsx';
@@ -7,6 +7,9 @@ import { PrList } from './PrList.tsx';
 import { HistoryList } from './HistoryList.tsx';
 import { TaskCard } from './TaskCard.tsx';
 import { NewTask } from './NewTask.tsx';
+import { EMPTY_DRAFT, draftFromTicket } from './newTaskFlow.ts';
+import type { Draft } from './newTaskFlow.ts';
+import { PlanRow, PlanView } from './Plan.tsx';
 import { Power } from './Power.tsx';
 import { Notes } from './Notes.tsx';
 import { Drawer } from './Drawer.tsx';
@@ -21,6 +24,7 @@ import { needsDeploy } from '@fleetwood/core/deployState';
 import { isHidden, isPinned, sessionLabel, sortSessions } from '@fleetwood/core/sessionOrder';
 import { isFleetSession } from '@fleetwood/core/fleetList';
 import { dormantTasks } from '@fleetwood/core/taskView';
+import { foldFleet, hasLiveAgent, linkTickets, readPlan, shownItems, ticketIdOf } from '@fleetwood/core/plan';
 import { resolveFocus } from './focus.ts';
 import {
   answerFocusedPrompt,
@@ -56,8 +60,8 @@ export function App(): React.JSX.Element {
   const [pinned, setPinned] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [newTaskOpen, setNewTaskOpen] = useState(false);
-  // Carried from ⌘K into the form; empty for every other way in.
-  const [newTaskSummary, setNewTaskSummary] = useState('');
+  // Carried from ⌘K, or from a plan ticket's `start`, into the form; empty otherwise.
+  const [newTaskDraft, setNewTaskDraft] = useState<Draft>(EMPTY_DRAFT);
   const [themeOpen, setThemeOpen] = useState(false);
   /** The `?` sheet: every key and mark the fleet uses, in one place. */
   const [helpOpen, setHelpOpen] = useState(false);
@@ -86,6 +90,18 @@ export function App(): React.JSX.Element {
    * `focus.ts`, which turns it back into the pair the pane needs.
    */
   const [focusedSlug, setFocusedSlug] = useState<string | undefined>();
+  /**
+   * The plan whose drawer is open, by milestone id — held as an id for the
+   * reason `focusedSlug` is: a snapshot replaces every object in it each second.
+   */
+  const [focusedPlan, setFocusedPlan] = useState<string | undefined>();
+  /*
+   * The plans whose tasks are unfolded in the list. Window state, like the
+   * hidden drawer: a plan starts folded, and opening one to look is not a
+   * decision to remember across a relaunch.
+   */
+  const [expandedPlans, setExpandedPlans] = useState<ReadonlySet<string>>(new Set());
+  const [refreshingPlans, setRefreshingPlans] = useState(false);
   /*
    * Whether the notes drawer is up. Window state, like the hidden group: the
    * note itself is on disk and outlives the window; "I had it open" does not.
@@ -243,7 +259,8 @@ export function App(): React.JSX.Element {
         setTab('fleet');
         // The card it creates is in the list, so that is where you should be.
         setFocusedSlug(undefined);
-        setNewTaskSummary('');
+        setFocusedPlan(undefined);
+        setNewTaskDraft(EMPTY_DRAFT);
         setNewTaskOpen((open) => !open);
       } else if ((event.metaKey || event.ctrlKey) && event.key === 'r') {
         event.preventDefault();
@@ -254,6 +271,7 @@ export function App(): React.JSX.Element {
         event.preventDefault();
         const tabs: Tab[] = ['fleet', 'prs', 'history', 'power'];
         setFocusedSlug(undefined);
+        setFocusedPlan(undefined);
         setTab(tabs[Number(event.key) - 1] as Tab);
       } else if ((event.metaKey || event.ctrlKey) && event.key === 'n') {
         event.preventDefault();
@@ -336,6 +354,7 @@ export function App(): React.JSX.Element {
          * this handler cannot see them.
          */
         setFocusedSlug(undefined);
+        setFocusedPlan(undefined);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -414,15 +433,12 @@ export function App(): React.JSX.Element {
   const sessions = fleet.filter((session) => !isHidden(session.name));
   const hidden = fleet.filter((session) => isHidden(session.name));
   const hiddenAttention = hidden.filter((session) => session.needsAttention).length;
-  /** What a reorder click is relative to: the order actually on screen. */
-  const order = sessions.map((session) => session.name);
   /*
    * The hidden group is its own list to move within, so a card in the drawer can
    * still be ordered — `planReorder` renumbers what it is given, and the marker
    * survives a renumber, so nothing here can push a card back on screen.
    */
   const hiddenOrder = hidden.map((session) => session.name);
-  arrangeLists.current = { shown: order, hidden: hiddenOrder };
 
   /*
    * The focused task, re-found in the snapshot that just landed.
@@ -490,6 +506,65 @@ export function App(): React.JSX.Element {
    * and this is a folder waiting on nothing but a session.
    */
   const idleWorkspaces = snapshot?.dormantWorkspaces ?? [];
+
+  /*
+   * Plans: each Notion milestone a task here is linked to, read against this
+   * same snapshot's tasks, pull requests and agents — see `core/plan.ts`. Read
+   * here rather than in main so a plan never says a ticket is waiting on an
+   * agent the card under it shows as already answered.
+   */
+  const plans = snapshot?.plans?.plans ?? [];
+  const links = linkTickets(
+    snapshot?.tasks ?? [],
+    snapshot?.taskPrs?.byTask,
+    Object.fromEntries((snapshot?.fleet.sessions ?? []).map((session) => [session.name, session.agents])),
+  );
+  const planRows = new Map(plans.map((plan) => [plan.milestoneId, readPlan(plan, links)]));
+  const openPlan = plans.find((plan) => plan.milestoneId === focusedPlan);
+  /*
+   * The list, with each plan's tasks folded under its row. Sessions and dormant
+   * tasks are folded as one list, so a plan whose tasks are all parked still
+   * gets its row — after the running work, which is where its first task stood.
+   * The hidden drawer is left alone: hiding a session is a decision about that
+   * session, and a plan row must not undo it.
+   */
+  type ListItem = { kind: 'session'; session: FleetSession } | { kind: 'dormant'; task: Task };
+  const taskOf = (item: ListItem): Task | undefined =>
+    item.kind === 'dormant' ? item.task : taskBySession.get(item.session.name);
+  const listRows = foldFleet<ListItem>(
+    [
+      ...sessions.map((session): ListItem => ({ kind: 'session', session })),
+      ...dormant.map((task): ListItem => ({ kind: 'dormant', task })),
+    ],
+    plans,
+    (item) => {
+      const task = taskOf(item);
+      return task ? (ticketIdOf(task.slug) ?? ticketIdOf(task.branch)) : undefined;
+    },
+    (item) => item.kind === 'session' && hasLiveAgent(item.session.agents),
+    expandedPlans,
+  );
+  /**
+   * What a reorder click is relative to: the order actually on screen — which,
+   * with plans folded, leaves out every session tucked under a collapsed plan.
+   */
+  const order = shownItems(listRows).flatMap((item) => (item.kind === 'session' ? [item.session.name] : []));
+  arrangeLists.current = { shown: order, hidden: hiddenOrder };
+  const unplannedDormant = listRows.flatMap((row) =>
+    row.kind === 'item' && row.item.kind === 'dormant' ? [row.item.task] : [],
+  );
+  const listItem = (item: ListItem): React.JSX.Element =>
+    item.kind === 'session' ? sessionRow(item.session, order) : dormantRow(item.task);
+  const onStartTicket = (ticket: Ticket): void => {
+    setNewTaskDraft(draftFromTicket(ticket));
+    setNewTaskOpen(true);
+  };
+  const refreshPlans = (): void => {
+    setRefreshingPlans(true);
+    void send({ kind: 'refreshPlans' })
+      .then((result) => onResult(result.detail, result.ok))
+      .finally(() => setRefreshingPlans(false));
+  };
 
   /**
    * One row of the fleet: a task card when we know what task the session is
@@ -616,6 +691,7 @@ export function App(): React.JSX.Element {
         onTab={(next) => {
           // Leaving the pane is implied by asking for a list.
           setFocusedSlug(undefined);
+          setFocusedPlan(undefined);
           setTab(next);
         }}
         counts={counts}
@@ -634,10 +710,13 @@ export function App(): React.JSX.Element {
         }}
         onRefresh={refresh}
         refreshing={refreshing}
-        focusedTask={focused?.task.slug}
-        onBack={() => setFocusedSlug(undefined)}
+        focusedTask={focused?.task.slug ?? openPlan?.name}
+        onBack={() => {
+          setFocusedSlug(undefined);
+          setFocusedPlan(undefined);
+        }}
         onNewTask={() => {
-          setNewTaskSummary('');
+          setNewTaskDraft(EMPTY_DRAFT);
           setNewTaskOpen(true);
         }}
         themePicker={
@@ -689,7 +768,26 @@ export function App(): React.JSX.Element {
           />
         )}
 
-        {snapshot && !focused && tab === 'fleet' && (
+        {/* A plan opened, alone in the body like an opened task. A task opened
+            from it takes over, and back goes to the fleet, as from any task. */}
+        {snapshot?.plans && !focused && openPlan && (
+          <PlanView
+            plan={openPlan}
+            rows={planRows.get(openPlan.milestoneId) ?? []}
+            fetchedAt={snapshot.plans.fetchedAt}
+            stale={snapshot.plans.stale}
+            refreshing={refreshingPlans}
+            onRefresh={refreshPlans}
+            onStart={onStartTicket}
+            onOpenTask={(slug) => {
+              setFocusedPlan(undefined);
+              setFocusedSlug(slug);
+            }}
+            onResult={onResult}
+          />
+        )}
+
+        {snapshot && !focused && !openPlan && tab === 'fleet' && (
           <>
             {sessions.length === 0 && idleWorkspaces.length === 0 && dormant.length === 0 && (
               // "No tmux sessions" over a drawer saying there are three would read
@@ -710,7 +808,7 @@ export function App(): React.JSX.Element {
                 <button
                   className="button"
                   onClick={() => {
-                    setNewTaskSummary('');
+                    setNewTaskDraft(EMPTY_DRAFT);
                     setNewTaskOpen(true);
                   }}
                 >
@@ -721,7 +819,30 @@ export function App(): React.JSX.Element {
                 </span>
               </div>
             )}
-            {sessions.map((session) => sessionRow(session, order))}
+            {listRows.map((row) =>
+              // A dormant task outside every plan is drawn under `not running`, below.
+              row.kind === 'item' ? (
+                row.item.kind === 'session' && listItem(row.item)
+              ) : (
+                <PlanRow
+                  key={row.plan.milestoneId}
+                  plan={row.plan}
+                  rows={planRows.get(row.plan.milestoneId) ?? []}
+                  expanded={expandedPlans.has(row.plan.milestoneId)}
+                  folded={row.items.length - row.shown.length}
+                  onToggle={() =>
+                    setExpandedPlans((was) => {
+                      const next = new Set(was);
+                      if (!next.delete(row.plan.milestoneId)) next.add(row.plan.milestoneId);
+                      return next;
+                    })
+                  }
+                  onOpen={() => setFocusedPlan(row.plan.milestoneId)}
+                >
+                  {row.shown.length > 0 ? row.shown.map(listItem) : undefined}
+                </PlanRow>
+              ),
+            )}
             {/* Running agents with no terminal belong with the running work, not
                 under the parked tasks; the ones whose terminal is gone go last. */}
             {orphanGroup('daemon-hosted')}
@@ -736,12 +857,12 @@ export function App(): React.JSX.Element {
                 {idleWorkspaces.map((path) => workspaceRow(path))}
               </>
             )}
-            {dormant.length > 0 && (
+            {unplannedDormant.length > 0 && (
               <>
                 <div className="section-title" title="tasks with their worktrees ready and no session running them">
-                  not running · {dormant.length}
+                  not running · {unplannedDormant.length}
                 </div>
-                {dormant.map((task) => dormantRow(task))}
+                {unplannedDormant.map((task) => dormantRow(task))}
               </>
             )}
             {orphanGroup('pane-gone')}
@@ -777,7 +898,7 @@ export function App(): React.JSX.Element {
           lifting the card back into the list — hiding a session that is
           blocked is a thing you are allowed to do, and being told about it is
           not the same as having it put back. */}
-      {snapshot && !focused && tab === 'fleet' && hidden.length + hiddenDormant.length > 0 && (
+      {snapshot && !focused && !openPlan && tab === 'fleet' && hidden.length + hiddenDormant.length > 0 && (
         <Drawer
           open={hiddenOpen}
           onToggle={() => setHiddenOpen((open) => !open)}
@@ -835,7 +956,7 @@ export function App(): React.JSX.Element {
 
       <NewTask
         open={newTaskOpen}
-        initialSummary={newTaskSummary}
+        initialDraft={newTaskDraft}
         onClose={() => setNewTaskOpen(false)}
         onResult={onResult}
       />
@@ -852,7 +973,8 @@ export function App(): React.JSX.Element {
         onNewTask={(summary) => {
           setTab('fleet');
           setFocusedSlug(undefined);
-          setNewTaskSummary(summary);
+          setFocusedPlan(undefined);
+          setNewTaskDraft({ ...EMPTY_DRAFT, summary });
           setNewTaskOpen(true);
         }}
         onResult={onResult}

@@ -14,6 +14,7 @@
 export { TASK_TYPES, buildBranch, slugify } from '@fleetwood/core/naming';
 import { buildBranch, slugify } from '@fleetwood/core/naming';
 import { fuzzyRank } from '@fleetwood/core/fuzzy';
+import type { Ticket } from '@fleetwood/core/plan';
 
 export type StepKey = 'repos' | 'type' | 'microservice' | 'summary' | 'goal';
 
@@ -91,6 +92,22 @@ export const EMPTY_DRAFT: Draft = {
   summary: '',
   goal: '',
 };
+
+/**
+ * The flow as `start` on a plan's ticket opens it.
+ *
+ * The summary leads with the id, lower-cased the way `slugify` will write it
+ * anyway, so the branch carries `dev-NNNN` and two things follow without anyone
+ * typing them: Notion links the pull request back to the ticket, and the task
+ * folds under its plan the moment it exists. The body is the goal because it is
+ * the brief — what to build, what blocks it, the checklist — and an agent opening
+ * the task should read exactly what the ticket says. Repos and the microservice
+ * are left to you: the ticket's tags guess at the first and say nothing of the
+ * second.
+ */
+export function draftFromTicket(ticket: Pick<Ticket, 'id' | 'title' | 'body'>): Draft {
+  return { ...EMPTY_DRAFT, summary: `${ticket.id.toLowerCase()} ${ticket.title}`, goal: ticket.body };
+}
 
 /** Whether Enter may leave this step. The goal is the only one you may skip. */
 export function canAdvance(step: StepKey, draft: Draft): boolean {

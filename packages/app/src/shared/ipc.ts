@@ -5,6 +5,7 @@ import type {
   MergedPrs,
   CursorUsage,
   PlanLimits,
+  Plans,
   PrLists,
   PullRequest,
   ShutdownConfig,
@@ -84,6 +85,14 @@ export interface Snapshot {
   /** Cursor included / seat / today. Absent unless `limits.cursorTokenCommand` is set. */
   cursorUsage?: CursorUsage;
   /**
+   * The Notion milestones the fleet's tasks are linked to, with every ticket in
+   * them. Absent unless `notion.tokenCommand` is set, and until the first fetch
+   * lands. Raw Notion facts only: what each ticket is waiting on is derived in
+   * the renderer, against the same snapshot's tasks and agents, so the plan
+   * never reads a second older than the cards folded under it.
+   */
+  plans?: Plans;
+  /**
    * The end-of-day shutdown: the schedule, and how close it is.
    *
    * Always present, off or on — the power tab is a form, and a form whose fields
@@ -119,6 +128,8 @@ export const CHANNELS = {
 export type Request =
   | { kind: 'refresh' }
   | { kind: 'refreshPrs' }
+  /** Re-read every plan from Notion — the drawer's refresh button. */
+  | { kind: 'refreshPlans' }
   /** `force` drops the cache, so even terminal rows are re-queried. */
   | { kind: 'refreshMerged'; force?: boolean }
   /** "I shipped this" — the fact CI cannot know for a manually deployed image. */
