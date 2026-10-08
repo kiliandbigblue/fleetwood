@@ -386,8 +386,8 @@ export function PrRow({
        * broken string at the row's right edge, and it was never two facts: a
        * draft has nobody asked yet, so GitHub's review decision on one is an
        * artifact rather than something waiting on you. Draft wins for that
-       * reason, and nothing actionable is lost — `prSummary` above still counts
-       * the states that ask something.
+       * reason — except over `changes requested`, which a reviewer did write and
+       * which counts toward `needs you`, so the row has to say it.
        */}
       <span className="task-pr-state">
         {landed ? (
@@ -395,7 +395,7 @@ export function PrRow({
              pull request's last review decision and last check run are history,
              and drawing them would put an errand on a row with none left. */
           <span className="task-pr-merged">merged</span>
-        ) : pr.isDraft ? (
+        ) : pr.isDraft && pr.reviewDecision !== 'CHANGES_REQUESTED' ? (
           <span className="task-pr-flag">draft</span>
         ) : (
           pr.reviewDecision && (

@@ -113,7 +113,7 @@ function PrRow({
       role="link"
       tabIndex={0}
       aria-label={`${pr.repo.split('/').pop()}#${pr.number} ${pr.title}${
-        pr.isDraft ? ', draft' : pr.reviewDecision ? `, ${REVIEW_LABEL[pr.reviewDecision] ?? pr.reviewDecision}` : ''
+        pr.isDraft && pr.reviewDecision !== 'CHANGES_REQUESTED' ? ', draft' : pr.reviewDecision ? `, ${REVIEW_LABEL[pr.reviewDecision] ?? pr.reviewDecision}` : ''
       }${pr.checks ? `, checks ${pr.checks}` : ''} — open on GitHub`}
       onClick={open}
       onKeyDown={(event) => {
@@ -163,8 +163,8 @@ function PrRow({
       <div className="pr-meta">
         <span>{pr.repo}</span>
         {/* One state, not two — a draft has nobody asked yet, so GitHub's review
-            decision on one is an artifact. Same rule as `PrRow`. */}
-        {pr.isDraft ? (
+            decision on one is an artifact, bar `changes requested`. Same rule as `PrRow`. */}
+        {pr.isDraft && pr.reviewDecision !== 'CHANGES_REQUESTED' ? (
           <span>draft</span>
         ) : (
           pr.reviewDecision && (
