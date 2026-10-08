@@ -112,7 +112,8 @@ Rules:
   or block, so the change reads in its context.
 - When following a section needs unchanged code elsewhere (the caller of the new
   function, the type it takes), add it as a "ref": path, line range in the
-  current file, and a neutral note ("calls Register", "defines Order").
+  current file, and a neutral note ("calls Register", "defines Order"). A ref
+  holds no changed line; one that does is dropped.
 - Title: what the section does, in a few words ("Register the order consumer in
   cmd/worker"). Summary: two to four sentences, plain text.
 
@@ -148,6 +149,14 @@ export interface CheckedRecap {
 }
 
 const CONTEXT = 5;
+
+/**
+ * A ref is unchanged code. One over an added line would show that line a second
+ * time, unmarked, beside the section that owns it: it is dropped, not shown.
+ */
+function touchesChange(file: FileDiff | undefined, ref: RecapRef): boolean {
+  return !!file?.rows.some((row) => row.kind === '+' && row.new !== undefined && row.new >= ref.start && row.new <= ref.end);
+}
 
 /**
  * Turn the agent's line ranges into row windows, and prove the cut is whole.
@@ -213,7 +222,7 @@ export function checkRecap(recap: Recap, files: FileDiff[]): CheckedRecap {
         windows: merge(list),
         ...(notes.has(path) ? { note: notes.get(path) } : {}),
       })),
-      refs: section.refs ?? [],
+      refs: (section.refs ?? []).filter((ref) => ref.start <= ref.end && !touchesChange(byPath.get(ref.path), ref)),
     };
   });
   if (errors.length) throw new Error(`the recap does not match the diff:\n${errors.join('\n')}`);

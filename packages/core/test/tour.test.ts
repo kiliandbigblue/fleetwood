@@ -113,3 +113,36 @@ test('checkRecap refuses a range that names nothing in the diff', async () => {
     /nope\.go is not in the diff/,
   );
 });
+
+test('checkRecap drops a ref that runs backwards or holds a changed line', () => {
+  const files = [
+    {
+      path: 'a.go',
+      status: 'modified' as const,
+      binary: false,
+      rows: [
+        { kind: ' ' as const, old: 1, new: 1, text: 'one()' },
+        { kind: '+' as const, new: 2, text: 'two()' },
+        { kind: ' ' as const, old: 2, new: 3, text: 'three()' },
+      ],
+    },
+  ];
+  const ref = (start: number, end: number) => ({ path: 'a.go', start, end, note: `${start}-${end}` });
+  const checked = checkRecap(
+    {
+      sections: [
+        {
+          title: 'a',
+          summary: '',
+          changes: [{ path: 'a.go', side: 'new', start: 2, end: 2 }],
+          refs: [ref(1, 1), ref(1, 3), ref(3, 1), ref(3, 3), { path: 'b.go', start: 1, end: 9, note: 'elsewhere' }],
+        },
+      ],
+    },
+    files,
+  );
+  assert.deepEqual(
+    checked.sections[0]?.refs.map((r) => r.note),
+    ['1-1', '3-3', 'elsewhere'],
+  );
+});

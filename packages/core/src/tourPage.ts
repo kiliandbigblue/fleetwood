@@ -215,21 +215,33 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 .inspector-scroll { overflow-y: auto; flex: 1; }
 .pane { padding: var(--s5) var(--s5) var(--s4); border-bottom: 1px solid var(--edge); }
 .pane:last-child { border-bottom: 0; }
-.pane h2 { font: 600 11.5px var(--chrome); color: var(--dim); margin: 0 0 var(--s3); display: flex; align-items: center; justify-content: space-between; gap: var(--s2); letter-spacing: .02em; }
+.pane h2 { font: 600 11.5px var(--chrome); color: var(--soft); margin: 0 0 var(--s3); display: flex; align-items: center; justify-content: space-between; gap: var(--s2); letter-spacing: .02em; }
 .pane h2 .where { font-weight: 400; color: var(--soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
 .summary { font: 14px/1.6 var(--prose); color: var(--text); margin: 0; }
 .muted { color: var(--dim); font: 13px/1.5 var(--prose); margin: 0; }
-.refs { display: grid; gap: var(--s2); }
-.ref > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: 14px 1fr; gap: var(--s2); padding: var(--s2); margin: 0 calc(-1 * var(--s2)); border-radius: var(--radius); }
-.ref > summary::-webkit-details-marker { display: none; }
-.ref > summary:hover { background: var(--hover); }
-.ref > summary svg { margin-top: 3px; color: var(--dim); transition: transform .2s var(--ease); }
-.ref[open] > summary svg { transform: rotate(90deg); }
-.ref .note { font: 13px/1.45 var(--prose); color: var(--text); }
-.ref .loc { display: block; font: 11.5px var(--code); color: var(--dim); margin-top: 2px; overflow-wrap: anywhere; }
-.ref .snippet { font: 11.5px/1.6 var(--code); background: var(--bg); border-radius: var(--radius); padding: var(--s2) 0; margin: var(--s1) 0 var(--s2); overflow-x: auto; }
-.ref .snippet div { display: grid; grid-template-columns: 36px 1fr; white-space: pre; }
-.ref .snippet .no { color: var(--dim); text-align: right; padding-right: 10px; opacity: .7; user-select: none; }
+.pane h2 .count { font-weight: 400; color: var(--soft); font-variant-numeric: tabular-nums; }
+/* the unchanged code a section leans on: folded, each a note and where it lives */
+.ctx-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s1); }
+.ctx > .head { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; align-items: start; gap: var(--s2); padding: var(--s2); margin: 0 calc(-1 * var(--s2)); border-radius: var(--radius); }
+.ctx > summary { list-style: none; cursor: pointer; }
+.ctx > summary::-webkit-details-marker { display: none; }
+.ctx > summary:hover { background: var(--hover); }
+/* centred on the note's first line: (13px × 1.45 − 14px) / 2 */
+.ctx > .head > svg { margin-top: calc((13px * 1.45 - 14px) / 2); color: var(--dim); transition: transform .2s var(--ease); }
+.ctx[open] > summary > svg { transform: rotate(90deg); }
+.ctx .what { font: 13px/1.45 var(--prose); color: var(--text); overflow-wrap: anywhere; }
+.ctx .what.code { font: 12.5px/1.5 var(--code); }
+.ctx .at { display: block; font: 11.5px/1.5 var(--code); color: var(--soft); margin-top: 2px; overflow-wrap: anywhere; }
+.ctx .gone { display: block; font-size: 11px; color: var(--warn); margin-top: 2px; }
+.ctx .copy { padding: 3px; color: var(--dim); opacity: 0; transition: opacity .15s, color .15s; }
+.ctx > summary:hover .copy, .ctx .copy:focus-visible { opacity: 1; }
+.ctx .copy:hover:not(:disabled) { color: var(--text); }
+/* too narrow to wrap code readably: it scrolls in its own box, numbers pinned, capped so the thread below stays in reach */
+.snippet { font: 12px/1.6 var(--code); background: var(--bg); border-radius: var(--radius); padding: var(--s2) 0; margin: var(--s1) 0 var(--s2); max-height: 24em; overflow: auto; }
+.snippet div { display: grid; grid-template-columns: 6ch max-content; }
+.snippet .src { white-space: pre; padding-right: var(--s3); }
+.snippet .no { position: sticky; left: 0; background: var(--bg); color: var(--dim); text-align: right; padding-right: 1ch; user-select: none; font-variant-numeric: tabular-nums; }
+.ctx-more { margin-top: var(--s1); color: var(--dim); }
 
 .thread { display: grid; gap: var(--s3); }
 .thread.swap { animation: swap .18s var(--ease); }
@@ -263,7 +275,7 @@ textarea::placeholder { color: var(--dim); }
 .composer .hint { flex: 1; min-width: 0; padding-top: 2px; }
 
 .queue { border-top: 1px solid var(--edge); padding: var(--s4) var(--s5) var(--s5); display: grid; gap: var(--s3); background: var(--panel); }
-.queue h2 { font: 600 11.5px var(--chrome); color: var(--dim); margin: 0; display: flex; justify-content: space-between; letter-spacing: .02em; }
+.queue h2 { font: 600 11.5px var(--chrome); color: var(--soft); margin: 0; display: flex; justify-content: space-between; letter-spacing: .02em; }
 .queue h2 b { color: var(--warn); font-weight: 600; }
 .queue ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 140px; overflow-y: auto; }
 .queue li { display: grid; grid-template-columns: 1fr; padding: 5px var(--s2); margin: 0 calc(-1 * var(--s2)); border-radius: 4px; cursor: pointer; }
@@ -302,6 +314,8 @@ var draftKind = 'question';
 var draft = '';
 var unfolded = {};        // path -> whole file shown
 var opened = {};          // "path:a:b" -> gap expanded
+var ctxOpen = {};         // "section:path:start" -> context ref unfolded
+var ctxAll = {};          // section -> every context ref listed, not just the first few
 var stale = false;
 var lastThreadKey = '';
 var layout = 'inline';    // 'inline' or 'split', remembered per browser
@@ -347,7 +361,8 @@ var ICONS = {
   raise: '<path d="M12 19V5M6 11l6-6 6 6"/>',
   refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>',
   inline: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 12h8M8 15h5"/>',
-  split: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/>'
+  split: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/>',
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h9"/>'
 };
 function icon(name) {
   var s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -728,7 +743,6 @@ function fileEl(sf) {
 /* ── inspector ── */
 function renderInspector() {
   var insp = document.getElementById('inspector');
-  var focused = document.activeElement && document.activeElement.tagName === 'TEXTAREA';
   insp.replaceChildren();
   if (data.status !== 'ready') {
     insp.append(h('div', { class: 'inspector-scroll' }, h('div', { class: 'pane' },
@@ -743,32 +757,62 @@ function renderInspector() {
     s.summary ? h('p', { class: 'summary', text: s.summary }) : h('p', { class: 'muted', text: 'No summary for this section.' })));
 
   if (s.refs.length) {
-    scroll.append(h('div', { class: 'pane' }, h('h2', {}, 'Context it leans on', h('span', { class: 'where', text: s.refs.length + ' unchanged' })),
-      h('div', { class: 'refs' }, s.refs.map(refEl))));
+    // A long list would push the thread, which follows the cursor, out of sight.
+    var shown = ctxAll[current] || s.refs.length <= CTX_SHOWN + 1 ? s.refs : s.refs.slice(0, CTX_SHOWN);
+    scroll.append(h('div', { class: 'pane' }, h('h2', {}, 'Context it leans on', h('span', { class: 'count', text: String(s.refs.length) })),
+      h('div', { class: 'ctx-list' }, shown.map(ctxEl)),
+      shown.length < s.refs.length ? h('button', { class: 'ghost ctx-more', onclick: function () { ctxAll[current] = true; renderInspector(); } },
+        icon('expand'), (s.refs.length - shown.length) + ' more') : null));
   }
 
+  scroll.append(threadPane());
+  insp.append(scroll);
+  insp.append(queueEl());
+}
+
+/** The line under the cursor and its thread: the one pane a cursor move redraws. */
+function threadPane() {
+  var focused = document.activeElement && document.activeElement.tagName === 'TEXTAREA';
   var on = cursor && data.files[cursor.path] ? cursor : null;
   var thread = on ? threadFor(on.path, on.row) : threadFor(null);
   var key = on ? on.path + ':' + on.row : 'section:' + current;
   var list = h('div', { class: 'thread' + (key !== lastThreadKey ? ' swap' : '') }, thread.map(commentEl));
   lastThreadKey = key;
   var quote = on ? data.files[on.path].rows[on.row] : null;
-  scroll.append(h('div', { class: 'pane' },
+  return h('div', { class: 'pane', id: 'thread-pane' },
     h('h2', {}, on ? 'On this line' : 'On this section', on ? h('span', { class: 'where', text: rowLabel(on.path, on.row) }) : null),
     quote && !thread.length ? h('div', { class: 'comment' }, h('div', { class: 'quote', text: quote.text.trim() || ' ' })) : null,
     list,
-    composerEl(on, focused)));
-  insp.append(scroll);
-  insp.append(queueEl());
+    composerEl(on, focused));
 }
 
-function refEl(ref) {
+var CTX_SHOWN = 5;
+function ctxEl(ref) {
   var lang = langOf(ref.path);
-  return h('details', { class: 'ref' },
-    h('summary', {}, icon('chevron'), h('span', {}, h('span', { class: 'note', text: ref.note }), h('span', { class: 'loc', text: ref.path + ':' + ref.start + '–' + ref.end }))),
-    h('div', { class: 'snippet' }, ref.lines.length ? ref.lines.map(function (text, i) {
-      return h('div', {}, h('span', { class: 'no', text: ref.start + i }), h('span', {}, paint(text, lang)));
-    }) : h('div', {}, h('span'), h('span', { class: 'c', text: 'not in this snapshot' }))));
+  var key = current + ':' + ref.path + ':' + ref.start;
+  var gone = !ref.lines.length;
+  // The range the snapshot has: a ref past the end of its file comes back short.
+  var at = ref.path + ':' + ref.start + (gone ? '' : '-' + (ref.start + ref.lines.length - 1));
+  var copy = h('button', {
+    class: 'ghost copy', title: 'Copy ' + ref.path + ':' + ref.start, 'aria-label': 'Copy ' + ref.path + ':' + ref.start,
+    onclick: function (e) {
+      // Inside the summary: copying must not fold or unfold the ref.
+      e.preventDefault(); e.stopPropagation();
+      navigator.clipboard.writeText(ref.path + ':' + ref.start).then(function () { toast('Copied ' + ref.path + ':' + ref.start); }, function () {});
+    },
+  }, icon('copy'));
+  var label = h('span', {},
+    // A bare name ("transferDestination", "Order.Total()") is code, and set as code.
+    h('span', { class: /^[\w$.]+(\(\))?$/.test(ref.note) ? 'what code' : 'what', text: ref.note }),
+    h('span', { class: 'at', text: at }),
+    gone ? h('span', { class: 'gone', text: 'not in this snapshot' }) : null);
+  // Nothing to unfold: a plain row, not a fold that opens onto nothing.
+  if (gone) return h('div', { class: 'ctx' }, h('div', { class: 'head' }, h('span'), label));
+  return h('details', { class: 'ctx', open: !!ctxOpen[key], ontoggle: function (e) { ctxOpen[key] = e.target.open; } },
+    h('summary', { class: 'head' }, icon('chevron'), label, copy),
+    h('div', { class: 'snippet' }, ref.lines.map(function (text, i) {
+      return h('div', {}, h('span', { class: 'no', text: ref.start + i }), h('span', { class: 'src' }, paint(text, lang)));
+    })));
 }
 
 function commentEl(c) {
@@ -877,7 +921,11 @@ function setCursor(path, row, scroll) {
     el.classList.add('cursor');
     if (scroll) el.scrollIntoView({ block: 'nearest' });
   }
-  renderInspector();
+  // Only the thread follows the cursor: redrawing the rest would fold the
+  // context refs and drop the focus the reader left there.
+  var pane = document.getElementById('thread-pane');
+  if (pane) pane.replaceWith(threadPane());
+  else renderInspector();
 }
 
 function moveCursor(step) {
