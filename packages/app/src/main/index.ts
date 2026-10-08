@@ -592,12 +592,6 @@ async function handle(request: Request): Promise<Response> {
       return result;
     }
 
-    case 'setSessionPinned': {
-      const result = await actions.setSessionPinned(request.session, request.pinned);
-      await pushSnapshot();
-      return result;
-    }
-
     case 'clearSessionOrder': {
       const result = await actions.setSessionOrder(request.session, undefined);
       await pushSnapshot();

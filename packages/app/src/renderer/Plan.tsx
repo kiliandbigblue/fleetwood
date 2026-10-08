@@ -13,9 +13,13 @@ import { useNow } from './useNow.ts';
  *
  * The head opens the plan's drawer, the way a task card's opens its pane — a
  * plan has no session for the head to focus, so the one thing it can mean is
- * "show me the plan". The chevron folds the tasks, which start folded: six
- * stock transfer cards between unrelated work were the flood this replaces.
- * What is still in view when folded is the caller's choice — see `foldFleet`.
+ * "show me the plan". The tasks start folded: six stock transfer cards between
+ * unrelated work were the flood this replaces.
+ *
+ * No attention band, even with a ticket that needs you. The band is kept for an
+ * agent stopped on a prompt, and that agent's task card is live, so it is drawn
+ * under this row with its own band — banding the plan too would say one prompt
+ * twice. A red check or a change request is said in words, like everywhere else.
  */
 export function PlanRow({
   plan,
@@ -37,37 +41,83 @@ export function PlanRow({
   children?: ReactNode;
 }): React.JSX.Element {
   const { progress, needsYou } = planCounts(rows);
-  /*
-   * No attention band, even with a ticket that needs you. The band is kept for an
-   * agent stopped on a prompt, and that agent's task card is live, so it is drawn
-   * under this row with its own band — banding the plan too would say one prompt
-   * twice. A red check or a change request is said in words, like everywhere else.
-   */
+  return (
+    <GroupRow
+      title={plan.name}
+      kind="plan"
+      caption={progress}
+      needsYou={needsYou}
+      expanded={expanded}
+      folded={folded}
+      onToggle={onToggle}
+      onOpen={onOpen}
+    >
+      {children}
+    </GroupRow>
+  );
+}
+
+/**
+ * A group of the fleet list — a plan, or Other — and the items drawn under it.
+ *
+ * Every group folds the same way, which is why this is one row: collapsed, only
+ * what has a live agent stays in view (see `groupFleet`). The head opens the
+ * group when it has something to open — a plan's drawer — and otherwise is the
+ * fold itself, since Other has nothing behind it but its own items.
+ */
+export function GroupRow({
+  title,
+  kind = 'group',
+  caption,
+  needsYou = 0,
+  expanded,
+  folded,
+  onToggle,
+  onOpen,
+  children,
+}: {
+  title: string;
+  /** What a screen reader hears the row is. */
+  kind?: string;
+  caption: string;
+  needsYou?: number;
+  expanded: boolean;
+  /** How many of the group's items are out of view right now. */
+  folded: number;
+  onToggle: () => void;
+  /** Absent for a group with nothing to open: then the head folds. */
+  onOpen?: () => void;
+  children?: ReactNode;
+}): React.JSX.Element {
   return (
     <>
       <div className="card plan-card">
-        <div className="card-head" onClick={onOpen} title="open the plan — every ticket, and what each one waits on">
+        <div
+          className="card-head"
+          onClick={onOpen ?? onToggle}
+          title={onOpen ? 'open the plan — every ticket, and what each one waits on' : expanded ? 'fold it away' : 'show it'}
+        >
           <span className="plan-mark" aria-hidden="true" />
           {/* The keyboard's way in, as on a task card: Enter presses it and the
               press bubbles to the head. */}
           <button type="button" className="session-name card-title">
-            {plan.name}
+            {title}
             <span className="sr-only">
-              , plan, {progress}
+              , {kind}, {caption}
               {needsYou > 0 && `, ${needsYou} needs you`}
             </span>
           </button>
           {needsYou > 0 && <span className="head-break" aria-hidden="true" />}
           {needsYou > 0 && <span className="needs-you">{needsYou} needs you</span>}
-          {/* The folded count rides on the caption, so a folded plan says what it
+          {/* The folded count rides on the caption, so a folded group says what it
               is hiding before you point at it. */}
-          <span className="repo-summary">{[progress, folded > 0 ? `${folded} folded` : undefined].filter(Boolean).join(' · ')}</span>
+          <span className="repo-summary">{[caption, folded > 0 ? `${folded} folded` : undefined].filter(Boolean).join(' · ')}</span>
           <button
             className={`card-fold${expanded ? ' open' : ''}`}
             aria-expanded={expanded}
-            title={expanded ? 'fold its tasks away' : `show its tasks${folded > 0 ? ` — ${folded} folded` : ''}`}
+            title={expanded ? 'fold it away' : `show what is under it${folded > 0 ? ` — ${folded} folded` : ''}`}
             onClick={(event) => {
-              // The head opens the drawer; unfolding must not also do that.
+              // The head may open a drawer; unfolding must not also do that.
               event.stopPropagation();
               onToggle();
             }}

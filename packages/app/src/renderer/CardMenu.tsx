@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { isHidden, isPinned, sessionLabel, sessionOrder } from '@fleetwood/core/sessionOrder';
+import { isHidden, sessionLabel, sessionOrder } from '@fleetwood/core/sessionOrder';
 import type { MoveDirection } from '@fleetwood/core/sessionOrder';
 import { Icon } from './Icon.tsx';
 import { send } from './api.ts';
@@ -26,7 +26,7 @@ interface Props {
    * on the session name, so a dormant task has nowhere to keep a position.
    */
   session?: string;
-  /** Session names in the order the panel is drawing them right now. */
+  /** Session names in the order the panel is drawing this card's group right now. */
   order?: string[];
   /** What this card does — the chips that used to sit in its header. */
   actions: MenuItem[];
@@ -50,9 +50,9 @@ interface Props {
  * week, and the list was too long to take in before choosing. Arranging is
  * the rare errand, so it is the one that costs a click.
  *
- * The moves are bounded by the card's own tier, which is why "move to top" can
- * be inert on a card that is not at the top of the panel: a pinned short-list
- * sits above, and the top this card has is the top of the unpinned list.
+ * The moves are bounded by the card's own group — its plan, or Other — which is
+ * why "move to top" can be inert on a card that is not at the top of the panel:
+ * the top this card has is the top of its group.
  */
 export function CardMenu({ session, order, actions, onResult }: Props): React.JSX.Element {
   const [open, setOpen] = useState(false);
@@ -128,16 +128,13 @@ export function CardMenu({ session, order, actions, onResult }: Props): React.JS
     event.stopPropagation();
   };
 
-  const pinned = session !== undefined && isPinned(session);
   const hidden = session !== undefined && isHidden(session);
   const slot = session === undefined ? undefined : sessionOrder(session);
   const positioned = session !== undefined && order !== undefined;
   const index = positioned ? order.indexOf(session) : -1;
-  // The ends of this card's tier, not of the panel: the moves stop at the pins.
-  const above = index > 0 ? order?.[index - 1] : undefined;
-  const below = index >= 0 ? order?.[index + 1] : undefined;
-  const first = index < 0 || above === undefined || isPinned(above) !== pinned;
-  const last = index < 0 || below === undefined || isPinned(below) !== pinned;
+  // The ends of this card's group, not of the panel: `order` is the group's.
+  const first = index <= 0;
+  const last = index < 0 || index === (order?.length ?? 0) - 1;
 
   const act = async (request: Parameters<typeof send>[0]): Promise<void> => {
     setOpen(false);
@@ -205,7 +202,7 @@ export function CardMenu({ session, order, actions, onResult }: Props): React.JS
             ? 'what this task can do'
             : `${sessionLabel(session)} ${
                 slot === undefined ? 'has no slot' : `is in slot ${slot}`
-              }${pinned ? ' and is pinned to the top' : ''} — what this card can do, and where it sits${
+              } — what this card can do, and where it sits${
                 hidden ? ', which is currently out of the fleet' : ''
               }`
         }
@@ -227,7 +224,7 @@ export function CardMenu({ session, order, actions, onResult }: Props): React.JS
                   'move to top',
                   'top',
                   first,
-                  pinned ? 'first of the pinned sessions' : 'first below the pinned sessions',
+                  'first in its group',
                   't',
                 ),
               )}
@@ -236,18 +233,10 @@ export function CardMenu({ session, order, actions, onResult }: Props): React.JS
                   'move to bottom',
                   'bottom',
                   last,
-                  pinned ? 'last of the pinned sessions' : 'last in the fleet',
+                  'last in its group',
                   'b',
                 ),
               )}
-              {row({
-                label: pinned ? 'unpin' : 'pin to top',
-                title: pinned
-                  ? 'back among the unpinned, at the slot it already has'
-                  : 'hold it above every unpinned session, whatever they are doing',
-                shortcut: 'p',
-                onClick: () => void act({ kind: 'setSessionPinned', session, pinned: !pinned }),
-              })}
               {row({
                 label: 'clear slot',
                 title: 'drop the number — back to the default order: sessions with agents first, then tmux order',
@@ -264,9 +253,7 @@ export function CardMenu({ session, order, actions, onResult }: Props): React.JS
                   className="menu-item menu-more"
                   role="menuitem"
                   aria-haspopup="menu"
-                  title={`move, pin or clear the slot — ${
-                    slot === undefined ? 'no slot yet' : `slot ${slot}`
-                  }${pinned ? ', pinned' : ''}`}
+                  title={`move or clear the slot — ${slot === undefined ? 'no slot yet' : `slot ${slot}`}`}
                   onClick={() => setArranging(true)}
                 >
                   arrange
@@ -283,7 +270,7 @@ export function CardMenu({ session, order, actions, onResult }: Props): React.JS
                 row({
                   label: hidden ? 'unhide' : 'hide',
                   title: hidden
-                    ? `back in the fleet, ${pinned ? 'among the pins' : 'at the slot it already has'}`
+                    ? 'back in the fleet, at the slot it already has'
                     : 'out of the fleet, under "hidden" at the bottom — the session keeps running',
                   onClick: () => void act({ kind: 'setSessionHidden', session, hidden: !hidden }),
                 })}

@@ -382,70 +382,64 @@ export function hasLiveAgent(agents: ReadonlyArray<Pick<FleetAgent, 'status'>>):
   );
 }
 
-/** One row of the fleet list: an item drawn as today, or a plan with its items under it. */
-export type FleetRow<T> =
-  | { kind: 'item'; item: T }
-  | {
-      kind: 'plan';
-      plan: Plan;
-      /** Every item of the plan, in list order. */
-      items: T[];
-      /** What is drawn under the row: all of them open, only the live ones collapsed. */
-      shown: T[];
-    };
+/** The key of the group holding every item no milestone holds. */
+export const OTHER_GROUP = 'other';
+
+/** One group of the fleet list: a plan, or Other. */
+export interface FleetGroup<T> {
+  /** The milestone id, or `OTHER_GROUP`. */
+  key: string;
+  /** Absent for Other. */
+  plan?: Plan;
+  /** Every item of the group, in list order. */
+  items: T[];
+  /** What is drawn under the row: all of them open, only the live ones collapsed. */
+  shown: T[];
+}
 
 /**
- * The fleet list with each plan's tasks folded under one row.
+ * The fleet list as groups: each plan by milestone name, then Other.
  *
- * The row stands where the plan's first task stood, the rule `groupPrStacks`
- * uses for a stack, so a plan keeps the slot you put its work in and nothing
- * unrelated moves because its neighbours folded. Collapsed by default —
- * `expanded` holds the milestones opened — and a task with a live agent stays in
- * view either way, because a plan row is somewhere to put work away, not
- * somewhere to lose an agent that is running.
+ * Alphabetical rather than where a plan's first task stood. The list used to
+ * keep that slot, so a plan moved whenever its first task did; named groups in
+ * a fixed order are the thing a hand can find without looking. Other comes last
+ * and holds everything else in the order it was given — the caller passes
+ * running sessions in session order, then parked tasks.
  *
- * Generic over the item, so the renderer can fold sessions and dormant tasks
- * alike; `idOf` says which ticket an item works, and an item with none, or one
- * no plan holds, is drawn as it always was.
+ * Every group folds the same way: open, all of it is drawn; collapsed, only the
+ * items with a live agent stay in view, because a group is somewhere to put work
+ * away, not somewhere to lose an agent that is running. `expanded` holds the
+ * open keys; the caller starts with Other in it. An empty group is not returned.
+ *
+ * With no plan at all this is one Other group, and the caller draws the list as
+ * it was before plans existed.
  */
-export function foldFleet<T>(
+export function groupFleet<T>(
   items: readonly T[],
   plans: readonly Plan[],
   idOf: (item: T) => string | undefined,
   isLive: (item: T) => boolean,
   expanded: ReadonlySet<string>,
-): Array<FleetRow<T>> {
+): Array<FleetGroup<T>> {
   const planOf = new Map<string, Plan>();
   for (const plan of plans) for (const ticket of plan.tickets) planOf.set(ticket.id, plan);
 
-  const rows: Array<FleetRow<T>> = [];
-  const byPlan = new Map<string, Extract<FleetRow<T>, { kind: 'plan' }>>();
+  const groups = new Map<string, FleetGroup<T>>();
   for (const item of items) {
     const id = idOf(item);
     const plan = id ? planOf.get(id) : undefined;
-    if (!plan) {
-      rows.push({ kind: 'item', item });
-      continue;
+    const key = plan?.milestoneId ?? OTHER_GROUP;
+    let group = groups.get(key);
+    if (!group) {
+      group = { key, plan, items: [], shown: [] };
+      groups.set(key, group);
     }
-    let row = byPlan.get(plan.milestoneId);
-    if (!row) {
-      row = { kind: 'plan', plan, items: [], shown: [] };
-      byPlan.set(plan.milestoneId, row);
-      rows.push(row);
-    }
-    row.items.push(item);
-    if (expanded.has(plan.milestoneId) || isLive(item)) row.shown.push(item);
+    group.items.push(item);
+    if (expanded.has(key) || isLive(item)) group.shown.push(item);
   }
-  return rows;
-}
-
-/**
- * The items a folded list actually draws, in the order it draws them.
- *
- * What the arranging keys move within: a move is "above the card above this
- * one", and a card folded under a collapsed plan is not above anything on
- * screen — counting it would swap a card with one you cannot see.
- */
-export function shownItems<T>(rows: ReadonlyArray<FleetRow<T>>): T[] {
-  return rows.flatMap((row) => (row.kind === 'item' ? [row.item] : row.shown));
+  const byName = [...groups.values()]
+    .filter((group) => group.plan)
+    .sort((a, b) => (a.plan as Plan).name.localeCompare((b.plan as Plan).name, undefined, { sensitivity: 'base' }));
+  const other = groups.get(OTHER_GROUP);
+  return other ? [...byName, other] : byName;
 }

@@ -9,7 +9,7 @@ import { TaskCard } from './TaskCard.tsx';
 import { NewTask } from './NewTask.tsx';
 import { EMPTY_DRAFT, draftFromTicket } from './newTaskFlow.ts';
 import type { Draft } from './newTaskFlow.ts';
-import { PlanRow, PlanView } from './Plan.tsx';
+import { GroupRow, PlanRow, PlanView } from './Plan.tsx';
 import { Power } from './Power.tsx';
 import { Notes } from './Notes.tsx';
 import { Drawer } from './Drawer.tsx';
@@ -21,10 +21,10 @@ import { ThemePicker } from './ThemePicker.tsx';
 // The leaf module: the barrel re-exports tmux and process scanning, which fail
 // the renderer bundle on `node:child_process`.
 import { needsDeploy } from '@fleetwood/core/deployState';
-import { isHidden, isPinned, sessionLabel, sortSessions } from '@fleetwood/core/sessionOrder';
+import { isHidden, sessionLabel, sortSessions } from '@fleetwood/core/sessionOrder';
 import { isFleetSession } from '@fleetwood/core/fleetList';
 import { dormantTasks } from '@fleetwood/core/taskView';
-import { foldFleet, hasLiveAgent, linkTickets, readPlan, shownItems, ticketIdOf } from '@fleetwood/core/plan';
+import { groupFleet, hasLiveAgent, linkTickets, OTHER_GROUP, readPlan, ticketIdOf } from '@fleetwood/core/plan';
 import { resolveFocus } from './focus.ts';
 import {
   answerFocusedPrompt,
@@ -96,11 +96,11 @@ export function App(): React.JSX.Element {
    */
   const [focusedPlan, setFocusedPlan] = useState<string | undefined>();
   /*
-   * The plans whose tasks are unfolded in the list. Window state, like the
-   * hidden drawer: a plan starts folded, and opening one to look is not a
-   * decision to remember across a relaunch.
+   * The groups unfolded in the list, by key. Window state, like the hidden
+   * drawer: a plan starts folded and Other starts open, and opening one to look
+   * is not a decision to remember across a relaunch.
    */
-  const [expandedPlans, setExpandedPlans] = useState<ReadonlySet<string>>(new Set());
+  const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<string>>(new Set([OTHER_GROUP]));
   const [refreshingPlans, setRefreshingPlans] = useState(false);
   /*
    * Whether the notes drawer is up. Window state, like the hidden group: the
@@ -162,7 +162,10 @@ export function App(): React.JSX.Element {
    * move has to be planned against the order on screen now, not the one from
    * when the handler was made. Written further down, where the lists are cut.
    */
-  const arrangeLists = useRef<{ shown: string[]; hidden: string[] }>({ shown: [], hidden: [] });
+  const arrangeLists = useRef<{ groups: Array<{ name?: string; order: string[] }>; hidden: string[] }>({
+    groups: [],
+    hidden: [],
+  });
   /** A move is out: the card's name is about to change, so the next key waits. */
   const arranging = useRef(false);
   /*
@@ -190,7 +193,7 @@ export function App(): React.JSX.Element {
 
   useEffect(() => {
     /*
-     * `J` `K` `t` `b` `p` on the focused card: move it, or pin it — see
+     * `J` `K` `t` `b` on the focused card: move it within its group — see
      * `arrangeKeys.ts`. Always handled once it is one of those keys, so a key
      * that cannot act says why rather than falling through to nothing.
      */
@@ -207,18 +210,17 @@ export function App(): React.JSX.Element {
       }
       // Planned against the name on screen, which a move in flight is changing.
       if (arranging.current) return true;
-      const list = isHidden(target.name) ? arrangeLists.current.hidden : arrangeLists.current.shown;
-      let request: Parameters<typeof send>[0];
-      if (intent.kind === 'move') {
-        const why = inertMove(list, target.name, intent.direction);
-        if (why) {
-          setToast({ message: why, ok: true });
-          return true;
-        }
-        request = { kind: 'reorderSession', session: target.name, direction: intent.direction, order: list };
-      } else {
-        request = { kind: 'setSessionPinned', session: target.name, pinned: !isPinned(target.name) };
+      // The group the card is drawn in: a move never leaves it.
+      const group = isHidden(target.name)
+        ? { name: 'hidden', order: arrangeLists.current.hidden }
+        : arrangeLists.current.groups.find((candidate) => candidate.order.includes(target.name));
+      const list = group?.order ?? [];
+      const why = inertMove(list, target.name, intent.direction, group?.name);
+      if (why) {
+        setToast({ message: why, ok: true });
+        return true;
       }
+      const request = { kind: 'reorderSession', session: target.name, direction: intent.direction, order: list } as const;
       arranging.current = true;
       following.current = { id: target.id, until: Date.now() + 2_000 };
       void send(request)
@@ -232,9 +234,9 @@ export function App(): React.JSX.Element {
           if (following.current?.id === target.id) refocusSession(target.id);
           if (result.ok) markArrived(target.id);
         }, 0);
-        // A pin sends the card a long way, so it is worth a line; a move is
-        // there to see. Both are said to a screen reader, which cannot see it.
-        if (!result.ok || intent.kind === 'pin') setToast({ message: result.detail, ok: result.ok });
+        // A move is there to see, so only a failure is worth a line; both are
+        // said to a screen reader, which cannot see it.
+        if (!result.ok) setToast({ message: result.detail, ok: result.ok });
         setAnnouncement(result.detail);
       });
       return true;
@@ -522,16 +524,16 @@ export function App(): React.JSX.Element {
   const planRows = new Map(plans.map((plan) => [plan.milestoneId, readPlan(plan, links)]));
   const openPlan = plans.find((plan) => plan.milestoneId === focusedPlan);
   /*
-   * The list, with each plan's tasks folded under its row. Sessions and dormant
-   * tasks are folded as one list, so a plan whose tasks are all parked still
-   * gets its row — after the running work, which is where its first task stood.
-   * The hidden drawer is left alone: hiding a session is a decision about that
-   * session, and a plan row must not undo it.
+   * The list as groups: every plan by name, then Other — see `groupFleet`.
+   * Sessions and parked tasks are grouped as one list, running ones first, so a
+   * plan whose tasks are all parked still gets its row and Other ends with its
+   * parked tasks. The hidden drawer is left alone: hiding a session is a
+   * decision about that session, and a group row must not undo it.
    */
   type ListItem = { kind: 'session'; session: FleetSession } | { kind: 'dormant'; task: Task };
   const taskOf = (item: ListItem): Task | undefined =>
     item.kind === 'dormant' ? item.task : taskBySession.get(item.session.name);
-  const listRows = foldFleet<ListItem>(
+  const groups = groupFleet<ListItem>(
     [
       ...sessions.map((session): ListItem => ({ kind: 'session', session })),
       ...dormant.map((task): ListItem => ({ kind: 'dormant', task })),
@@ -542,19 +544,40 @@ export function App(): React.JSX.Element {
       return task ? (ticketIdOf(task.slug) ?? ticketIdOf(task.branch)) : undefined;
     },
     (item) => item.kind === 'session' && hasLiveAgent(item.session.agents),
-    expandedPlans,
+    expandedGroups,
   );
-  /**
-   * What a reorder click is relative to: the order actually on screen — which,
-   * with plans folded, leaves out every session tucked under a collapsed plan.
+  /*
+   * Grouped only once a plan exists. Before that — Notion not set up, or no task
+   * linked to a ticket — there is nothing to group by, and the list is drawn as
+   * it always was: running sessions, then `not running`.
    */
-  const order = shownItems(listRows).flatMap((item) => (item.kind === 'session' ? [item.session.name] : []));
-  arrangeLists.current = { shown: order, hidden: hiddenOrder };
-  const unplannedDormant = listRows.flatMap((row) =>
-    row.kind === 'item' && row.item.kind === 'dormant' ? [row.item.task] : [],
+  const grouped = groups.some((group) => group.plan);
+  /*
+   * What a reorder is relative to, per group: the sessions it actually draws. A
+   * move never crosses into another group, and a session folded out of sight is
+   * not a neighbour. Ungrouped, the one list is every running session.
+   */
+  const groupOrders = new Map(
+    groups.map((group) => [
+      group.key,
+      (grouped ? group.shown : group.items).flatMap((item) => (item.kind === 'session' ? [item.session.name] : [])),
+    ]),
   );
-  const listItem = (item: ListItem): React.JSX.Element =>
-    item.kind === 'session' ? sessionRow(item.session, order) : dormantRow(item.task);
+  arrangeLists.current = {
+    groups: groups.map((group) => ({
+      name: grouped ? (group.plan?.name ?? 'Other') : undefined,
+      order: groupOrders.get(group.key) ?? [],
+    })),
+    hidden: hiddenOrder,
+  };
+  const listItem = (item: ListItem, rowOrder: string[]): React.JSX.Element =>
+    item.kind === 'session' ? sessionRow(item.session, rowOrder) : dormantRow(item.task);
+  const toggleGroup = (key: string): void =>
+    setExpandedGroups((was) => {
+      const next = new Set(was);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
   const onStartTicket = (ticket: Ticket): void => {
     setNewTaskDraft(draftFromTicket(ticket));
     setNewTaskOpen(true);
@@ -819,30 +842,42 @@ export function App(): React.JSX.Element {
                 </span>
               </div>
             )}
-            {listRows.map((row) =>
-              // A dormant task outside every plan is drawn under `not running`, below.
-              row.kind === 'item' ? (
-                row.item.kind === 'session' && listItem(row.item)
-              ) : (
-                <PlanRow
-                  key={row.plan.milestoneId}
-                  plan={row.plan}
-                  rows={planRows.get(row.plan.milestoneId) ?? []}
-                  expanded={expandedPlans.has(row.plan.milestoneId)}
-                  folded={row.items.length - row.shown.length}
-                  onToggle={() =>
-                    setExpandedPlans((was) => {
-                      const next = new Set(was);
-                      if (!next.delete(row.plan.milestoneId)) next.add(row.plan.milestoneId);
-                      return next;
-                    })
-                  }
-                  onOpen={() => setFocusedPlan(row.plan.milestoneId)}
-                >
-                  {row.shown.length > 0 ? row.shown.map(listItem) : undefined}
-                </PlanRow>
-              ),
-            )}
+            {grouped
+              ? groups.map((group) => {
+                  const rowOrder = groupOrders.get(group.key) ?? [];
+                  const children =
+                    group.shown.length > 0 ? group.shown.map((item) => listItem(item, rowOrder)) : undefined;
+                  return group.plan ? (
+                    <PlanRow
+                      key={group.key}
+                      plan={group.plan}
+                      rows={planRows.get(group.key) ?? []}
+                      expanded={expandedGroups.has(group.key)}
+                      folded={group.items.length - group.shown.length}
+                      onToggle={() => toggleGroup(group.key)}
+                      onOpen={() => setFocusedPlan(group.key)}
+                    >
+                      {children}
+                    </PlanRow>
+                  ) : (
+                    <GroupRow
+                      key={group.key}
+                      title="Other"
+                      caption={`${group.items.length} not in a plan`}
+                      expanded={expandedGroups.has(group.key)}
+                      folded={group.items.length - group.shown.length}
+                      onToggle={() => toggleGroup(group.key)}
+                    >
+                      {children}
+                    </GroupRow>
+                  );
+                })
+              : // No plans: running sessions here, parked tasks under `not running` below.
+                groups.flatMap((group) =>
+                  group.items.flatMap((item) =>
+                    item.kind === 'session' ? [listItem(item, groupOrders.get(group.key) ?? [])] : [],
+                  ),
+                )}
             {/* Running agents with no terminal belong with the running work, not
                 under the parked tasks; the ones whose terminal is gone go last. */}
             {orphanGroup('daemon-hosted')}
@@ -857,12 +892,13 @@ export function App(): React.JSX.Element {
                 {idleWorkspaces.map((path) => workspaceRow(path))}
               </>
             )}
-            {unplannedDormant.length > 0 && (
+            {/* Grouped, parked tasks end their own group instead. */}
+            {!grouped && dormant.length > 0 && (
               <>
                 <div className="section-title" title="tasks with their worktrees ready and no session running them">
-                  not running · {unplannedDormant.length}
+                  not running · {dormant.length}
                 </div>
-                {unplannedDormant.map((task) => dormantRow(task))}
+                {dormant.map((task) => dormantRow(task))}
               </>
             )}
             {orphanGroup('pane-gone')}

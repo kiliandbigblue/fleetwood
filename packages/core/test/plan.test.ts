@@ -1,13 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  foldFleet,
+  groupFleet,
+  OTHER_GROUP,
   groupTickets,
   hasLiveAgent,
   linkTickets,
   planSummary,
   readPlan,
-  shownItems,
   ticketIdOf,
   ticketStatus,
 } from '../src/plan.ts';
@@ -251,28 +251,43 @@ test('only an agent doing something, or waiting on you, keeps its task out of a 
   assert.equal(hasLiveAgent([]), false);
 });
 
-test("a plan's tasks fold under one row where its first task stood, a live one staying in view", () => {
-  const items = ['home', 'dev-1-form', 'flow', 'dev-2-api', 'dev-3-ui'];
-  const plans = [plan(ticket('DEV-1'), ticket('DEV-2'), ticket('DEV-3'))];
-  const fold = (expanded: Set<string>) =>
-    foldFleet(items, plans, ticketIdOf, (item) => item === 'dev-2-api', expanded).map((row) =>
-      row.kind === 'plan' ? { plan: row.plan.name, items: row.items, shown: row.shown } : row.item,
-    );
-  assert.deepEqual(fold(new Set()), [
-    'home',
-    { plan: 'Stock Transfers', items: ['dev-1-form', 'dev-2-api', 'dev-3-ui'], shown: ['dev-2-api'] },
-    'flow',
+/** Two milestones, named so their alphabetical order is not the list's. */
+const transfers = { ...plan(ticket('DEV-1'), ticket('DEV-2')), milestoneId: 'm-st', name: 'Stock Transfers' };
+const billing = { ...plan(ticket('DEV-3')), milestoneId: 'm-b', name: 'billing' };
+
+/** Each group as `[key, items, shown]`, the shape every grouping question is asked in. */
+function grouped(items: string[], expanded: Set<string>, live: (item: string) => boolean = (item) => item === 'dev-2-api') {
+  return groupFleet(items, [transfers, billing], ticketIdOf, live, expanded).map((group) => [
+    group.key,
+    group.items,
+    group.shown,
   ]);
-  assert.deepEqual(fold(new Set(['m1']))[1], {
-    plan: 'Stock Transfers',
-    items: ['dev-1-form', 'dev-2-api', 'dev-3-ui'],
-    shown: ['dev-1-form', 'dev-2-api', 'dev-3-ui'],
-  });
-  // A ticket outside every plan, or no ticket at all: drawn as today.
-  assert.deepEqual(foldFleet(['dev-9-x', 'home'], plans, ticketIdOf, () => false, new Set()), [
-    { kind: 'item', item: 'dev-9-x' },
-    { kind: 'item', item: 'home' },
+}
+
+test('plans come first by milestone name, then Other with every item no milestone holds', () => {
+  const items = ['home', 'dev-1-form', 'flow', 'dev-3-invoice', 'dev-2-api', 'parked-task'];
+  assert.deepEqual(grouped(items, new Set([OTHER_GROUP])), [
+    // Alphabetical whatever the case, not where their first task stood.
+    ['m-b', ['dev-3-invoice'], []],
+    ['m-st', ['dev-1-form', 'dev-2-api'], ['dev-2-api']],
+    // In the order given — running sessions first, then parked tasks, is the caller's list.
+    [OTHER_GROUP, ['home', 'flow', 'parked-task'], ['home', 'flow', 'parked-task']],
   ]);
+});
+
+test('a collapsed group, plan or Other, keeps only the items with a live agent in view', () => {
+  const items = ['home', 'dev-1-form', 'dev-2-api', 'flow'];
+  const live = (item: string) => item === 'dev-2-api' || item === 'flow';
+  assert.deepEqual(grouped(items, new Set(), live), [
+    ['m-st', ['dev-1-form', 'dev-2-api'], ['dev-2-api']],
+    [OTHER_GROUP, ['home', 'flow'], ['flow']],
+  ]);
+  assert.deepEqual(grouped(items, new Set(['m-st']), live)[0], ['m-st', ['dev-1-form', 'dev-2-api'], ['dev-1-form', 'dev-2-api']]);
+});
+
+test('with no plan in the fleet there is only Other, and an empty group is never drawn', () => {
+  assert.deepEqual(grouped(['home', 'dev-9-x'], new Set([OTHER_GROUP])), [[OTHER_GROUP, ['home', 'dev-9-x'], ['home', 'dev-9-x']]]);
+  assert.deepEqual(grouped(['dev-1-form'], new Set()), [['m-st', ['dev-1-form'], []]]);
 });
 
 test('no drift is claimed while the first pull request search is still out', () => {
@@ -292,12 +307,4 @@ test('a canceled ticket is neither merged nor counted against the milestone, tho
     new Map(),
   );
   assert.equal(planSummary(plan(), read), 'Stock Transfers · 1/2 merged · 1 startable');
-});
-
-test('what is on screen is the unplanned rows and each plan\'s shown tasks, in list order', () => {
-  const items = ['home', 'dev-1-form', 'flow', 'dev-2-api', 'dev-3-ui'];
-  const plans = [plan(ticket('DEV-1'), ticket('DEV-2'), ticket('DEV-3'))];
-  const rows = foldFleet(items, plans, ticketIdOf, (item) => item === 'dev-2-api', new Set());
-  // A move must not swap a card with one folded out of sight.
-  assert.deepEqual(shownItems(rows), ['home', 'dev-2-api', 'flow']);
 });

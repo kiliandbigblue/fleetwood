@@ -16,7 +16,6 @@ import {
 } from '@fleetwood/core/taskView';
 import { STATUS_LABEL, taskStatus } from '@fleetwood/core/taskStatus';
 import { hasDriftedOffBranch, worktreeShortName } from '@fleetwood/core/naming';
-import { isPinned } from '@fleetwood/core/sessionOrder';
 import { AddRepo } from './AddRepo.tsx';
 import { AgentRow } from './AgentRow.tsx';
 import { Icon } from './Icon.tsx';
@@ -705,12 +704,6 @@ export function TaskCard({
           >
             <Icon name="chevron" />
           </button>
-        )}
-        {/* As on a session card: the pin is the reason this one is up here. */}
-        {task.session && isPinned(task.session) && (
-          <span className="pin-mark" title="pinned above the unpinned sessions">
-            <Icon name="pin" />
-          </span>
         )}
         {/*
          * The summary on the gutter, and where progress went.

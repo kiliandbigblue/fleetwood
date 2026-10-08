@@ -144,8 +144,9 @@ export type Request =
   /**
    * Move a session up or down the fleet, by renaming its order prefix.
    *
-   * `order` is the list of session names as the panel is currently drawing them,
-   * because that is what the click was made against: "up" means "above the card
+   * `order` is the session names of the card's own group — its plan, or Other —
+   * as the panel is currently drawing them, because that is what the click was
+   * made against and a move never leaves the group: "up" means "above the card
    * above this one", and only the renderer knows what that is. Main replans from
    * it rather than re-deriving an order the user may not be looking at.
    */
@@ -160,24 +161,16 @@ export type Request =
    *
    * The way back, and not the same thing as moving it last — an unnumbered
    * session is ranked by what it is doing again, which is what the panel did
-   * before anyone pinned anything.
+   * before anyone numbered anything.
    */
   | { kind: 'clearSessionOrder'; session: string }
   /**
-   * Hold a session in the top tier, or let it go — a `+` on the tmux name.
-   *
-   * Separate from `reorderSession` because it is not a position: the session
-   * keeps the slot it had, and what changes is which tier the moves happen
-   * inside. Unpinning drops it back among the unpinned at its own number.
-   */
-  | { kind: 'setSessionPinned'; session: string; pinned: boolean }
-  /**
    * Take a session out of the fleet list, or put it back — a `-` on the tmux
-   * name, in front of the pin.
+   * name, in front of the slot.
    *
    * Not a filter the window remembers: the marker is on the session, so a
    * session hidden here is hidden in `fw status` too and is still hidden after a
-   * relaunch. The tier and the slot both survive it, so unhiding puts the card
+   * relaunch. The slot survives it, so unhiding puts the card
    * back where it was rather than at the end.
    */
   | { kind: 'setSessionHidden'; session: string; hidden: boolean }

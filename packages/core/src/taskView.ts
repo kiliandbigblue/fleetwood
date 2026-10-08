@@ -21,7 +21,7 @@ import type { BranchVia, TaskPr } from './taskPrs.ts';
  * morning after — and drawn newest-first it lost the order you had put it in and
  * put back every card you had hidden. The name the session last had still says
  * both (see `Task.lastSession`), so they are read the way a live session's are:
- * `sortSessions` for the slot and the pin, `isHidden` for the fold. A task that
+ * `sortSessions` for the slot, `isHidden` for the fold. A task that
  * never had a session keeps the newest-first place `listTasks` gave it, since
  * the sort leaves unnumbered rows in the order they came.
  */

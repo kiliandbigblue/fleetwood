@@ -1,6 +1,6 @@
 import type { AgentStatus, CursorUsage, FleetAgent, FleetState, PlanLimits } from '@fleetwood/core';
 import { formatContextTokens } from '@fleetwood/core';
-import { agentUrgency, formatUsd, isHidden, isPinned, sessionLabel, sortSessions } from '@fleetwood/core';
+import { agentUrgency, formatUsd, isHidden, sessionLabel, sortSessions } from '@fleetwood/core';
 import { c, pad, relativeAge, tildify, width } from './ui.ts';
 
 function resetClock(resetsAt: number | undefined, now: number): string {
@@ -226,8 +226,6 @@ export function renderFleet(
 
   for (const session of sessions) {
     const attached = session.attached > 0 ? c.ok('●') : c.muted('○');
-    // Why this row is up here rather than where its agents would put it.
-    const pin = isPinned(session.name) ? c.accent(' +') : '';
     const attention = session.needsAttention ? c.danger(' ✋') : '';
     // The word only shows under --all, which is where seeing which rows these
     // are is the whole point of the flag.
@@ -241,7 +239,7 @@ export function renderFleet(
     const branch = session.meta.branch ? c.branch(` ${session.meta.branch}`) : '';
 
     lines.push(
-      `${attached} ${c.bold(pad(sessionLabel(session.name), nameWidth))}${pin}${attention} ${kind}${branch}${pr} ${c.muted(tildify(session.path))} ${c.dim(relativeAge(session.createdAt))}`,
+      `${attached} ${c.bold(pad(sessionLabel(session.name), nameWidth))}${attention} ${kind}${branch}${pr} ${c.muted(tildify(session.path))} ${c.dim(relativeAge(session.createdAt))}`,
     );
 
     if (session.agents.length === 0) {

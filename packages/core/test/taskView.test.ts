@@ -495,7 +495,7 @@ test('a pull request found some other way does not rank a worktree', () => {
  */
 const dormant = (slug: string, lastSession?: string, session?: string) => ({ slug, lastSession, session });
 
-test('dormant tasks sit in the slot and tier their last session had', () => {
+test('dormant tasks sit in the slot their last session had, an old pin earning nothing', () => {
   const tasks = [
     dormant('newest'),
     dormant('atlas', '30-atlas'),
@@ -503,7 +503,7 @@ test('dormant tasks sit in the slot and tier their last session had', () => {
     dormant('proto', '10-proto'),
   ];
   const { shown, hidden } = dormantTasks(tasks);
-  assert.deepEqual(shown.map((t) => t.slug), ['reflow', 'proto', 'atlas', 'newest']);
+  assert.deepEqual(shown.map((t) => t.slug), ['proto', 'atlas', 'reflow', 'newest']);
   assert.deepEqual(hidden, []);
 });
 

@@ -483,9 +483,9 @@ async function readRememberedSession(dir: string): Promise<string | undefined> {
 /**
  * Write down the name a task's live session goes by, when it changed.
  *
- * The slot, the pin and the fold are all in the session's name (see
+ * The slot and the fold are both in the session's name (see
  * `sessionOrder.ts`), and tmux is the only place that name lives — so a reboot
- * took all three with it, and every task came back as an unnumbered, shown,
+ * took both with it, and every task came back as an unnumbered, shown,
  * dormant card. This is the one copy that outlives the server. tmux stays the
  * source of truth while it runs: the file only follows it, is only read when
  * there is no session to ask, and goes with the folder when the task is archived.
@@ -773,7 +773,7 @@ async function ensureTaskSession(
   if (sessions.some((s) => sameSession(s.name, name))) return undefined;
   /*
    * Back under the name it had before the server went away, so a task started
-   * after a reboot returns to its slot, its tier and its fold rather than to the
+   * after a reboot returns to its slot and its fold rather than to the
    * bottom of the list. Only when the label is the one just settled on: the
    * collision check above is about labels, and a remembered `-20-atlas` must not
    * bring back a name another session has taken since.

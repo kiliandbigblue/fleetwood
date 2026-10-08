@@ -1225,29 +1225,6 @@ button {
 }
 
 /*
- * A pinned card's mark, beside the name.
- *
- * Small and unclickable: the pin is set from the card's own menu, and a second
- * control for it in the header would be the fifth glyph that menu exists to
- * avoid. It sits between the name and the badges, where it reads as part of the
- * title rather than as another status.
- */
-.pin-mark {
-  flex: none;
-  /* `.icon` draws at `1em`, so this is the pin's size. `--mark-md`, because at
-     the smaller step a 10px pin beside a 13px title read as a speck rather than
-     as a mark that means something. */
-  font-size: var(--mark-md);
-  line-height: 1;
-  /* Centred rather than nudged: `.card-head` aligns on the baseline and an SVG
-     has none of its own, so it would otherwise hang off its own bottom edge. The
-     `translateY` that used to be here existed only because the emoji it replaced
-     rendered high in its box. */
-  align-self: center;
-  opacity: 0.8;
-}
-
-/*
  * Everything a card can do, behind one dot column.
  *
  * It carried four moves; it now carries the header's whole chip row as well —

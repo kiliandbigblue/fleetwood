@@ -1,7 +1,6 @@
 import type { FleetSession, PullRequest, TaskPr } from '@fleetwood/core';
-import { isPinned, sessionLabel } from '@fleetwood/core/sessionOrder';
+import { sessionLabel } from '@fleetwood/core/sessionOrder';
 import { AgentRow } from './AgentRow.tsx';
-import { Icon } from './Icon.tsx';
 import { CardMenu } from './CardMenu.tsx';
 import type { MenuItem } from './CardMenu.tsx';
 import { Slug } from './Slug.tsx';
@@ -141,14 +140,6 @@ export function SessionCard({ session, pr, order, onResult, here }: Props): Reac
         {/* Where a narrow card's head breaks onto a second line — see `.head-break`. */}
         {needsYou && <span className="head-break" aria-hidden="true" />}
         {needsYou && <span className="needs-you">{needsYou}</span>}
-        {/* The one part of the prefix that is worth showing: a pinned card is at
-            the top because someone put it there, and without a mark that reads
-            as fleetwood having reordered the fleet on its own. */}
-        {isPinned(session.name) && (
-          <span className="pin-mark" title="pinned above the unpinned sessions">
-            <Icon name="pin" />
-          </span>
-        )}
         {/*
          * The marker marks the exception, which is this card.
          *

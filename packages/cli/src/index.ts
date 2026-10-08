@@ -30,7 +30,6 @@ import {
 } from '@fleetwood/core';
 import {
   isHidden,
-  isPinned,
   resumeArgsFor,
   sameSession,
   sessionLabel,
@@ -88,12 +87,9 @@ ${c.bold('commands')}
   order <session> <slot>|none
                     put a session in a slot, or take it out of the ordering
                     ${c.dim('the slot is a number prefixed to the tmux session name, hidden everywhere fleetwood shows it')}
-  pin <session> [on|off]
-                    hold a session above every unpinned one — a short-list on top
-                    ${c.dim('a `+` in front of the slot; "move to top" on an unpinned session stops below the pins')}
   hide <session>    take a session out of the fleet list — it keeps running
-  unhide <session>  put it back, in the tier and slot it had
-                    ${c.dim('a `-` in front of the pin; the panel folds these under "hidden" at the bottom')}
+  unhide <session>  put it back, in the slot it had
+                    ${c.dim('a `-` in front of the slot; the panel folds these under "hidden" at the bottom')}
   approve [pane]    answer yes to a blocked agent's permission prompt
   deny [pane]       answer no
   kill-agent [pane|key]
@@ -116,7 +112,6 @@ ${c.bold('examples')}
   fw task add order-type-filling reflow --branch feature/orders-dual-write-order-type
   fw task rm order-type-filling reflow-orders-use-order-type
   fw order atlas 15
-  fw pin atlas
   fw open-pr bigbluedisco/atlas#3671
   fw open-pr https://github.com/bigbluedisco/atlas/pull/3671
 `;
@@ -666,7 +661,6 @@ async function cmdOrder(positional: string[], json: boolean): Promise<void> {
           name: s.name,
           label: sessionLabel(s.name),
           slot: sessionOrder(s.name) ?? null,
-          pinned: isPinned(s.name),
           hidden: isHidden(s.name),
         })),
       );
@@ -680,19 +674,16 @@ async function cmdOrder(positional: string[], json: boolean): Promise<void> {
       const order = sessionOrder(session.name);
       const mark = order === undefined ? c.dim(pad('—', 4)) : c.accent(pad(String(order), 4));
       const attention = session.needsAttention ? c.danger(' ✋') : '';
-      // Left of the slot, so the pinned block is one column you can run an eye down.
-      const pin = isPinned(session.name) ? c.accent('+') : ' ';
       // This listing prints the raw tmux name beside the label, so the `-` is
       // already there to see — the word is for whoever has not met it yet.
       const hidden = isHidden(session.name) ? c.dim(' hidden') : '';
       process.stdout.write(
-        `${pin}${mark} ${c.bold(pad(sessionLabel(session.name), nameWidth))} ${c.muted(session.name)}${hidden}${attention}\n`,
+        `${mark} ${c.bold(pad(sessionLabel(session.name), nameWidth))} ${c.muted(session.name)}${hidden}${attention}\n`,
       );
     }
     process.stdout.write(
       `\n${c.muted('fw order <session> <slot>')}  ${c.dim('put one in a slot')}\n` +
         `${c.muted('fw order <session> none  ')}  ${c.dim('take it out of the ordering')}\n` +
-        `${c.muted('fw pin <session> [on|off]')}  ${c.dim('hold it above the unpinned, marked + here')}\n` +
         `${c.muted('fw hide|unhide <session> ')}  ${c.dim('take it out of the fleet list, or put it back')}\n`,
     );
     return;
@@ -725,49 +716,11 @@ async function cmdOrder(positional: string[], json: boolean): Promise<void> {
 }
 
 /**
- * Pin a session on top, or let it go.
- *
- * The pin is a `+` in front of the slot on the tmux name — one tier above every
- * unpinned session, whatever their numbers and whatever their agents are doing.
- * With no `on`/`off` it toggles, because that is what the panel's menu item does
- * and the common case is one word about one session.
- */
-async function cmdPin(positional: string[]): Promise<void> {
-  const [typed, state] = [positional[1], positional[2]];
-  if (!typed) {
-    process.stderr.write(`${c.danger('usage')} fw pin <session> [on|off]\n`);
-    process.exitCode = 2;
-    return;
-  }
-
-  const found = await resolveSession(typed);
-  if (!found.name) {
-    process.stdout.write(`${c.danger('✗')} ${found.detail}\n`);
-    process.exitCode = 1;
-    return;
-  }
-
-  const wanted = state?.toLowerCase();
-  const ON = ['on', 'yes', 'true', '1'];
-  const OFF = ['off', 'no', 'false', '0', 'none', 'clear', '-'];
-  if (wanted !== undefined && !ON.includes(wanted) && !OFF.includes(wanted)) {
-    process.stderr.write(`${c.danger('✗')} ${state} is not a state — give "on", "off", or nothing to toggle\n`);
-    process.exitCode = 2;
-    return;
-  }
-  const pinned = wanted === undefined ? !isPinned(found.name) : ON.includes(wanted);
-
-  const result = await actions.setSessionPinned(found.name, pinned);
-  process.stdout.write(`${result.ok ? c.ok('✓') : c.danger('✗')} ${result.detail}\n`);
-  if (!result.ok) process.exitCode = 1;
-}
-
-/**
  * Take a session out of the fleet list, or put it back.
  *
- * Two commands rather than `fw hide <session> [on|off]` like the pin: "unhide"
- * is the word for the way back, and `fw hide atlas off` is a sentence nobody
- * means. What it does is rename the session — a `-` in front of the pin — so the
+ * Two commands rather than `fw hide <session> [on|off]`: "unhide" is the word
+ * for the way back, and `fw hide atlas off` is a sentence nobody means. What it
+ * does is rename the session — a `-` in front of the slot — so the
  * fold shows up in `tmux ls`, outlives fleetwood, and `tmux rename-session` will
  * undo it by hand. The session keeps running throughout; this is about the list,
  * not about the work.
@@ -1323,9 +1276,6 @@ async function main(): Promise<void> {
       break;
     case 'order':
       await cmdOrder(positional, json);
-      break;
-    case 'pin':
-      await cmdPin(positional);
       break;
     case 'hide':
       await cmdHide(arg, true);

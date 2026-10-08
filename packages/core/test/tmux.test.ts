@@ -305,7 +305,7 @@ test('an unstamped session named for the task is adopted', () => {
 });
 
 test('an unstamped session named for the task is adopted under its order prefix', () => {
-  // A restore brings the name back whole — slot, pin and fold included.
+  // A restore brings the name back whole — slot, fold and an old pin's `+` included.
   const sessions = [session('unrelated', 1785781000), session('-+20-flow-execution-labels', 1785790000)];
   const found = findTaskSession(sessions, 'flow-execution-labels', '/Users/k/flow-execution-labels');
   assert.equal(found?.session.name, '-+20-flow-execution-labels');

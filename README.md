@@ -985,9 +985,8 @@ fw switch             pick a live session, one agent's pane, or a dormant task
 fw switch --projects  every directory under your project roots, session or not
 fw focus <session>    point the terminal at a session
 fw order [<session> <slot>|none]  where each session sits in the fleet
-fw pin <session> [on|off]  hold it above every unpinned session
 fw hide <session>     take a session out of the fleet list — it keeps running
-fw unhide <session>   put it back, in the tier and slot it had
+fw unhide <session>   put it back, in the slot it had
 fw sessions | panes | repos | doctor | install-hooks
 ```
 
@@ -1036,14 +1035,13 @@ on next start, so no history is lost either way.
   process is the versioned binary, so `pane_current_command` is a version string
   like `2.1.220`; and a single session also spawns `claude daemon run` plus several
   `bg-pty-host` helpers that must not be counted as separate agents.
-- **Three markers live on the tmux session name**, and read outside in they are
-  the three questions in the order they are asked: `-` is hidden — not in the
-  fleet list at all; `+` is pinned — a tier above every unpinned session; and a
-  number prefix is the slot within that tier. All three together is
-  `-+20-atlas`, which is `atlas`. They are stripped from every label fleetwood
-  draws, each is editable with `tmux rename-session` alone, and all of them
-  survive a restart because tmux is holding them rather than a registry on the
-  side. One cost, in one place: a dash-prefixed name is one tmux itself reads as
+- **Two markers live on the tmux session name**: `-` is hidden — not in the
+  fleet list at all — and a number prefix is the slot within the session's group
+  of the list (its plan, or Other). Together `-20-atlas` is `atlas`. They are
+  stripped from every label fleetwood draws, each is editable with
+  `tmux rename-session` alone, and both survive a restart because tmux is
+  holding them rather than a registry on the side. A `+` left by the pin that
+  used to exist is read past, ignored for order, and dropped on the next rename. One cost, in one place: a dash-prefixed name is one tmux itself reads as
   flags, so `renameSession` passes `--` before the new name.
 - **`set-option -t` rejects the `=` exact-match prefix** that `has-session`,
   `kill-session` and `new-window` accept (tmux 3.6a). Stamping metadata uses the
