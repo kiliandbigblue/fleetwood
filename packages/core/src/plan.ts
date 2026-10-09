@@ -534,7 +534,7 @@ export interface FleetGroup<T> {
   plan?: Plan;
   /** Every item of the group, in list order. */
   items: T[];
-  /** What is drawn under the row: all of them open, only the live ones collapsed. */
+  /** What is drawn under the row: all of them open, only what `staysInView` keeps collapsed. */
   shown: T[];
 }
 
@@ -548,8 +548,9 @@ export interface FleetGroup<T> {
  * running sessions in session order, then parked tasks.
  *
  * Every group folds the same way: open, all of it is drawn; collapsed, only the
- * items with a live agent stay in view, because a group is somewhere to put work
- * away, not somewhere to lose an agent that is running. `expanded` holds the
+ * items `staysInView` keeps — a live agent, the session you are at — because a
+ * group is somewhere to put work away, not somewhere to lose an agent that is
+ * running or the card ⌘J just took you to. `expanded` holds the
  * open keys; the caller starts with Other in it. An empty group is not returned.
  *
  * With no plan at all this is one Other group, and the caller draws the list as
@@ -559,7 +560,7 @@ export function groupFleet<T>(
   items: readonly T[],
   plans: readonly Plan[],
   idOf: (item: T) => string | undefined,
-  isLive: (item: T) => boolean,
+  staysInView: (item: T) => boolean,
   expanded: ReadonlySet<string>,
 ): Array<FleetGroup<T>> {
   const planOf = new Map<string, Plan>();
@@ -576,7 +577,7 @@ export function groupFleet<T>(
       groups.set(key, group);
     }
     group.items.push(item);
-    if (expanded.has(key) || isLive(item)) group.shown.push(item);
+    if (expanded.has(key) || staysInView(item)) group.shown.push(item);
   }
   const byName = [...groups.values()]
     .filter((group) => group.plan)

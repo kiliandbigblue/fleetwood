@@ -103,7 +103,9 @@ export interface FocusNextAgentOptions {
 }
 
 /** ⌘J / ⌘⇧J — focus the agent after the current pane, as `nextAgent` picks it. */
-export async function focusNextAgent(options: FocusNextAgentOptions): Promise<ActionResult> {
+export async function focusNextAgent(
+  options: FocusNextAgentOptions,
+): Promise<ActionResult & { sessionId?: string }> {
   const [from, fleet] = await Promise.all([
     options.from ?? tmux.currentPane(),
     // A prompt nobody hooked is only seen on screen, so blocked has to look.
@@ -115,7 +117,12 @@ export async function focusNextAgent(options: FocusNextAgentOptions): Promise<Ac
   if (!focus.ok) return focus;
   const pane = next.session.windows.flatMap((w) => w.panes).find((p) => p.paneId === next.agent.pane);
   const title = agentTitle(pane?.title, pane?.command, hostname());
-  return { ok: true, detail: `→ ${sessionLabel(next.session.name)}${title ? ` · ${title}` : ''}` };
+  return {
+    ok: true,
+    detail: `→ ${sessionLabel(next.session.name)}${title ? ` · ${title}` : ''}`,
+    // For the panel to put its focus on the card it landed on.
+    sessionId: next.session.sessionId,
+  };
 }
 
 export interface OpenProjectOptions {

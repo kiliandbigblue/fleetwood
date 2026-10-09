@@ -515,8 +515,12 @@ async function handle(request: Request): Promise<Response> {
     case 'focusPane':
       return actions.focusPane(request.pane);
 
-    case 'nextAgent':
-      return actions.focusNextAgent({ blocked: request.blocked, states: collector?.states });
+    case 'nextAgent': {
+      const result = await actions.focusNextAgent({ blocked: request.blocked, states: collector?.states });
+      // Now rather than on the next poll, so the card is marked here as it gets focus.
+      if (result.ok) await pushSnapshot();
+      return result;
+    }
 
     case 'killSession': {
       const result = await actions.killSession(request.session);

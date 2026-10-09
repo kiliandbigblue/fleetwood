@@ -257,4 +257,6 @@ export type Response =
       detail: string;
       projects: Array<{ path: string; name: string; repo?: string; isRepo: boolean }>;
     }
-  | { ok: boolean; detail: string; tasks: Task[] };
+  | { ok: boolean; detail: string; tasks: Task[] }
+  /** `nextAgent`: the session it landed in, for the panel's focus to follow. */
+  | { ok: boolean; detail: string; sessionId?: string };

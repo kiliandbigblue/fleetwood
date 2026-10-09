@@ -284,9 +284,17 @@ export function App(): React.JSX.Element {
       } else if ((event.metaKey || event.ctrlKey) && (event.key === 'j' || event.key === 'J')) {
         // The terminal's ⌘J / ⌘⇧J, so the same keys walk tmux from either window.
         event.preventDefault();
-        void send({ kind: 'nextAgent', blocked: event.key === 'j' }).then((result) =>
-          setToast({ message: result.detail, ok: result.ok }),
-        );
+        void send({ kind: 'nextAgent', blocked: event.key === 'j' }).then((result) => {
+          setToast({ message: result.detail, ok: result.ok });
+          // The card follows tmux, held through the redraws that bring it into view.
+          if (!('sessionId' in result) || !result.sessionId) return;
+          const id = result.sessionId;
+          following.current = { id, until: Date.now() + 2_000 };
+          // After the snapshot sent ahead of this reply is drawn, as a move does.
+          setTimeout(() => {
+            if (refocusSession(id)) markArrived(id);
+          }, 0);
+        });
       } else if ((event.metaKey || event.ctrlKey) && event.key === 'n') {
         event.preventDefault();
         setNotesOpen((open) => !open);
@@ -577,7 +585,9 @@ export function App(): React.JSX.Element {
       const task = taskOf(item);
       return task ? (ticketIdOf(task.slug) ?? ticketIdOf(task.branch)) : undefined;
     },
-    (item) => item.kind === 'session' && hasLiveAgent(item.session.agents),
+    (item) =>
+      item.kind === 'session' &&
+      (hasLiveAgent(item.session.agents) || item.session.name === snapshot?.currentSession),
     expandedGroups,
   );
   /*
