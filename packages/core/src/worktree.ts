@@ -152,8 +152,8 @@ const LOCAL_TRUNKS = ['main', 'master', 'dev', 'develop'];
  * question, and the answer is the uncommitted work.
  *
  * This is the answer for a branch cut straight from the trunk. A stacked layer's
- * base is the layer below it, which no read of the commit graph can recover — see
- * `resolveBaseRef`, and the pull request's `base` that feeds it.
+ * base is the layer below it — the pull request's `base` through `resolveBaseRef`,
+ * or `layerBelow` before there is one.
  */
 export async function reviewBase(repoPath: string): Promise<string | undefined> {
   const remote = await localDefaultBranch(repoPath);
@@ -162,6 +162,115 @@ export async function reviewBase(repoPath: string): Promise<string | undefined> 
     if (await refExists(repoPath, `refs/heads/${name}`)) return name;
   }
   return undefined;
+}
+
+/**
+ * The layer below this one, between HEAD and `trunk`, when the branch is stacked
+ * and has no pull request to say so yet.
+ *
+ * Every branch is measured against HEAD in one `for-each-ref`: `behind` is how far
+ * HEAD has gone past where the two meet. The trunk meets it the furthest back, so
+ * any branch meeting it closer shares work the trunk does not have — a layer below.
+ * The closest one is the parent, and that holds even after the parent moved on,
+ * since only where the two meet is read, not whether the parent's tip is in HEAD.
+ *
+ * A branch holding HEAD and more is a layer *above*, and reviewing against it
+ * would show nothing, so it is skipped. One sitting exactly on HEAD is ambiguous:
+ * a layer just cut, with only uncommitted work, is level with its parent — and its
+ * parent is level with it. The graph cannot say which is which, so a level branch
+ * is taken only when this branch's own reflog names it as where it started — see
+ * `startedFrom`. This branch's own copy on origin is level too, which is why it is
+ * left out by name.
+ *
+ * `undefined` when nothing sits between HEAD and the trunk — a branch cut straight
+ * from it — and on a git older than 2.41, which has no `%(ahead-behind)`: the
+ * review then falls back to the trunk, as it did before there was a layer below.
+ */
+export async function layerBelow(repoPath: string, trunk: string): Promise<string | undefined> {
+  const [refs, current] = await Promise.all([
+    run('git', [
+      '-C',
+      repoPath,
+      'for-each-ref',
+      '--format=%(refname:short) %(ahead-behind:HEAD)',
+      '--exclude=refs/remotes/origin/HEAD',
+      'refs/heads',
+      'refs/remotes/origin',
+    ]),
+    run('git', ['-C', repoPath, 'branch', '--show-current']),
+  ]);
+  if (refs.code !== 0) return undefined;
+  const own = current.stdout.trim();
+  return pickLayerBelow(parseDistances(refs.stdout), trunk, own, await startedFrom(repoPath, own));
+}
+
+/** A branch measured against HEAD, as `%(ahead-behind:HEAD)` reports it. */
+export interface BranchDistance {
+  name: string;
+  /** Commits it has that HEAD does not. */
+  ahead: number;
+  /** Commits HEAD has gone past where the two meet. */
+  behind: number;
+}
+
+/** `for-each-ref` lines of `<name> <ahead> <behind>`. */
+export function parseDistances(stdout: string): BranchDistance[] {
+  return stdout.split('\n').flatMap((line) => {
+    const [name, ahead, behind] = line.split(' ');
+    return name && ahead && behind ? [{ name, ahead: Number(ahead), behind: Number(behind) }] : [];
+  });
+}
+
+/**
+ * The layer below among `branches` — see `layerBelow`. `own` is the branch HEAD
+ * is on, and `started` the branches its reflog says it was cut from.
+ */
+export function pickLayerBelow(
+  branches: BranchDistance[],
+  trunk: string,
+  own: string,
+  started: Set<string>,
+): string | undefined {
+  const fromTrunk = branches.find((b) => b.name === trunk)?.behind;
+  if (fromTrunk === undefined) return undefined;
+  return (
+    branches
+      .filter((b) => localName(b.name) !== own)
+      // Meeting HEAD closer than the trunk does, or level with it and named by the
+      // reflog. A branch ahead and level with HEAD is a layer above, never taken.
+      .filter((b) =>
+        b.behind > 0 ? b.behind < fromTrunk : b.ahead === 0 && fromTrunk > 0 && started.has(localName(b.name)),
+      )
+      // Closest first; then the one that moved on least; then origin's copy, which is
+      // current as of the last fetch where a local one may be stale.
+      .sort(
+        (a, b) =>
+          a.behind - b.behind ||
+          a.ahead - b.ahead ||
+          Number(b.name.startsWith('origin/')) - Number(a.name.startsWith('origin/')),
+      )[0]?.name
+  );
+}
+
+/**
+ * The branches a branch's reflog says it was put on: where `git worktree add -b`
+ * or `git branch` cut it, and any `reset` moving it onto another since — the
+ * shape of re-parenting a layer by hand. Names come back without `origin/`.
+ */
+async function startedFrom(repoPath: string, branch: string): Promise<Set<string>> {
+  if (branch.length === 0) return new Set();
+  return new Set(
+    (await reflogSubjects(repoPath, `refs/heads/${branch}`))
+      .split('\n')
+      .map((line) => /^(?:branch: Created from|reset: moving to) (\S+)/.exec(line.trim())?.[1])
+      .filter((name): name is string => name !== undefined)
+      .map(localName),
+  );
+}
+
+/** A branch name without the `origin/` its remote-tracking ref carries. */
+function localName(name: string): string {
+  return name.replace(/^origin\//, '');
 }
 
 /**
@@ -399,7 +508,7 @@ export async function localProgress(path: string, branch: string | undefined): P
   // says nothing about this task. Silence beats reading every repo's `main` as
   // a finished piece of work.
   if (branch === undefined || TRUNK_NAMES.has(branch)) return { ahead, everCommitted: false };
-  return { ahead, everCommitted: await hasCommitReflog(path, branch) };
+  return { ahead, everCommitted: hasCommitEntry(await reflogSubjects(path, branch)) };
 }
 
 /**
@@ -428,9 +537,10 @@ export function hasCommitEntry(stdout: string): boolean {
   return stdout.split('\n').some((line) => /^commit(?: \(amend\)| \(initial\)|:)/.test(line.trim()));
 }
 
-async function hasCommitReflog(path: string, branch: string): Promise<boolean> {
-  const { code, stdout } = await run('git', ['-C', path, 'reflog', 'show', '--format=%gs', branch]);
-  return code === 0 && hasCommitEntry(stdout);
+/** A ref's reflog, one entry's subject a line — empty when git has none to read. */
+async function reflogSubjects(path: string, ref: string): Promise<string> {
+  const { code, stdout } = await run('git', ['-C', path, 'reflog', 'show', '--format=%gs', ref]);
+  return code === 0 ? stdout : '';
 }
 
 /** Uncommitted-change count for a working tree, for the dirty indicator. */

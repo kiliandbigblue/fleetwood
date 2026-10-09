@@ -17,7 +17,7 @@ import { against, concernPrompt, openTour } from './tour.ts';
 import type { Concern, SendOutcome } from './tour.ts';
 import { paletteFor } from './theme.ts';
 import type { Palette } from './theme.ts';
-import { resolveBaseRef, reviewBase } from './worktree.ts';
+import { layerBelow, resolveBaseRef, reviewBase } from './worktree.ts';
 import type { AgentTool, SessionMeta } from './types.ts';
 
 export interface ActionResult {
@@ -288,12 +288,15 @@ export interface OpenReviewOptions {
  * layer work without knowing the stack's shape — naming the parent is enough.
  */
 export async function openReview(options: OpenReviewOptions): Promise<ActionResult> {
-  // The pull request's base first, the trunk only when there is none to use. A
-  // stacked layer is the case that needs it, and a base that does not resolve here
-  // is treated as absent rather than passed on to fail.
+  // The pull request's base first, then the layer below read off the commit graph
+  // for a stacked branch with no pull request yet, and the trunk only when neither
+  // answers. A base that does not resolve here is treated as absent rather than
+  // passed on to fail.
+  const trunk = await reviewBase(options.cwd);
   const base =
     (options.base ? await resolveBaseRef(options.cwd, options.base) : undefined) ??
-    (await reviewBase(options.cwd));
+    (trunk ? await layerBelow(options.cwd, trunk) : undefined) ??
+    trunk;
   const where = basename(options.cwd);
   if (!base) return { ok: false, detail: `no trunk found in ${where} — nothing to review against` };
   try {

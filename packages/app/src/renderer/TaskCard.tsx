@@ -129,7 +129,8 @@ export function RepoRow({
    *
    * Only stacked work needs it — there the base is the layer below, and reviewing
    * against the trunk instead credits this branch with everything underneath it.
-   * Absent (no pull request yet, or the search hasn't landed) main uses the trunk.
+   * Absent (no pull request yet, or the search hasn't landed) main reads the layer
+   * below off the commit graph, and uses the trunk when there is none.
    */
   base?: string;
   onResult: Props['onResult'];
@@ -181,7 +182,7 @@ export function RepoRow({
       <button
         className="chip repo-review"
         onClick={() => void act({ kind: 'openReview', cwd: repo.path, base, session })}
-        title={`Review ${repo.path} vs ${base ?? 'its trunk'}, cut into sections by an agent — committed and uncommitted work together, from where the branch left it. Concerns go to this task's Claude pane.`}
+        title={`Review ${repo.path} vs ${base ?? 'the layer below or its trunk'}, cut into sections by an agent — committed and uncommitted work together, from where the branch left it. Concerns go to this task's Claude pane.`}
       >
         review
       </button>

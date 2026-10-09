@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { run } from '../src/exec.ts';
 import { openReview } from '../src/actions.ts';
-import { localDefaultBranch, resolveBaseRef, reviewBase } from '../src/worktree.ts';
+import { layerBelow, localDefaultBranch, parseDistances, pickLayerBelow, resolveBaseRef, reviewBase } from '../src/worktree.ts';
 
 /**
  * A throwaway repo on `trunk`, with no remote.
@@ -148,4 +148,73 @@ test('a stacked layer is reviewed from its fork point, not from the trunk', asyn
   ).stdout.trim();
   assert.equal(viaTrunk, '2');
   assert.equal(viaParent, '1');
+});
+
+/** The layer below HEAD in a repo whose trunk is `origin/dev`. */
+const layerBelowDev = (repo: string) => layerBelow(repo, 'origin/dev');
+
+/** Commit a change to `a.txt` on whatever branch the repo is on. */
+async function commitOn(repo: string, text: string): Promise<void> {
+  await writeFile(join(repo, 'a.txt'), `${text}\n`, 'utf8');
+  await run('git', ['-C', repo, 'commit', '-qam', text]);
+}
+
+test('a stacked layer with no pull request is reviewed against the layer below', async () => {
+  const repo = await scratchRepo('dev');
+  await fakeOrigin(repo, 'dev');
+  await run('git', ['-C', repo, 'checkout', '-q', '-b', 'fix/one']);
+  await commitOn(repo, 'one');
+  // Cut from a named start, as `git worktree add -b` does — the reflog keeps it.
+  await run('git', ['-C', repo, 'checkout', '-q', '-b', 'fix/two', 'fix/one']);
+
+  // Just cut, only uncommitted work: level with its parent, which still counts.
+  assert.equal(await layerBelowDev(repo), 'fix/one');
+
+  // While from the parent, the same empty child is not mistaken for a layer below.
+  await run('git', ['-C', repo, 'checkout', '-q', 'fix/one']);
+  assert.equal(await layerBelowDev(repo), undefined);
+  await run('git', ['-C', repo, 'checkout', '-q', 'fix/two']);
+
+  await commitOn(repo, 'two');
+  assert.equal(await layerBelowDev(repo), 'fix/one');
+
+  // The parent moving on does not lose it: where the two meet is what is read.
+  await run('git', ['-C', repo, 'checkout', '-q', 'fix/one']);
+  await commitOn(repo, 'one, later');
+  await run('git', ['-C', repo, 'checkout', '-q', 'fix/two']);
+  assert.equal(await layerBelowDev(repo), 'fix/one');
+});
+
+test('the layer above is never taken for the layer below', async () => {
+  const repo = await scratchRepo('dev');
+  await fakeOrigin(repo, 'dev');
+  await run('git', ['-C', repo, 'checkout', '-q', '-b', 'fix/one']);
+  await commitOn(repo, 'one');
+  await run('git', ['-C', repo, 'checkout', '-q', '-b', 'fix/two']);
+  await commitOn(repo, 'two');
+  await run('git', ['-C', repo, 'checkout', '-q', '-b', 'fix/three']);
+  await commitOn(repo, 'three');
+  await run('git', ['-C', repo, 'checkout', '-q', 'fix/two']);
+  assert.equal(await layerBelowDev(repo), 'fix/one');
+});
+
+test('a branch cut straight from the trunk has no layer below', async () => {
+  const repo = await scratchRepo('dev');
+  await fakeOrigin(repo, 'dev');
+  await run('git', ['-C', repo, 'checkout', '-q', '-b', 'fix/one']);
+  await commitOn(repo, 'one');
+  // Its own copy on origin sits level with it, and is not a parent.
+  await run('git', ['-C', repo, 'update-ref', 'refs/remotes/origin/fix/one', 'HEAD']);
+  assert.equal(await layerBelowDev(repo), undefined);
+});
+
+test('a level branch is the layer below only when the reflog names it', () => {
+  const branches = parseDistances('origin/dev 0 3\nfix/one 0 0\nfix/two 0 0\nfix/three 1 0\n');
+  assert.equal(pickLayerBelow(branches, 'origin/dev', 'fix/two', new Set(['fix/one'])), 'fix/one');
+  assert.equal(pickLayerBelow(branches, 'origin/dev', 'fix/two', new Set()), undefined);
+});
+
+test('the closest layer below wins, origin\'s copy on a tie', () => {
+  const branches = parseDistances('origin/dev 0 5\nfix/one 2 3\nfix/two 0 1\norigin/fix/two 0 1\n');
+  assert.equal(pickLayerBelow(branches, 'origin/dev', 'fix/three', new Set()), 'origin/fix/two');
 });
