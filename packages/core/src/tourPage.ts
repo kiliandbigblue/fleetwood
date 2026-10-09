@@ -107,7 +107,7 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 .progress-label { color: var(--dim); margin-top: var(--s2); font-variant-numeric: tabular-nums; }
 .progress-label b { color: var(--text); font-weight: 600; }
 .sections { list-style: none; margin: 0; padding: var(--s2); overflow-y: auto; flex: 1; }
-.sections li { display: grid; grid-template-columns: 16px 22px 1fr; gap: 6px; align-items: start; padding: 7px var(--s2); border-radius: var(--radius); cursor: pointer; color: var(--soft); transition: background .15s; }
+.sections li { display: grid; grid-template-columns: 16px 22px minmax(0, 1fr); gap: 6px; align-items: start; padding: 7px var(--s2); border-radius: var(--radius); cursor: pointer; color: var(--soft); transition: background .15s; }
 .sections li:hover { background: var(--hover); }
 .sections li.current { background: var(--accent-soft); color: var(--text); }
 .sections li .mark { color: var(--dim); margin-top: 2px; }
@@ -115,7 +115,7 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 .sections li.current .mark { color: var(--accent); }
 .sections li .n { color: var(--dim); font-variant-numeric: tabular-nums; }
 .sections li.current .n { color: var(--accent); }
-.sections li .t { line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.sections li .t { line-height: 1.45; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .sections li.done:not(.current) .t { color: var(--dim); }
 .sections li .tag { display: block; color: var(--dim); font-size: 11px; margin-top: 1px; }
 .sections li.uncovered .tag { color: var(--warn); }
@@ -272,8 +272,12 @@ body.resizing iframe, body.resizing .stage, body.resizing .inspector { pointer-e
 .turn.concern .reply { font-size: 13px; color: var(--soft); }
 .reply code, .reply .cite { font: 12px/1.4 var(--code); border-radius: 3px; padding: 0 2px; white-space: normal; }
 .reply code { background: var(--bg); color: var(--text); }
-.reply .cite { display: inline; border: 0; color: var(--accent); background: var(--accent-soft); cursor: pointer; }
-.reply .cite:hover:not(:disabled) { color: var(--accent); background: ${alpha(p.accent, 0.26)}; }
+.reply .cite { color: var(--accent); background: var(--accent-soft); text-decoration: none; cursor: pointer; }
+.reply .cite:hover { color: var(--accent); background: ${alpha(p.accent, 0.26)}; }
+.reply p, .reply ul { margin: 0 0 var(--s2); }
+.reply ul { padding-left: 1.2em; white-space: normal; }
+.reply li + li { margin-top: 2px; }
+.reply > :last-child { margin-bottom: 0; }
 .reply.pending { display: flex; align-items: center; gap: var(--s2); font-size: 13px; color: var(--soft); }
 .reply.pending .ask-clock { font: 12px var(--code); color: var(--accent); font-variant-numeric: tabular-nums; }
 .reply.failed { margin-left: 22px; padding: var(--s2) var(--s3); display: grid; gap: var(--s2); justify-items: start; font-size: 13px; color: var(--danger); background: var(--danger-soft); border-radius: var(--radius); }
@@ -357,6 +361,7 @@ var pollTimer;
 var announced = {};       // "id@askedAt" -> its landing was already said
 var unfolded = {};        // path -> whole file shown
 var opened = {};          // "path:a:b" -> gap expanded
+var diffOpen = {};        // path -> diff shown in a mechanical section, where it starts hidden
 var ctxOpen = {};         // "section:path:start" -> context ref unfolded
 var ctxAll = {};          // section -> every context ref listed, not just the first few
 var stale = false;
@@ -820,8 +825,10 @@ function fileEl(sf, at) {
   var file = data.files[sf.path];
   var rows = file.rows;
   var lang = langOf(sf.path);
-  var marks = rows.length ? wordDiff(sf.path) : {};
   var whole = unfolded[sf.path];
+  // Generated code can run to thousands of rows: drawn only when asked, or the page hangs.
+  var hidden = at != null && data.sections[at].mechanical && !diffOpen[sf.path] && !whole;
+  var marks = rows.length && !hidden ? wordDiff(sf.path) : {};
   var windows = whole ? [[0, rows.length - 1]] : sf.windows;
   // An added or deleted file has only one side; split would leave half the page blank.
   var split = layout === 'split' && !narrow.matches && (file.status === 'modified' || file.status === 'renamed');
@@ -872,12 +879,14 @@ function fileEl(sf, at) {
       }
     }
   }
-  windows.forEach(function (w) {
-    if (w[0] > last + 1) gap(last + 1, w[0] - 1);
-    span(w[0], w[1]);
-    last = w[1];
-  });
-  if (rows.length && last < rows.length - 1) gap(last + 1, rows.length - 1);
+  if (!hidden) {
+    windows.forEach(function (w) {
+      if (w[0] > last + 1) gap(last + 1, w[0] - 1);
+      span(w[0], w[1]);
+      last = w[1];
+    });
+    if (rows.length && last < rows.length - 1) gap(last + 1, rows.length - 1);
+  }
 
   var parts = sf.path.split('/');
   var name = parts.pop();
@@ -889,8 +898,10 @@ function fileEl(sf, at) {
       file.status !== 'modified' ? h('span', { class: 'status ' + file.status, text: file.status }) : null,
       sf.note ? h('span', { class: 'note', text: sf.note }) : null,
       h('span', { class: 'spacer' }),
-      rows.length ? h('button', { class: 'ghost', onclick: function () { unfolded[sf.path] = !whole; renderStage(); } }, whole ? 'Only this section' : 'Whole file') : null),
-    rows.length ? box : null);
+      hidden ? h('button', { class: 'ghost', onclick: function () { diffOpen[sf.path] = true; renderStage(); } }, icon('expand'),
+        'Show diff · ' + rows.filter(function (r) { return r.kind !== ' '; }).length + ' changed lines')
+      : rows.length ? h('button', { class: 'ghost', onclick: function () { unfolded[sf.path] = !whole; renderStage(); } }, whole ? 'Only this section' : 'Whole file') : null),
+    rows.length && !hidden ? box : null);
 }
 
 /* ── inspector ── */
@@ -1053,7 +1064,32 @@ function raise(c) {
 /** Answer text: backticks as code, file:line as a link to that line when the review shows it. */
 var CITE = new RegExp(BQ + '([^' + BQ + '\\n]+)' + BQ + '|((?:[\\w.-]+/)*[\\w.-]+\\.[A-Za-z]{1,5}):(\\d+)(?:[-–]\\d+)?', 'g');
 var CITE_IN = /^((?:[\w.-]+\/)*[\w.-]+\.[A-Za-z]{1,5}):(\d+)/;
+/** An answer's light markdown: paragraphs, - bullets and **bold**, around the cited code. */
 function prose(text) {
+  var frag = document.createDocumentFragment();
+  text.trim().split(/\n\s*\n/).forEach(function (block) {
+    var list = null, para = null;
+    block.split('\n').forEach(function (line) {
+      var item = /^\s*[-*]\s+(.*)$/.exec(line);
+      if (item) {
+        para = null;
+        if (!list) frag.append(list = h('ul'));
+        list.append(h('li', null, bold(item[1])));
+      } else {
+        list = null;
+        if (para) add(para, ['\n', bold(line)]);
+        else frag.append(para = h('p', null, bold(line)));
+      }
+    });
+  });
+  return frag;
+}
+
+function bold(text) {
+  return text.split(/\*\*(.+?)\*\*/).map(function (part, i) { return i % 2 ? h('strong', null, cites(part)) : cites(part); });
+}
+
+function cites(text) {
   var frag = document.createDocumentFragment();
   var last = 0, m;
   CITE.lastIndex = 0;
@@ -1089,7 +1125,8 @@ function resolveCite(file, line) {
 function citeEl(label, file, line) {
   var at = resolveCite(file, line);
   if (!at) return null;
-  return h('button', { class: 'cite', title: 'Show ' + label + ' in the code', onclick: function () { jump(at); } }, label);
+  // a link, not a button: a button wraps as one block, so a long cite would stand alone on its lines
+  return h('a', { class: 'cite', href: '#', title: 'Show ' + label + ' in the code', onclick: function (e) { e.preventDefault(); jump(at); } }, label);
 }
 
 /** Show a cited line. In this section the thread stays put and the line flashes; elsewhere the cursor goes there. */
