@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import type { Plan, PlanTicket, Ticket, TicketGroup } from '@fleetwood/core';
 // The leaf modules: the barrel re-exports tmux and process scanning, which fail
 // the renderer bundle on `node:child_process`.
-import { dueLabel, groupTickets, STAGE } from '@fleetwood/core/plan';
+import { canStart, dueLabel, groupTickets, STAGE } from '@fleetwood/core/plan';
 import { STATUS_LABEL } from '@fleetwood/core/taskStatus';
 import { agentWord } from './fleetSignals.ts';
 import { Icon } from './Icon.tsx';
@@ -325,7 +325,7 @@ function TicketRow({
         <span className="plan-ticket-title" title={ticket.title}>
           {ticket.title}
         </span>
-        {!link && waiting && (
+        {canStart(row) && (
           /* Never withheld: a `Blocked by` line is a plan, not a lock, and the
              part of a ticket that waits on nothing can always start. */
           <button

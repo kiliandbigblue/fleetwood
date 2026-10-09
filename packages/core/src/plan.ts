@@ -417,6 +417,18 @@ export function readPlan(
 }
 
 /**
+ * Whether a ticket offers `start`: no task here works it, and no pull request
+ * says anyone has got further than the board's `In Progress`.
+ *
+ * `started` with no task is the board moved by hand — Notion's `Start work`
+ * does exactly that — before anyone cut a branch, and that is the moment you
+ * reach for `start`.
+ */
+export function canStart(row: Pick<PlanTicket, 'link' | 'stage'>): boolean {
+  return !row.link && (STAGE[row.stage].status === 'not-started' || row.stage === 'started');
+}
+
+/**
  * The drawer's sections, in `TICKET_GROUPS` order, mine first in each.
  *
  * "Mine" is worked out rather than configured. A ticket I have a task for is

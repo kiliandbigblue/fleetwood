@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  canStart,
   groupFleet,
   OTHER_GROUP,
   groupTickets,
@@ -125,6 +126,16 @@ test("a ticket nobody here works reads Notion's column", () => {
   assert.equal(stage('In Review'), 'in-review');
   assert.equal(stage('Done'), 'deployed');
   assert.equal(stage('Canceled'), 'canceled');
+});
+
+test('a ticket starts while no task works it, even once the board says In Progress', () => {
+  const link: TicketLink = { task: { slug: 'dev-5', repos: [] }, agents: [] };
+  assert.equal(canStart({ stage: 'todo' }), true);
+  assert.equal(canStart({ stage: 'blocked' }), true);
+  assert.equal(canStart({ stage: 'started' }), true);
+  assert.equal(canStart({ stage: 'started', link }), false);
+  assert.equal(canStart({ stage: 'in-review' }), false);
+  assert.equal(canStart({ stage: 'deployed' }), false);
 });
 
 test('a target date reads in whole days from today, and late once it has passed', () => {
