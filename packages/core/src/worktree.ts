@@ -1,7 +1,6 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { mkdir } from 'node:fs/promises';
+import { basename, dirname } from 'node:path';
 import { run } from './exec.ts';
-import { loadConfig } from './config.ts';
 import { parseRemote } from './repoIndex.ts';
 
 export interface Worktree {
@@ -39,45 +38,6 @@ export function parseWorktrees(stdout: string): Worktree[] {
 export async function listWorktrees(repoPath: string): Promise<Worktree[]> {
   const { code, stdout } = await run('git', ['-C', repoPath, 'worktree', 'list', '--porcelain']);
   return code === 0 ? parseWorktrees(stdout) : [];
-}
-
-/** Filesystem-safe, readable, and stable for the same PR. */
-export function worktreeSlug(prNumber: number, branch: string | undefined): string {
-  const base = branch ? branch.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') : 'head';
-  return `pr-${prNumber}-${base}`.slice(0, 80);
-}
-
-export async function worktreeRoot(repoPath: string): Promise<string> {
-  const config = await loadConfig();
-  return join(repoPath, config.worktreeDir);
-}
-
-/**
- * Keep fleetwood's worktrees out of `git status` without touching the repo's
- * tracked `.gitignore` — `.git/info/exclude` is local-only, so this never shows
- * up in a diff or a PR.
- */
-export async function ensureExcluded(repoPath: string, entry = '.agents/'): Promise<void> {
-  const excludeFile = join(repoPath, '.git', 'info', 'exclude');
-  let current = '';
-  try {
-    current = await readFile(excludeFile, 'utf8');
-  } catch {
-    // A linked worktree or unusual layout: .git may be a file. Skip silently
-    // rather than guessing where the real gitdir lives.
-    try {
-      await mkdir(join(repoPath, '.git', 'info'), { recursive: true });
-    } catch {
-      return;
-    }
-  }
-  if (current.split('\n').some((l) => l.trim() === entry.trim())) return;
-  const next = current.length > 0 && !current.endsWith('\n') ? `${current}\n` : current;
-  try {
-    await writeFile(excludeFile, `${next}${entry}\n`, 'utf8');
-  } catch {
-    // Non-fatal: worse case the worktree shows as untracked.
-  }
 }
 
 export interface EnsureWorktreeResult {
@@ -334,77 +294,33 @@ export async function ensureWorktree(
   return { ok: true, path: targetDir, branch, created: true, detail: `created worktree at ${targetDir}` };
 }
 
+/** The local branch a pull request lands on when origin does not have its head — a fork's. */
+export function forkPrBranch(prNumber: number): string {
+  return `pr-${prNumber}`;
+}
+
 /**
- * Get a worktree checked out at a PR's branch, creating it only if needed.
+ * Make a pull request's head available as a local branch, and name it.
  *
- * Reuses an existing worktree for the branch when there is one, which is what
- * makes "open this PR" idempotent — and avoids git's refusal to check the same
- * branch out twice.
+ * Its own branch from origin when it is there, so the worktree can push back;
+ * `pull/N/head` into {@link forkPrBranch} otherwise, which covers forks.
  */
-export async function ensureWorktreeForPr(
+export async function fetchPrBranch(
   repoPath: string,
   prNumber: number,
   branch: string | undefined,
-): Promise<EnsureWorktreeResult> {
-  const existing = await listWorktrees(repoPath);
-
-  if (branch) {
-    const match = existing.find((w) => w.branch === branch);
-    if (match) {
-      return { ok: true, path: match.path, branch, created: false, detail: `reusing worktree at ${match.path}` };
-    }
-  }
-
-  const slug = worktreeSlug(prNumber, branch);
-  const target = join(await worktreeRoot(repoPath), slug);
-  const alreadyThere = existing.find((w) => w.path === target);
-  if (alreadyThere) {
-    return {
-      ok: true,
-      path: target,
-      branch: alreadyThere.branch ?? branch,
-      created: false,
-      detail: `reusing worktree at ${target}`,
-    };
-  }
-
-  await ensureExcluded(repoPath);
-  await mkdir(await worktreeRoot(repoPath), { recursive: true });
-
-  // Fetch the branch from origin; fall back to the PR ref, which also covers
-  // pull requests opened from forks.
-  let localBranch = branch;
-  let fetched = false;
+): Promise<{ ok: true; branch: string } | { ok: false; detail: string }> {
   if (branch) {
     const { code } = await run('git', ['-C', repoPath, 'fetch', 'origin', branch], { timeoutMs: 120_000 });
-    fetched = code === 0;
+    if (code === 0) return { ok: true, branch };
   }
-  if (!fetched) {
-    localBranch = `pr-${prNumber}`;
-    const { code, stderr } = await run(
-      'git',
-      ['-C', repoPath, 'fetch', 'origin', `pull/${prNumber}/head:refs/heads/${localBranch}`],
-      { timeoutMs: 120_000 },
-    );
-    if (code !== 0) {
-      return { ok: false, created: false, detail: `could not fetch PR #${prNumber}: ${stderr.trim()}` };
-    }
-  }
-
-  const branchExists =
-    localBranch !== undefined &&
-    (await run('git', ['-C', repoPath, 'rev-parse', '--verify', `refs/heads/${localBranch}`])).code === 0;
-
-  const args = branchExists
-    ? ['-C', repoPath, 'worktree', 'add', target, localBranch as string]
-    : ['-C', repoPath, 'worktree', 'add', '--track', '-b', localBranch as string, target, `origin/${localBranch}`];
-
-  const { code, stderr } = await run('git', args, { timeoutMs: 120_000 });
-  if (code !== 0) {
-    return { ok: false, created: false, detail: `git worktree add failed: ${stderr.trim()}` };
-  }
-
-  return { ok: true, path: target, branch: localBranch, created: true, detail: `created worktree at ${target}` };
+  const local = forkPrBranch(prNumber);
+  const { code, stderr } = await run(
+    'git',
+    ['-C', repoPath, 'fetch', 'origin', `pull/${prNumber}/head:refs/heads/${local}`],
+    { timeoutMs: 120_000 },
+  );
+  return code === 0 ? { ok: true, branch: local } : { ok: false, detail: `could not fetch PR #${prNumber}: ${stderr.trim()}` };
 }
 
 export interface RemoveResult {

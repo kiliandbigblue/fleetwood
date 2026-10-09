@@ -11,7 +11,6 @@ import {
   limits as limitsApi,
   notion as notionApi,
   notes as notesApi,
-  parsePrRef,
   paths,
   deployMarks,
   dormantWorkspaces,
@@ -91,16 +90,6 @@ const UNCLONED_SEARCH_MS = 10 * 60 * 1_000;
  * again and a quiet fleet settles at one `gh` call per poll.
  */
 let taskPrCache = new Map<string, PullRequest>();
-/**
- * `@fw_pr` → that pull request, for the sessions a PR checkout made.
- *
- * Kept across a failed lookup for the reason `taskPrs` is: a row that vanishes
- * on one flaky `gh` call reads as the pull request having gone.
- */
-let sessionPrs: Record<string, PullRequest> = {};
-/** The `@fw_pr` keys the last fleet read carried, so the PR clock knows what to ask for. */
-let sessionPrKeys: string[] = [];
-let sessionPrsInFlight = false;
 /** Cached: listing tasks runs a `git status` per repo, too costly for the 1s poll. */
 let taskCache: { at: number; tasks: Task[] } = { at: 0, tasks: [] };
 /**
@@ -280,20 +269,9 @@ async function buildSnapshot(): Promise<Snapshot> {
   });
   const fleet = { ...built, sessions: markWorkspaces(built.sessions, settings.workspaces) };
 
-  // Which PR each session is working on, so the PR list can say "already open".
-  const prSessions: Record<string, string> = {};
-  for (const session of fleet.sessions) {
-    if (session.meta.pr) prSessions[session.meta.pr] = session.name;
-  }
-  sessionPrKeys = Object.keys(prSessions);
-  // A session that just opened should not wait a whole PR poll for its row.
-  if (settings.github.enabled && sessionPrKeys.some((key) => !(key in sessionPrs))) {
-    void refreshSessionPrs();
-  }
-
   const tasks = await getTasks();
   // A task just made from a ticket should fold under its plan now, not in five
-  // minutes — the same reason a new PR session does not wait for the PR clock.
+  // minutes.
   // Spaced out after an attempt, so a Notion that keeps failing is not asked again every second.
   if (
     settings.notion.tokenCommand.trim() &&
@@ -311,8 +289,6 @@ async function buildSnapshot(): Promise<Snapshot> {
     prs,
     merged,
     taskPrs,
-    prSessions,
-    sessionPrs,
     currentSession: await tmux.currentSession(),
     hooksInstalled: hookState.claude.installed > 0,
     editor: settings.editor,
@@ -397,34 +373,6 @@ async function refreshTaskPrs(): Promise<void> {
     const next = new Map<string, PullRequest>();
     for (const pr of result.enriched) next.set(taskPrsApi.prCacheKey(pr), pr);
     taskPrCache = next;
-  }
-  await pushSnapshot();
-}
-
-/**
- * The pull request behind each PR session, one `gh pr view` apiece.
- *
- * By name rather than out of the searches: a review-requested pull request
- * leaves that list once you review it, and it is exactly then that the session
- * is still open on it. A handful of sessions at most, on the PR clock.
- */
-async function refreshSessionPrs(): Promise<void> {
-  if (sessionPrsInFlight) return;
-  sessionPrsInFlight = true;
-  try {
-    const keys = sessionPrKeys;
-    const found = await github.mapLimit(keys, 4, async (key) => {
-      const ref = parsePrRef(key);
-      return ref ? github.fetchPr(ref.repo, ref.number) : undefined;
-    });
-    const next: Record<string, PullRequest> = {};
-    keys.forEach((key, i) => {
-      const pr = found[i] ?? sessionPrs[key];
-      if (pr) next[key] = pr;
-    });
-    sessionPrs = next;
-  } finally {
-    sessionPrsInFlight = false;
   }
   await pushSnapshot();
 }
@@ -524,7 +472,7 @@ async function handle(request: Request): Promise<Response> {
     case 'refreshPrs':
       // Both lists: "refresh pull requests" is one thing to ask for, and the tab
       // and the task cards must not answer it differently.
-      await Promise.all([refreshPrs(), refreshTaskPrs(), refreshSessionPrs()]);
+      await Promise.all([refreshPrs(), refreshTaskPrs()]);
       return { ok: true, detail: 'pull requests refreshed' };
 
     case 'refreshPlans':
@@ -579,12 +527,6 @@ async function handle(request: Request): Promise<Response> {
       return result;
     }
 
-    case 'archiveSession': {
-      const result = await prSession.archivePrSession(request.session, request.force ?? false);
-      await pushSnapshot();
-      return { ok: result.ok, detail: result.detail };
-    }
-
     case 'reorderSession': {
       const plan = planReorder(request.order, request.session, request.direction);
       const result = await actions.applyReorder(plan, request.session);
@@ -602,21 +544,6 @@ async function handle(request: Request): Promise<Response> {
       const result = await actions.setSessionHidden(request.session, request.hidden);
       await pushSnapshot();
       return result;
-    }
-
-    case 'openPr': {
-      const result = await prSession.openPr({
-        repo: request.repo,
-        number: request.number,
-        branch: request.branch,
-        title: '',
-        url: '',
-        updatedAt: '',
-        isDraft: false,
-        roles: [],
-      });
-      await pushSnapshot();
-      return { ok: result.ok, detail: result.detail };
     }
 
     case 'openPrRef': {
@@ -951,7 +878,6 @@ app.whenReady().then(async () => {
   prTimer = setInterval(() => {
     void refreshPrs();
     void refreshTaskPrs();
-    void refreshSessionPrs();
   }, settings.github.pollSeconds * 1_000);
   // Its own, slower clock: a merge's CI trail takes minutes, and each new row
   // costs a `gh pr view` plus a `gh run list`.

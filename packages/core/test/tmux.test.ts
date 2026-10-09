@@ -17,18 +17,16 @@ const row = (...fields: string[]): string => fields.join(SEP);
 
 test('parseSessions reads fleetwood metadata from user options', () => {
   const stdout = [
-    row('$0', 'HOME', '0', '1785781023', '/Users/k', '', '', '', '', '', '', ''),
+    row('$0', 'HOME', '0', '1785781023', '/Users/k', '', '', '', '', ''),
     row(
       '$1',
-      'atlas-pr-1234',
+      'atlas',
       '1',
       '1785781153',
-      '/Users/k/projects/atlas/.agents/worktrees/pr-1234',
-      'pr',
+      '/Users/k/projects/atlas',
+      'project',
       'bigbluedisco/atlas',
       'feat/foo',
-      'bigbluedisco/atlas#1234',
-      '/Users/k/projects/atlas/.agents/worktrees/pr-1234',
       '',
       '',
     ),
@@ -42,8 +40,6 @@ test('parseSessions reads fleetwood metadata from user options', () => {
       'task',
       'bigbluedisco/proto,bigbluedisco/graphy',
       'fix/flow-execution-labels',
-      '',
-      '',
       'flow-execution-labels',
       '/Users/k/projects/.agents/tasks/flow-execution-labels',
     ),
@@ -57,17 +53,14 @@ test('parseSessions reads fleetwood metadata from user options', () => {
     kind: undefined,
     repo: undefined,
     branch: undefined,
-    pr: undefined,
-    worktree: undefined,
     task: undefined,
     taskdir: undefined,
   });
   assert.equal(sessions[0]?.attached, 0);
 
-  assert.equal(sessions[1]?.name, 'atlas-pr-1234');
+  assert.equal(sessions[1]?.name, 'atlas');
   assert.equal(sessions[1]?.attached, 1);
-  assert.equal(sessions[1]?.meta.kind, 'pr');
-  assert.equal(sessions[1]?.meta.pr, 'bigbluedisco/atlas#1234');
+  assert.equal(sessions[1]?.meta.kind, 'project');
   assert.equal(sessions[1]?.meta.branch, 'feat/foo');
 
   // Task sessions carry the slug, the shared branch, and every repo involved.
@@ -76,7 +69,6 @@ test('parseSessions reads fleetwood metadata from user options', () => {
   assert.equal(sessions[2]?.meta.branch, 'fix/flow-execution-labels');
   assert.equal(sessions[2]?.meta.repo, 'bigbluedisco/proto,bigbluedisco/graphy');
   assert.equal(sessions[2]?.meta.taskdir, '/Users/k/projects/.agents/tasks/flow-execution-labels');
-  assert.equal(sessions[2]?.meta.pr, undefined);
 });
 
 test('a row missing the newer fields still parses (older tmux state)', () => {
@@ -228,8 +220,6 @@ const session = (name: string, createdAt: number, attached = 0): SessionRow => (
     kind: undefined,
     repo: undefined,
     branch: undefined,
-    pr: undefined,
-    worktree: undefined,
     task: undefined,
     taskdir: undefined,
   },

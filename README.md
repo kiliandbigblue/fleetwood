@@ -19,9 +19,9 @@ fleetwood · 3 sessions · 2 working · 1 blocked
 ## Design
 
 **tmux is the source of truth.** Sessions, windows and panes are read straight from
-tmux; fleetwood never keeps its own registry of them. Session metadata (which PR,
-which branch, which worktree) is stamped onto the tmux session as user options
-(`@fw_pr`, `@fw_repo`, `@fw_branch`, `@fw_worktree`, `@fw_kind`), so it survives
+tmux; fleetwood never keeps its own registry of them. Session metadata (which task,
+which branch, which repos) is stamped onto the tmux session as user options
+(`@fw_kind`, `@fw_repo`, `@fw_branch`, `@fw_task`, `@fw_taskdir`), so it survives
 restarts and is inspectable with plain `tmux show-options`.
 
 **Status comes from the agents themselves.** A tiny `sh` hook, installed alongside
@@ -153,9 +153,10 @@ guessed onto the wrong terminal. `fw doctor` reports both numbers.
   the conversation, not by its pane id. Every directory you have ever cloned is
   still there on `prefix+G`, where it stops competing with the work in front of
   you. See **prefix+g**.
-- **PR → session in one click.** Find-or-create: an existing session for that PR is
-  focused, otherwise a dedicated git worktree and tmux session are built and stamped.
-  Clicking twice never gives you two sessions.
+- **PR → task in one click.** Find-or-create: the task already holding the PR's
+  branch is focused, otherwise a task is built with one worktree on that branch —
+  so a pull request gets the same card, PR row and review as any other work.
+  Clicking twice never gives you two tasks.
 - **Any PR, not just the listed ones.** The PR tab is two searches — yours, and the
   ones asking for your review — so a pull request somebody links you in Slack was
   in neither, and there was nowhere in the app to put it. Paste its URL into ⌘K and
@@ -611,7 +612,7 @@ space instead is which repos the task touches — `7 wt · graphy proto reflow`
 answers the question `7 wt` only counted — and, since a row can only be found by
 what it shows, it is also what makes typing `proto` find the task that touches
 proto. What is left in the branch's own case is a branch the name does not
-already give you: a PR session's `fix/address-validation`, or a stack layer.
+already give you: a stack layer's.
 A worktree with no GitHub remote falls back to its directory, with the task's
 own slug taken back off it (`read-later-ui-read-later-ui-improve` is a repo
 called `read-later-ui`).
@@ -977,7 +978,7 @@ fw watch              the fleet, refreshed live
 fw agents             flat list, most urgent first
 fw limits             plan quota: Claude windows, Cursor cycle / today
 fw prs                PRs awaiting your review, and your own
-fw open-pr <ref>      focus a PR's session, or build one on a fresh worktree
+fw open-pr <ref>      focus the task holding a PR's branch, or build one
 fw approve [pane]     answer yes to a blocked agent
 fw deny [pane]        answer no
 fw kill-agent <pane|key>  close one agent, leaving its pane and session alone
@@ -1026,9 +1027,8 @@ on next start, so no history is lost either way.
 
 ## Conventions worth knowing
 
-- **Worktrees** live at `<repo>/.agents/worktrees/<slug>`, added to
-  `.git/info/exclude` (local-only — never your tracked `.gitignore`). Removal
-  refuses to discard uncommitted work unless forced.
+- **Worktrees** live in their task folder, `<taskRoot>/<slug>/<repo>-<branch>`.
+  Removal refuses to discard uncommitted work unless forced.
 - **Session names** match the existing `tmux-sessionizer` (`basename | tr . _`), so
   `prefix+g` and fleetwood always agree that a project has one session.
 - **Agent detection reads full argv, never the process name.** Claude Code's pane

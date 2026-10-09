@@ -44,16 +44,6 @@ export interface Snapshot {
    * task read or leave half of every `Task` stale.
    */
   taskPrs?: TaskPrs;
-  /** Session names that fleetwood stamped, keyed by PR key, for link badges. */
-  prSessions: Record<string, string>;
-  /**
-   * The pull request each PR session is checked out on, keyed by PR key.
-   *
-   * Looked up by name rather than out of `prs`: a review you have already
-   * submitted drops out of the review-requested search, and the session working
-   * it would lose its row the moment you did the thing it was opened for.
-   */
-  sessionPrs: Record<string, PullRequest>;
   /**
    * The session the terminal you are at is showing — see `tmux.currentSession`.
    *
@@ -140,7 +130,6 @@ export type Request =
   | { kind: 'killSession'; session: string }
   /** Close one agent by its fleet key — pids are resolved in main, never sent from a snapshot. */
   | { kind: 'killAgent'; key: string }
-  | { kind: 'archiveSession'; session: string; force?: boolean }
   /**
    * Move a session up or down the fleet, by renaming its order prefix.
    *
@@ -174,9 +163,8 @@ export type Request =
    * back where it was rather than at the end.
    */
   | { kind: 'setSessionHidden'; session: string; hidden: boolean }
-  | { kind: 'openPr'; repo: string; number: number; branch?: string }
   /**
-   * The same thing for a pull request no list holds — ⌘K on a pasted URL.
+   * Open a pull request as a task — from the PR list, or ⌘K on a pasted URL.
    *
    * A ref rather than a parsed repo and number, so the one parser in core is
    * what decides what a pull request URL is; the renderer only tests whether it

@@ -17,8 +17,7 @@ import {
 import { DEFAULT_CONFIG } from '../src/config.ts';
 import type { WorkflowRun } from '../src/deployState.ts';
 import { parseRemote } from '../src/repoIndex.ts';
-import { parseWorktrees, worktreeSlug } from '../src/worktree.ts';
-import { prSessionName } from '../src/prSession.ts';
+import { parseWorktrees } from '../src/worktree.ts';
 
 test('session names match what tmux-sessionizer already produces', () => {
   // The existing script is `basename | tr . _`. Diverging here would give one
@@ -150,19 +149,7 @@ detached
   assert.equal(worktrees[2]?.branch, undefined, 'detached worktrees have no branch');
 });
 
-test('worktree slugs are filesystem-safe and stable per PR', () => {
-  assert.equal(worktreeSlug(3671, 'fix/address-validation'), 'pr-3671-fix-address-validation');
-  assert.equal(worktreeSlug(12, 'feature/DEV-1189_partial'), 'pr-12-feature-DEV-1189_partial');
-  assert.equal(worktreeSlug(9, undefined), 'pr-9-head');
-  // Same input, same slug — that is what makes reopening idempotent.
-  assert.equal(worktreeSlug(3671, 'fix/address-validation'), worktreeSlug(3671, 'fix/address-validation'));
-  assert.ok(!worktreeSlug(1, 'a/../../etc/passwd').includes('/'), 'no path traversal in a slug');
-});
 
-test('PR session names are derived from the repo, not the whole slug', () => {
-  assert.equal(prSessionName('bigbluedisco/atlas', 3671), 'atlas-pr-3671');
-  assert.equal(prSessionName('bigbluedisco/atlas-ui', 2346), 'atlas-ui-pr-2346');
-});
 
 // --- merge → build → deploy roll-up ----------------------------------------
 

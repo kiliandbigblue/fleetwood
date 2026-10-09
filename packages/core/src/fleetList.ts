@@ -52,7 +52,7 @@ import type { AgentStatus, SessionMeta } from './types.ts';
  */
 export function isWorkSession(meta: SessionMeta): boolean {
   return (
-    meta.kind === 'task' || meta.kind === 'pr' || meta.kind === 'workspace' || meta.task !== undefined
+    meta.kind === 'task' || meta.kind === 'workspace' || meta.task !== undefined
   );
 }
 

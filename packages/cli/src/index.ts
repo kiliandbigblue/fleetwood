@@ -74,7 +74,7 @@ ${c.bold('commands')}
   notes edit        the same, in $EDITOR ${c.dim('(~/.fleetwood/notes.md, saved as you type in the panel)')}
 
   prs               pull requests awaiting your review, and your own
-  open-pr <ref>     focus the session for a PR, or build one on a fresh worktree
+  open-pr <ref>     focus the task holding a PR's branch, or build one
   switch [--all]    pick a live session, one agent's pane, or a dormant task
                     ${c.dim('the fleet in an fzf popup — what `prefix+g` runs')}
   switch --projects every directory under your project roots, session or not
@@ -227,7 +227,6 @@ async function cmdSessions(json: boolean): Promise<void> {
       s.meta.kind && c.accent(s.meta.kind),
       s.meta.repo && c.branch(s.meta.repo),
       s.meta.branch && c.warn(s.meta.branch),
-      s.meta.pr && c.danger(s.meta.pr),
     ]
       .filter(Boolean)
       .join(c.muted(' · '));
@@ -502,9 +501,9 @@ async function cmdPrs(json: boolean): Promise<void> {
   const mergedCfg = settings.github.merged;
   // Shared with the app, so marking one deployed there shows here too.
   const marks = await deployMarks.loadMarks();
-  const [lists, sessions, mergedList] = await Promise.all([
+  const [lists, tasks, mergedList] = await Promise.all([
     github.fetchPrs(),
-    tmux.listSessions(),
+    taskApi.listTasks(),
     mergedCfg.enabled
       ? github.fetchMergedPrs({ config: mergedCfg, marks })
       : Promise.resolve({ prs: [] as MergedPr[], fetchedAt: 0, degraded: false }),
@@ -517,7 +516,8 @@ async function cmdPrs(json: boolean): Promise<void> {
     return;
   }
 
-  const linked = new Set(sessions.map((s) => s.meta.pr).filter(Boolean) as string[]);
+  // By head branch, as the app's PR list does — a task's PRs share its branch.
+  const linked = new Set(tasks.map((t) => t.branch));
 
   const section = (title: string, prs: PullRequest[]): void => {
     process.stdout.write(`\n${c.bold(title)} ${c.muted(`(${prs.length})`)}\n`);
@@ -526,11 +526,10 @@ async function cmdPrs(json: boolean): Promise<void> {
       return;
     }
     for (const pr of prs) {
-      const key = `${pr.repo}#${pr.number}`;
-      const session = linked.has(key) ? c.ok(' ⇄ session') : '';
+      const task = pr.branch && linked.has(pr.branch) ? c.ok(' ⇄ task') : '';
       const draft = pr.isDraft ? c.dim(' draft') : '';
       process.stdout.write(
-        `  ${checksMark(pr)} ${c.bold(pad(`#${pr.number}`, 7))} ${c.muted(pad(pr.repo, 24))} ${pad(pr.title.slice(0, 46), 46)} ${pad(reviewMark(pr), 14)}${draft}${session}\n`,
+        `  ${checksMark(pr)} ${c.bold(pad(`#${pr.number}`, 7))} ${c.muted(pad(pr.repo, 24))} ${pad(pr.title.slice(0, 46), 46)} ${pad(reviewMark(pr), 14)}${draft}${task}\n`,
       );
     }
   };

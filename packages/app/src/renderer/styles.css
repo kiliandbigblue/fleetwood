@@ -1602,8 +1602,7 @@ button {
  *
  * The filled, rounded patch made `tmux` — an inert label on the least urgent
  * row in the fleet — the most solid object on screen, louder than the agent
- * that was running. `.badge.pr` keeps the fill, because `#3788` is an
- * identifier you click; the rest are words, and words can just be words.
+ * that was running. Words can just be words.
  */
 .badge {
   font-size: var(--fs-micro);
@@ -1619,7 +1618,7 @@ button {
  * rather than a departure from it — the cards that are *not* tasks are the ones
  * worth a word, and they are the rare ones. What is left in this slot is that
  * word, so it is set at the weight of resting furniture and not at the weight of
- * a state. `.badge.pr` keeps its own treatment: `#3788` is an identifier.
+ * a state.
  */
 .badge.kind {
   color: var(--dim);
@@ -1634,12 +1633,6 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.badge.pr {
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--edge);
-  color: var(--warn);
 }
 
 .path {

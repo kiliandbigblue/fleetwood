@@ -25,12 +25,10 @@ export type StatusProvenance =
 
 /** Fleetwood metadata stamped onto a tmux session as user options. */
 export interface SessionMeta {
-  kind?: 'project' | 'pr' | 'worktree' | 'scratch' | 'task' | 'workspace';
+  kind?: 'project' | 'worktree' | 'scratch' | 'task' | 'workspace';
   /** Comma-separated for a task, which spans several. */
   repo?: string; // "bigbluedisco/atlas"
   branch?: string;
-  pr?: string; // "bigbluedisco/atlas#1234"
-  worktree?: string; // absolute path
   /** Task slug, for a session working a multi-repo task. */
   task?: string;
   /** The folder holding that task's worktrees. */

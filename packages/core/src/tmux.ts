@@ -18,8 +18,6 @@ const SESSION_FIELDS = [
   '@fw_kind',
   '@fw_repo',
   '@fw_branch',
-  '@fw_pr',
-  '@fw_worktree',
   '@fw_task',
   '@fw_taskdir',
 ] as const;
@@ -130,8 +128,6 @@ export function parseSessions(stdout: string): SessionRow[] {
           kind: optional(f['@fw_kind']) as SessionMeta['kind'],
           repo: optional(f['@fw_repo']),
           branch: optional(f['@fw_branch']),
-          pr: optional(f['@fw_pr']),
-          worktree: optional(f['@fw_worktree']),
           task: optional(f['@fw_task']),
           taskdir: optional(f['@fw_taskdir']),
         },
@@ -428,8 +424,6 @@ const META_OPTIONS: Record<keyof SessionMeta, string> = {
   kind: '@fw_kind',
   repo: '@fw_repo',
   branch: '@fw_branch',
-  pr: '@fw_pr',
-  worktree: '@fw_worktree',
   task: '@fw_task',
   taskdir: '@fw_taskdir',
 };

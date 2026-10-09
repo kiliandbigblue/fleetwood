@@ -20,8 +20,6 @@ interface Props {
   merged: MergedPrs | undefined;
   /** Used to recognise a PR as part of a task, by its head branch. */
   tasks: Task[];
-  /** PR key → session name, for PRs already being worked on. */
-  prSessions: Record<string, string>;
   onResult: (message: string, ok: boolean) => void;
 }
 
@@ -72,14 +70,12 @@ export const REVIEW_LABEL: Record<string, string> = {
 
 function PrRow({
   pr,
-  session,
   task,
   stack,
   railed,
   onResult,
 }: {
   pr: PullRequest;
-  session: string | undefined;
   task: Task | undefined;
   /** Where this pull request sits in its stack, when it is in one. */
   stack?: StackRow<PullRequest>;
@@ -95,18 +91,14 @@ function PrRow({
 
   // Reading a pull request is the common case; working on one is the chip.
   const open = (): void => void act({ kind: 'openExternal', url: pr.url });
-  const work = (): void => {
-    if (session) {
-      void act({ kind: 'focusSession', session });
-      return;
-    }
-    void act({ kind: 'openPr', repo: pr.repo, number: pr.number, branch: pr.branch });
-  };
+  const session = task?.session;
+  const work = (): void =>
+    void act(session ? { kind: 'focusSession', session } : { kind: 'openPrRef', ref: `${pr.repo}#${pr.number}` });
 
   const owes = pr.reviewDecision === 'CHANGES_REQUESTED' && pr.roles.includes('mine');
   return (
     /* The row is the target, as on the fleet: Enter or a click opens the pull
-       request on GitHub, and the chip goes to its session or makes one.
+       request on GitHub, and the chip goes to its task or makes one.
        `list-stop` puts it on the j/k walk; `owes` is what `n` looks for. */
     <div
       className={`pr list-stop${owes ? ' owes' : ''}`}
@@ -154,9 +146,9 @@ function PrRow({
               event.stopPropagation();
               work();
             }}
-            title={session ? `focus ${sessionLabel(session)}` : 'create a worktree and a tmux session for it'}
+            title={session ? `focus ${sessionLabel(session)}` : task ? `start task ${task.slug}` : 'open it as a task'}
           >
-            {session ? 'focus' : 'worktree'}
+            {session ? 'focus' : 'task'}
           </button>
         </span>
       </div>
@@ -187,11 +179,6 @@ function PrRow({
         {task && (
           <span className="linked" title={`part of task ${task.slug} (${task.repos.length} repo${task.repos.length === 1 ? '' : 's'})`}>
             ⇄ {task.slug}
-          </span>
-        )}
-        {session && !task && (
-          <span className="linked" title={`session ${session}`}>
-            ⇄ {sessionLabel(session)}
           </span>
         )}
       </div>
@@ -303,7 +290,7 @@ function MergedRow({
   );
 }
 
-export function PrList({ prs, merged, tasks, prSessions, onResult }: Props): React.JSX.Element {
+export function PrList({ prs, merged, tasks, onResult }: Props): React.JSX.Element {
   const taskByBranch = new Map(tasks.map((t) => [t.branch, t]));
   /**
    * The last row marked deployed, so a misclick is one click to undo.
@@ -435,7 +422,6 @@ export function PrList({ prs, merged, tasks, prSessions, onResult }: Props): Rea
             <PrRow
               key={`${row.pr.repo}#${row.pr.number}`}
               pr={row.pr}
-              session={prSessions[`${row.pr.repo}#${row.pr.number}`]}
               task={row.pr.branch ? taskByBranch.get(row.pr.branch) : undefined}
               stack={row}
               railed={railed}

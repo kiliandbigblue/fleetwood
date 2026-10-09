@@ -378,7 +378,7 @@ function agentTail(agent: FleetAgent, layout: Layout): string {
  * `3 wt · proto graphy` answers the question `3 wt` only counted.
  *
  * What is left in the branch's own case is the branch the name does not already
- * give you: a PR session's `fix/address-validation`, or a stack layer.
+ * give you: a stack layer's.
  */
 function tail(target: SwitchTarget, layout: Layout): string {
   const branch = target.branch;

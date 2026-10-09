@@ -1,10 +1,9 @@
-import type { FleetSession, PullRequest, TaskPr } from '@fleetwood/core';
+import type { FleetSession } from '@fleetwood/core';
 import { sessionLabel } from '@fleetwood/core/sessionOrder';
 import { AgentRow } from './AgentRow.tsx';
 import { CardMenu } from './CardMenu.tsx';
 import type { MenuItem } from './CardMenu.tsx';
 import { Slug } from './Slug.tsx';
-import { numColStyle, PrRow } from './TaskCard.tsx';
 import { send, shortenPath, tildify } from './api.ts';
 import { blockedPane, byUrgency, leadNote, liveSeverity, needsYouLabel, workingIsGuessed } from './fleetSignals.ts';
 import type { Severity } from './fleetSignals.ts';
@@ -24,11 +23,6 @@ export function sevNote(state: Severity, attached: boolean, guessed = false): st
 
 interface Props {
   session: FleetSession;
-  /**
-   * The pull request this session is checked out on, when it is a PR session
-   * and the lookup has come back. Absent until then, and the badge stands in.
-   */
-  pr?: PullRequest;
   /** Session names in fleet order, for the reorder arrows. */
   order: string[];
   onResult: (message: string, ok: boolean) => void;
@@ -38,7 +32,7 @@ interface Props {
   here?: boolean;
 }
 
-export function SessionCard({ session, pr, order, onResult, here }: Props): React.JSX.Element {
+export function SessionCard({ session, order, onResult, here }: Props): React.JSX.Element {
   const act = async (request: Parameters<typeof send>[0]): Promise<void> => {
     const result = await send(request);
     onResult(result.detail, result.ok);
@@ -47,30 +41,18 @@ export function SessionCard({ session, pr, order, onResult, here }: Props): Reac
   const agents = byUrgency(session.agents);
   const paneCount = session.windows.reduce((n, w) => n + w.panes.length, 0);
   const cwd = session.windows[0]?.panes[0]?.cwd ?? session.path;
-  const isPr = session.meta.kind === 'pr';
-  // The task card's row, fed the one pull request this checkout is on. `head`
-  // because that is literally how it belongs here: the session is its branch.
-  const prRow: TaskPr | undefined = pr && {
-    ...pr,
-    branch: pr.branch ?? session.meta.branch ?? '',
-    via: 'head',
-  };
   // No repos or pull requests to weigh — a bare session's mark is agents only,
   // by the same rule a live task card's is, so the two marks mean one thing.
   const state = liveSeverity(session.agents);
   const needsYou = needsYouLabel(session.agents);
   const guessed = state === 'ok' && workingIsGuessed(session.agents);
   const askingPane = blockedPane(session.agents);
-  const prNumber = session.meta.pr?.split('#')[1];
-  const prNumberInName = prNumber !== undefined && sessionLabel(session.name).includes(prNumber);
 
   /*
    * What this card can do, behind the header's dot column — as on a task group.
    *
    * A bare session has less to offer than a task does: two agents and the one
-   * way to end it. Which way that is depends on what made the session — a pull
-   * request checkout has a worktree to take with it, and everything else is
-   * just a tmux session to kill.
+   * way to end it.
    */
   const actions: MenuItem[] = [
     {
@@ -83,21 +65,13 @@ export function SessionCard({ session, pr, order, onResult, here }: Props): Reac
       title: 'new window running cursor-agent',
       onClick: () => void act({ kind: 'spawnAgent', session: session.name, cwd, tool: 'cursor' }),
     },
-    isPr
-      ? {
-          label: 'archive',
-          title: 'kill the session and remove its worktree',
-          danger: true,
-          confirm: true,
-          onClick: () => void act({ kind: 'archiveSession', session: session.name }),
-        }
-      : {
-          label: 'kill session',
-          title: 'kill this tmux session and every pane in it',
-          danger: true,
-          confirm: true,
-          onClick: () => void act({ kind: 'killSession', session: session.name }),
-        },
+    {
+      label: 'kill session',
+      title: 'kill this tmux session and every pane in it',
+      danger: true,
+      confirm: true,
+      onClick: () => void act({ kind: 'killSession', session: session.name }),
+    },
   ];
 
   return (
@@ -149,12 +123,7 @@ export function SessionCard({ session, pr, order, onResult, here }: Props): Reac
          * since fleetwood is the only thing that ever writes that option. So the
          * word goes on the cards that had none.
          */}
-        {/* The row below carries the number once it is in; until then this does. */}
-        {/* Not when the name already carries it: `pr atlas 4821 #4821` said the
-            number twice on one line. */}
-        {prRow || prNumberInName ? null : session.meta.pr ? (
-          <span className="badge pr">#{prNumber}</span>
-        ) : session.meta.kind ? (
+        {session.meta.kind ? (
           <span className="badge kind">{session.meta.kind}</span>
         ) : (
           <span className="badge kind" title="a tmux session fleetwood did not create — no task, no worktree">
@@ -192,13 +161,6 @@ export function SessionCard({ session, pr, order, onResult, here }: Props): Reac
               no agents · {paneCount} pane{paneCount === 1 ? '' : 's'}
             </span>
           </div>
-        </div>
-      )}
-
-      {/* Where a task card keeps its pull requests, drawn by the same row. */}
-      {prRow && (
-        <div className="task-prs" style={numColStyle([prRow])}>
-          <PrRow pr={prRow} onResult={onResult} />
         </div>
       )}
     </div>

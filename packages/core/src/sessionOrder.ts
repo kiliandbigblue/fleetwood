@@ -131,9 +131,9 @@ export function nameWithHidden(name: string, hidden: boolean): string {
  * Whether two names are the same session, prefix or no prefix.
  *
  * Every find-or-create path in fleetwood recognises a session by the name it
- * would have given it — `openProject`, `ensureTaskSession`, the PR session's
- * last-resort match. Comparing raw names there would see `20-fleetwood` as a
- * stranger and create a second session called `fleetwood`, which is the one
+ * would have given it — `openProject`, `ensureTaskSession`. Comparing raw
+ * names there would see `20-fleetwood` as a stranger and create a second
+ * session called `fleetwood`, which is the one
  * failure this whole feature could plausibly cause. Hiding is the same hazard
  * with a louder failure — a hidden session nothing can find again — and is
  * covered by the same comparison: `-fleetwood` is `fleetwood`.

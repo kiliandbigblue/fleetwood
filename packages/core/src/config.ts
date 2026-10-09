@@ -69,13 +69,6 @@ export interface Config {
   workspaces: string[];
   /** Named repo constellations, e.g. `flow: [proto, graphy]`. */
   repoGroups: Record<string, string[]>;
-  /**
-   * Where PR worktrees go, relative to the repo root.
-   *
-   * `.agents/worktrees` is deliberately tool-agnostic: it leaves room for other
-   * agent-related state beside it without colonising `.claude/` or `.cursor/`.
-   */
-  worktreeDir: string;
   /** GitHub searches driving the PR lists. */
   github: {
     enabled: boolean;
@@ -218,7 +211,6 @@ export const DEFAULT_CONFIG: Config = {
   taskRoot: join(homedir(), 'projects', '.agents', 'tasks'),
   workspaces: [],
   repoGroups: {},
-  worktreeDir: '.agents/worktrees',
   github: {
     enabled: true,
     pollSeconds: 60,

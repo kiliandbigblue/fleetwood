@@ -636,6 +636,11 @@ export interface CreateTaskInput {
   repos: string[];
   branchOverrides?: Record<string, string>;
   /**
+   * The task's branch when it already exists — a pull request's head — rather
+   * than one built from type, microservice and summary.
+   */
+  branch?: string;
+  /**
    * Agent to start at the task root. Defaults to `'none'`.
    *
    * Creating a task and choosing what runs in it are two decisions, and only the
@@ -680,7 +685,7 @@ function skippedRepos(results: TaskResult['repoResults']): string {
  * session rather than making a second one, the same contract as opening a PR.
  */
 export async function createTask(input: CreateTaskInput): Promise<TaskResult> {
-  const branch = buildBranch(input.type, input.microservice, input.summary);
+  const branch = input.branch ?? buildBranch(input.type, input.microservice, input.summary);
   const slug = branchToSlug(branch);
   const dir = await taskDirFor(slug);
   const repoResults: TaskResult['repoResults'] = [];

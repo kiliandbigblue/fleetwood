@@ -7,7 +7,6 @@ const at = (path: string, meta: SessionMeta = {}): { path: string; meta: Session
 
 test('the fleet list is the work fleetwood set up', () => {
   assert.equal(isWorkSession({ kind: 'task', task: 'ui-hide-non-task-sessions' }), true);
-  assert.equal(isWorkSession({ kind: 'pr', pr: 'bigbluedisco/atlas#3671' }), true);
 });
 
 test('a session fleetwood never created is not in it', () => {
@@ -42,14 +41,14 @@ test('a session rooted at a workspace is in the list', () => {
 });
 
 test('a session that says what it is keeps its kind in a workspace', () => {
-  const [pr, task] = markWorkspaces(
+  const [project, task] = markWorkspaces(
     [
-      at('/Users/me/projects/os', { kind: 'pr' }),
+      at('/Users/me/projects/os', { kind: 'project' }),
       at('/Users/me/projects/os', { task: 'os-main' }),
     ],
     ['/Users/me/projects/os'],
   );
-  assert.equal(pr?.meta.kind, 'pr');
+  assert.equal(project?.meta.kind, 'project');
   assert.equal(task?.meta.kind, undefined);
 });
 

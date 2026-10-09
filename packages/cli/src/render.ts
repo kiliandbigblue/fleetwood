@@ -235,11 +235,10 @@ export function renderFleet(
     ]
       .filter(Boolean)
       .join(' ');
-    const pr = session.meta.pr ? c.warn(` ${session.meta.pr}`) : '';
     const branch = session.meta.branch ? c.branch(` ${session.meta.branch}`) : '';
 
     lines.push(
-      `${attached} ${c.bold(pad(sessionLabel(session.name), nameWidth))}${attention} ${kind}${branch}${pr} ${c.muted(tildify(session.path))} ${c.dim(relativeAge(session.createdAt))}`,
+      `${attached} ${c.bold(pad(sessionLabel(session.name), nameWidth))}${attention} ${kind}${branch} ${c.muted(tildify(session.path))} ${c.dim(relativeAge(session.createdAt))}`,
     );
 
     if (session.agents.length === 0) {

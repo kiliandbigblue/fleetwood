@@ -618,7 +618,6 @@ export function App(): React.JSX.Element {
       <SessionCard
         key={session.sessionId}
         session={session}
-        pr={session.meta.pr ? snapshot?.sessionPrs?.[session.meta.pr] : undefined}
         order={rowOrder}
         onResult={onResult}
         here={here}
@@ -910,7 +909,6 @@ export function App(): React.JSX.Element {
             prs={snapshot.prs}
             merged={snapshot.merged}
             tasks={snapshot.tasks}
-            prSessions={snapshot.prSessions}
             onResult={onResult}
           />
         )}
