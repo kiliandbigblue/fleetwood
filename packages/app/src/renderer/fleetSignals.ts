@@ -146,6 +146,25 @@ export function agentLabel(agent: Pick<FleetAgent, 'status' | 'activity'>): stri
 }
 
 /**
+ * What a task's agents are doing, in a word, for a line that names the task
+ * rather than drawing its card — the plan drawer's.
+ *
+ * Said only when it is something: an idle Claude at its prompt is every task's
+ * resting state. A task with no session is `parked`, which is worth saying —
+ * nothing is moving it. `danger` when the word is a prompt waiting on you.
+ */
+export function agentWord(
+  agents: ReadonlyArray<Pick<FleetAgent, 'status'>>,
+  hasSession: boolean,
+): { text: string; danger: boolean } | undefined {
+  const lead = byUrgency(agents)[0];
+  if (lead && lead.status !== 'idle' && lead.status !== 'gone') {
+    return { text: AGENT_STATUS_LABEL[lead.status], danger: lead.status === 'blocked_permission' };
+  }
+  return hasSession ? undefined : { text: 'parked', danger: false };
+}
+
+/**
  * A parked task's pull requests, in the one phrase its folded card has room for.
  *
  * The most pressing state wins: someone asked for changes, then checks failing

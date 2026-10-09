@@ -806,7 +806,8 @@ button {
  * blocked card's band is drawn over this one. Before `.attention` on purpose:
  * where the two meet, the card that needs you wins the fill.
  */
-.card.here {
+.card.here,
+.plan-ticket.here {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, var(--accent) 40%, transparent),
@@ -5096,26 +5097,102 @@ body:has(.warning) {
   content: none;
 }
 
+/*
+ * The rail row's caption: the milestone's progress as a short bar and its
+ * number, then the date. The bar is the one shape here, so the row reads as how
+ * far the milestone is before a single word is read.
+ */
+.plan-caption {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+}
+/* Unlike a task card's caption, this one is what the row is for: the name
+   gives way to it, not the other way round. */
+.repo-summary:has(> .plan-caption) {
+  flex: none;
+}
+
+.plan-meter {
+  flex: none;
+  position: relative;
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--edge);
+  overflow: hidden;
+}
+.plan-meter.wide {
+  width: 96px;
+}
+.plan-meter > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--soft);
+}
+/* Finished is the one state the bar colours: the milestone has nothing left. */
+.plan-meter.full > span {
+  background: var(--ok);
+}
+
+/* Late, or a prompt waiting: said in words, coloured only so it is not missed. */
+.plan-alarm {
+  color: var(--danger);
+}
+
 .plan-view {
   display: flex;
   flex-direction: column;
 }
 
+/*
+ * The milestone's name heads the drawer at the fleet's own title size, with its
+ * facts on one quiet line under it. The name was left to the rail before, which
+ * made the drawer the one page in the panel that never said what it was.
+ */
 .plan-view-head {
   display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: var(--s3);
-  padding: var(--s3) var(--indent);
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s4) var(--s4) var(--s3) var(--indent);
 }
 
 .plan-view-name {
-  font-size: var(--fs-body);
-  color: var(--soft);
+  align-self: flex-start;
+  padding: 0;
+  font-family: var(--mono-display);
+  font-variant-ligatures: none;
+  font-size: var(--fs-head);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--text);
   text-align: left;
 }
-.plan-view-name:hover {
+.plan-view-name > span {
+  color: var(--dim);
+}
+.plan-view-name:hover > span {
   color: var(--text);
+}
+
+.plan-view-facts {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s4);
+  font-size: var(--fs-body);
+  font-variant-numeric: tabular-nums;
+  color: var(--soft);
+}
+.plan-view-facts > .chip {
+  margin-left: auto;
+}
+
+.plan-view-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s3);
 }
 
 /* Each group starts with the list's own seam, as the fleet's sections do. */
@@ -5125,10 +5202,36 @@ body:has(.warning) {
   border-top: 1px solid var(--edge);
 }
 
-/* On the rows' geometry: the mark in the mark column, the id on the rail. */
+/* The folded section's heading is its own toggle, chevron after the count. */
+.plan-fold {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: calc(100% - 2 * var(--s4));
+  text-align: left;
+}
+.plan-fold:hover {
+  color: var(--text);
+}
+.plan-fold .icon {
+  width: 12px;
+  height: 12px;
+  transition: transform 150ms ease-out;
+}
+.plan-fold.open .icon {
+  transform: rotate(90deg);
+}
+
+/*
+ * On the rows' geometry: the mark in the mark column, the id on the rail.
+ *
+ * One step up from where it was: the title at the note size and the line under
+ * it at body size. At 12 and 11 the drawer read as fine print beside the fleet
+ * list it opens from, and a ticket title is a sentence, meant to be read.
+ */
 .plan-ticket {
-  padding: 0 var(--s4) var(--s2) calc(var(--row-indent) - var(--mark-col));
-  font-size: var(--fs-body);
+  padding: var(--s1) var(--s4) var(--s3) calc(var(--row-indent) - var(--mark-col));
+  font-size: var(--fs-note);
 }
 
 /* Landed work has stopped asking for anything, so it steps back like a merged PR row. */
@@ -5151,20 +5254,31 @@ body:has(.warning) {
 }
 
 /* An identifier, so mono like every other one — and a column, so titles line up. */
-.plan-ticket-id {
+.plan-ticket-id,
+.plan-ticket-task {
   flex: none;
+  padding: 0;
   font-family: var(--mono);
+  font-size: var(--fs-body);
   font-variant-numeric: tabular-nums;
   color: var(--dim);
   border-radius: 4px;
 }
-.plan-ticket-id:hover {
+.plan-ticket-task {
+  color: var(--soft);
+}
+.plan-ticket-id:hover,
+.plan-ticket-task:hover {
   color: var(--text);
 }
-.plan-ticket-id:focus-visible {
+.plan-ticket-id:focus-visible,
+.plan-ticket-task:focus-visible {
   outline: none;
   color: var(--text);
   background: color-mix(in srgb, var(--text) 7%, transparent);
+}
+.plan-ticket.here .plan-ticket-task {
+  color: var(--accent);
 }
 
 .plan-ticket-title {
@@ -5173,19 +5287,46 @@ body:has(.warning) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--text);
 }
 
-/* The board disagrees: loud enough to be seen, a marker rather than an alarm. */
-.plan-drift {
-  flex: none;
-  font-size: var(--fs-micro);
+/*
+ * Where the ticket has got to, then who is on it. The stage leads and is the
+ * only part with a colour of its own, and only when it is an errand or the
+ * finish line — every other stage is said in the line's own grey.
+ */
+.plan-ticket-meta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 var(--s2);
+  padding-left: var(--mark-col);
+  font-size: var(--fs-body);
+  color: var(--soft);
+}
+.plan-ticket-meta > * + *::before {
+  content: '·';
+  margin-right: var(--s2);
+  color: var(--dim);
+}
+.plan-stage {
+  font-weight: 500;
+  color: var(--text);
+}
+.plan-stage:is([data-stage='todo'], [data-stage='stackable'], [data-stage='blocked'], [data-stage='canceled']) {
+  color: var(--dim);
+}
+.plan-stage:is([data-stage='changes'], [data-stage='failing'], [data-stage='deploy-failed']) {
+  color: var(--danger);
+}
+.plan-stage[data-stage='built'] {
   color: var(--warn);
 }
-
-.plan-ticket-meta {
-  padding-left: var(--mark-col);
-  font-size: var(--fs-micro);
-  color: var(--soft);
+.plan-stage[data-stage='deployed'] {
+  color: var(--ok);
+}
+.plan-here {
+  color: var(--accent);
 }
 
 /* A chip that cannot act says so at rest and under the pointer. */

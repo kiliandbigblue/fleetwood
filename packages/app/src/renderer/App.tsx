@@ -24,7 +24,7 @@ import { needsDeploy } from '@fleetwood/core/deployState';
 import { isHidden, sessionLabel, sortSessions } from '@fleetwood/core/sessionOrder';
 import { isFleetSession } from '@fleetwood/core/fleetList';
 import { dormantTasks } from '@fleetwood/core/taskView';
-import { groupFleet, hasLiveAgent, linkTickets, OTHER_GROUP, readPlan, ticketIdOf } from '@fleetwood/core/plan';
+import { deploysByPr, groupFleet, hasLiveAgent, linkTickets, OTHER_GROUP, readPlan, ticketIdOf } from '@fleetwood/core/plan';
 import { resolveFocus } from './focus.ts';
 import {
   answerFocusedPrompt,
@@ -521,7 +521,10 @@ export function App(): React.JSX.Element {
     snapshot?.taskPrs?.byTask,
     Object.fromEntries((snapshot?.fleet.sessions ?? []).map((session) => [session.name, session.agents])),
   );
-  const planRows = new Map(plans.map((plan) => [plan.milestoneId, readPlan(plan, links)]));
+  // A merged ticket's deploy is read off the recently-merged list, the same
+  // rollup the merged tab draws, so the two can never disagree about a PR.
+  const deploys = deploysByPr(snapshot?.merged?.prs);
+  const planRows = new Map(plans.map((plan) => [plan.milestoneId, readPlan(plan, links, deploys)]));
   const openPlan = plans.find((plan) => plan.milestoneId === focusedPlan);
   /*
    * The list as groups: every plan by name, then Other — see `groupFleet`.
@@ -799,6 +802,7 @@ export function App(): React.JSX.Element {
             fetchedAt={snapshot.plans.fetchedAt}
             stale={snapshot.plans.stale}
             refreshing={refreshingPlans}
+            currentSession={snapshot.currentSession}
             onRefresh={refreshPlans}
             onStart={onStartTicket}
             onOpenTask={(slug) => {
@@ -850,7 +854,6 @@ export function App(): React.JSX.Element {
                     <PlanRow
                       key={group.key}
                       plan={group.plan}
-                      rows={planRows.get(group.key) ?? []}
                       expanded={expandedGroups.has(group.key)}
                       folded={group.items.length - group.shown.length}
                       onToggle={() => toggleGroup(group.key)}
@@ -862,7 +865,8 @@ export function App(): React.JSX.Element {
                     <GroupRow
                       key={group.key}
                       title="Other"
-                      caption={`${group.items.length} not in a plan`}
+                      summary={`${group.items.length} not in a plan`}
+                      spoken={`${group.items.length} not in a plan`}
                       expanded={expandedGroups.has(group.key)}
                       folded={group.items.length - group.shown.length}
                       onToggle={() => toggleGroup(group.key)}

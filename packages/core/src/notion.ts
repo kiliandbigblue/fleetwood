@@ -128,6 +128,25 @@ export function relationIds(page: unknown, name: string): string[] {
     .map((id) => id.replace(/-/g, ''));
 }
 
+/**
+ * A milestone's `Progress` and `Target date`.
+ *
+ * The API hands a formula back as its result, not its expression, so `Progress`
+ * is already the 0–100 the board shows. Either is left out when the page does
+ * not carry it in that shape.
+ */
+export function milestoneFacts(page: unknown): { progress?: number; targetDate?: string } {
+  const properties = propertiesOf(page);
+  const progress = (properties.Progress?.formula as { number?: unknown } | undefined)?.number;
+  const target = (properties['Target date']?.date as { start?: unknown } | undefined)?.start;
+  return {
+    ...(typeof progress === 'number' && Number.isFinite(progress)
+      ? { progress: Math.min(100, Math.max(0, progress)) }
+      : {}),
+    ...(typeof target === 'string' ? { targetDate: target.slice(0, 10) } : {}),
+  };
+}
+
 /** A page's title, whichever property holds it — milestones name theirs differently. */
 export function titleOf(page: unknown): string {
   for (const property of Object.values(propertiesOf(page))) {
@@ -303,6 +322,7 @@ export async function fetchPlans(options: PlansOptions): Promise<Plan[] | undefi
         milestoneId,
         name: titleOf(milestone) || 'untitled milestone',
         url: String((milestone as { url?: unknown }).url ?? `https://www.notion.so/${milestoneId}`),
+        ...milestoneFacts(milestone),
         tickets,
       };
     });

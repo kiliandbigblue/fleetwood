@@ -5,13 +5,15 @@ import {
   OTHER_GROUP,
   groupTickets,
   hasLiveAgent,
+  deploysByPr,
+  dueLabel,
   linkTickets,
-  planSummary,
   readPlan,
   ticketIdOf,
-  ticketStatus,
+  ticketStage,
 } from '../src/plan.ts';
 import type { Plan, Ticket, TicketLink } from '../src/plan.ts';
+import type { DeployState } from '../src/deployState.ts';
 import type { TaskPr } from '../src/taskPrs.ts';
 
 function ticket(id: string, over: Partial<Ticket> = {}): Ticket {
@@ -64,26 +66,64 @@ test('a task is linked to a ticket by the DEV id in its slug or branch, whatever
   assert.equal(ticketIdOf('fix/kdev-2-tooling'), undefined);
 });
 
-test("a ticket with a task reads Fleetwood's status, and drifts when Notion's column disagrees", () => {
-  // Merged on GitHub, still `In Review` on the board: the board is behind.
-  assert.deepEqual(ticketStatus(ticket('DEV-1', { notionStatus: 'In Review' }), link('dev-1-a', [{ state: 'MERGED' }])), {
-    status: 'done',
-    drift: true,
-  });
-  assert.deepEqual(ticketStatus(ticket('DEV-2', { notionStatus: 'Todo' }), link('dev-2-a')), {
-    status: 'not-started',
-    drift: false,
-  });
+const NOW = Date.parse('2026-10-09T12:00:00Z');
+const HOURS = 3_600_000;
+const merged = (hoursAgo: number): Partial<TaskPr> => ({
+  state: 'MERGED',
+  mergedAt: new Date(NOW - hoursAgo * HOURS).toISOString(),
 });
 
-test("a ticket nobody here works reads Notion's column, and cannot drift from it", () => {
-  assert.deepEqual(ticketStatus(ticket('DEV-3', { notionStatus: 'In Progress' })), { status: 'wip', drift: false });
-  assert.deepEqual(ticketStatus(ticket('DEV-4', { notionStatus: 'In Review', hasPr: true })), {
-    status: 'in-review',
-    drift: false,
-  });
-  // Canceled is the end of the line, like Done: nothing waits on it any more.
-  assert.deepEqual(ticketStatus(ticket('DEV-5', { notionStatus: 'Canceled' })), { status: 'done', drift: false });
+test('a merged ticket reads its deploy off the recently-merged list, and an old merge reads deployed', () => {
+  const t = ticket('DEV-1', { notionStatus: 'In Review' });
+  const deploys = (state: DeployState, byHand?: number) =>
+    deploysByPr([{ repo: 'bigbluedisco/reflow', number: 100, deploy: { state }, deployedByHand: byHand }]);
+  const stage = (pr: Partial<TaskPr>, d = deploysByPr([])) => ticketStage(t, link('dev-1-a', [pr]), d, NOW);
+
+  assert.equal(stage(merged(2), deploys('deployed')), 'deployed');
+  assert.equal(stage(merged(2), deploys('built')), 'built');
+  // CI stops at an image for the Go services; a hand-mark is the only "it is live".
+  assert.equal(stage(merged(2), deploys('built', 1)), 'deployed');
+  assert.equal(stage(merged(2), deploys('building')), 'deploying');
+  assert.equal(stage(merged(2), deploys('failed')), 'deploy-failed');
+  assert.equal(stage(merged(2), deploys('none')), 'merged');
+  // Not in the list: inside the window it may be anyone's merge still going out.
+  assert.equal(stage(merged(2)), 'merged');
+  assert.equal(stage(merged(80)), 'deployed');
+});
+
+test('an open pull request reads draft, in review, or the errand a reviewer or a check left you', () => {
+  const t = ticket('DEV-2');
+  const stage = (pr: Partial<TaskPr>) => ticketStage(t, link('dev-2-a', [pr]), new Map(), NOW);
+  assert.equal(stage({ isDraft: true }), 'draft');
+  assert.equal(stage({}), 'in-review');
+  assert.equal(stage({ isDraft: true, reviewDecision: 'CHANGES_REQUESTED' }), 'changes');
+  assert.equal(stage({ checks: 'failing' }), 'failing');
+  // A task with nothing committed yet is still todo, task or not.
+  assert.equal(ticketStage(t, link('dev-2-a'), new Map(), NOW), 'todo');
+});
+
+test('a ticket with several pull requests is its least advanced one, unless one is an errand', () => {
+  const t = ticket('DEV-3');
+  const two = (a: Partial<TaskPr>, b: Partial<TaskPr>) =>
+    ticketStage(t, link('dev-3-a', [a, { ...b, repoName: 'atlas' }]), new Map(), NOW);
+  assert.equal(two(merged(80), { isDraft: true }), 'draft');
+  assert.equal(two({ isDraft: true }, { checks: 'failing' }), 'failing');
+});
+
+test("a ticket nobody here works reads Notion's column", () => {
+  const stage = (notionStatus: string) => ticketStage(ticket('DEV-4', { notionStatus }), undefined, new Map(), NOW);
+  assert.equal(stage('Todo'), 'todo');
+  assert.equal(stage('In Progress'), 'started');
+  assert.equal(stage('In Review'), 'in-review');
+  assert.equal(stage('Done'), 'deployed');
+  assert.equal(stage('Canceled'), 'canceled');
+});
+
+test('a target date reads in whole days from today, and late once it has passed', () => {
+  const noon = new Date(2026, 9, 9, 12).getTime();
+  assert.deepEqual(dueLabel('2026-10-14', noon), { text: 'due in 5d', late: false });
+  assert.deepEqual(dueLabel('2026-10-09', noon), { text: 'due today', late: false });
+  assert.deepEqual(dueLabel('2026-10-06T09:00:00.000+02:00', noon), { text: '3d late', late: true });
 });
 
 function plan(...tickets: Ticket[]): Plan {
@@ -167,8 +207,10 @@ test('a ticket needs you when its agent is stopped on you, or its PR has changes
       // Working, or idle at its prompt: busy, not waiting on you.
       ['DEV-43', link('dev-43-a', [{ isDraft: true }], { agents: [{ status: 'working' }, { status: 'idle' }] })],
       // A merged pull request's last check run is history.
-      ['DEV-44', link('dev-44-a', [{ state: 'MERGED', checks: 'failing' }])],
+      ['DEV-44', link('dev-44-a', [{ ...merged(80), checks: 'failing' }])],
     ]),
+    new Map(),
+    NOW,
   );
   assert.deepEqual(groups(read), {
     'DEV-40': 'needs-you',
@@ -215,19 +257,17 @@ test('the drawer groups tickets in the order that answers what to pick up next, 
   );
 });
 
-test('the plan row says how far the milestone is, what can start and what needs you', () => {
+test('a merge not yet live stays in view under merged; deployed and canceled fold away as done', () => {
   const read = readPlan(
-    plan(
-      ticket('DEV-60', { notionStatus: 'Done' }),
-      ticket('DEV-61', { notionStatus: 'Done' }),
-      ticket('DEV-62'),
-      ticket('DEV-63', { notionStatus: 'In Review' }),
-    ),
-    new Map([['DEV-63', link('dev-63-a', [{ checks: 'failing' }])]]),
+    plan(ticket('DEV-60'), ticket('DEV-61'), ticket('DEV-62', { notionStatus: 'Canceled' })),
+    new Map([
+      ['DEV-60', link('dev-60-a', [merged(2)])],
+      ['DEV-61', link('dev-61-a', [merged(80)])],
+    ]),
+    new Map(),
+    NOW,
   );
-  assert.equal(planSummary(plan(), read), 'Stock Transfers · 2/4 merged · 1 startable · 1 needs you');
-  // Nothing to start and nothing on you is not worth a word each.
-  assert.equal(planSummary(plan(), read.slice(0, 2)), 'Stock Transfers · 2/2 merged');
+  assert.deepEqual(groups(read), { 'DEV-60': 'merged', 'DEV-61': 'done', 'DEV-62': 'done' });
 });
 
 test('a task is linked by the id in its slug, else its branch, and brings its PRs and agents', () => {
@@ -290,21 +330,32 @@ test('with no plan in the fleet there is only Other, and an empty group is never
   assert.deepEqual(grouped(['dev-1-form'], new Set()), [['m-st', ['dev-1-form'], []]]);
 });
 
-test('no drift is claimed while the first pull request search is still out', () => {
+test('while the first pull request search is out, committed work reads started', () => {
   const searching = { ...link('dev-6-a'), prs: undefined };
-  // Committed work and no PR answer yet reads `wip`; the board's `In Review` may well be right.
   searching.task.repos = [{ name: 'reflow', path: '/tasks/dev-6-a/reflow', branch: 'feature/dev-6-a', dirty: 0, ahead: 2 }];
-  assert.deepEqual(ticketStatus(ticket('DEV-6', { notionStatus: 'In Review' }), searching), { status: 'wip', drift: false });
+  assert.equal(ticketStage(ticket('DEV-6', { notionStatus: 'In Review' }), searching, new Map(), NOW), 'started');
 });
 
-test('a canceled ticket is neither merged nor counted against the milestone, though it unblocks', () => {
+test('a canceled ticket unblocks the tickets waiting on it', () => {
+  const read = readPlan(
+    plan(ticket('DEV-71', { notionStatus: 'Canceled' }), ticket('DEV-72', { blockers: [{ id: 'DEV-71' }] })),
+    new Map(),
+  );
+  assert.equal(groups(read)['DEV-72'], 'startable');
+});
+
+test('a blocker reads the same stage it reads on its own row, blocked included', () => {
   const read = readPlan(
     plan(
-      ticket('DEV-70', { notionStatus: 'Done' }),
-      ticket('DEV-71', { notionStatus: 'Canceled' }),
-      ticket('DEV-72', { blockers: [{ id: 'DEV-71' }] }),
+      ticket('DEV-80', { blockers: [{ id: 'DEV-999' }] }),
+      ticket('DEV-81', { blockers: [{ id: 'DEV-80' }] }),
+      ticket('DEV-82', { notionStatus: 'In Review', hasPr: true }),
+      ticket('DEV-83', { blockers: [{ id: 'DEV-82' }] }),
     ),
     new Map(),
   );
-  assert.equal(planSummary(plan(), read), 'Stock Transfers · 1/2 merged · 1 startable');
+  const row = (id: string) => read.find((r) => r.ticket.id === id);
+  assert.equal(row('DEV-80')?.stage, 'blocked');
+  assert.equal(row('DEV-81')?.blockers[0]?.stage, 'blocked');
+  assert.equal(row('DEV-83')?.stage, 'stackable');
 });

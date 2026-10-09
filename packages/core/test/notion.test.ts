@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { blockersOf, parseTicket, retryDelayMs, wantsBody } from '../src/notion.ts';
+import { blockersOf, milestoneFacts, parseTicket, retryDelayMs, wantsBody } from '../src/notion.ts';
 
 /*
  * Blocks shaped the way `GET /v1/blocks/{id}/children` returns them, trimmed to
@@ -116,4 +116,17 @@ test("a done or canceled ticket's body is not read: its blockers and goal are ne
   assert.equal(wantsBody(withStatus('In Review')), true);
   assert.equal(wantsBody(withStatus('Done')), false);
   assert.equal(wantsBody(withStatus('Canceled')), false);
+});
+
+test("a milestone's Progress is the formula's result, clamped, and its target date the day it starts", () => {
+  const page = (progress: unknown, start?: string) => ({
+    properties: {
+      Progress: { type: 'formula', formula: { type: 'number', number: progress } },
+      'Target date': { type: 'date', date: start ? { start, end: null } : null },
+    },
+  });
+  assert.deepEqual(milestoneFacts(page(62.5, '2026-10-14')), { progress: 62.5, targetDate: '2026-10-14' });
+  assert.deepEqual(milestoneFacts(page(140, '2026-10-14T09:00:00.000+02:00')), { progress: 100, targetDate: '2026-10-14' });
+  // A formula that errors or goes empty comes back null; no number, no bar.
+  assert.deepEqual(milestoneFacts(page(null)), {});
 });

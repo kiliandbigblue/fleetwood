@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Plan, PlanTicket, Ticket, TicketGroup } from '@fleetwood/core';
 // The leaf modules: the barrel re-exports tmux and process scanning, which fail
 // the renderer bundle on `node:child_process`.
-import { groupTickets, planCounts } from '@fleetwood/core/plan';
+import { dueLabel, groupTickets, STAGE } from '@fleetwood/core/plan';
 import { STATUS_LABEL } from '@fleetwood/core/taskStatus';
+import { agentWord } from './fleetSignals.ts';
 import { Icon } from './Icon.tsx';
 import { duration, send } from './api.ts';
 import { useNow } from './useNow.ts';
@@ -16,14 +18,13 @@ import { useNow } from './useNow.ts';
  * "show me the plan". The tasks start folded: six stock transfer cards between
  * unrelated work were the flood this replaces.
  *
- * No attention band, even with a ticket that needs you. The band is kept for an
- * agent stopped on a prompt, and that agent's task card is live, so it is drawn
- * under this row with its own band — banding the plan too would say one prompt
- * twice. A red check or a change request is said in words, like everywhere else.
+ * The caption is the milestone's progress and its date, and nothing else. What
+ * needs you is said by the task cards under it — an agent stopped on a prompt
+ * is live, so its card is drawn here even folded — and in the drawer, which
+ * sorts it first. Saying it on this row too was saying it twice.
  */
 export function PlanRow({
   plan,
-  rows,
   expanded,
   folded,
   onToggle,
@@ -31,7 +32,6 @@ export function PlanRow({
   children,
 }: {
   plan: Plan;
-  rows: PlanTicket[];
   expanded: boolean;
   /** How many of the plan's tasks are out of view right now. */
   folded: number;
@@ -40,13 +40,21 @@ export function PlanRow({
   /** The plan's tasks that are drawn under it. */
   children?: ReactNode;
 }): React.JSX.Element {
-  const { progress, needsYou } = planCounts(rows);
+  const now = useNow(60_000);
+  const percent = plan.progress !== undefined ? `${Math.round(plan.progress)}%` : undefined;
+  const due = plan.targetDate ? dueLabel(plan.targetDate, now) : undefined;
   return (
     <GroupRow
       title={plan.name}
       kind="plan"
-      caption={progress}
-      needsYou={needsYou}
+      summary={
+        <span className="plan-caption">
+          {plan.progress !== undefined && <Meter value={plan.progress} />}
+          {percent && <span>{percent}</span>}
+          {due && <span className={due.late ? 'plan-alarm' : undefined}>{due.text}</span>}
+        </span>
+      }
+      spoken={[percent, due?.text].filter(Boolean).join(', ')}
       expanded={expanded}
       folded={folded}
       onToggle={onToggle}
@@ -68,8 +76,8 @@ export function PlanRow({
 export function GroupRow({
   title,
   kind = 'group',
-  caption,
-  needsYou = 0,
+  summary,
+  spoken,
   expanded,
   folded,
   onToggle,
@@ -79,8 +87,10 @@ export function GroupRow({
   title: string;
   /** What a screen reader hears the row is. */
   kind?: string;
-  caption: string;
-  needsYou?: number;
+  /** The caption on the head's right edge. */
+  summary: ReactNode;
+  /** The caption in words, for a screen reader. */
+  spoken: string;
   expanded: boolean;
   /** How many of the group's items are out of view right now. */
   folded: number;
@@ -95,7 +105,7 @@ export function GroupRow({
         <div
           className="card-head"
           onClick={onOpen ?? onToggle}
-          title={onOpen ? 'open the plan — every ticket, and what each one waits on' : expanded ? 'fold it away' : 'show it'}
+          title={onOpen ? 'open the plan — every ticket, and where each one has got to' : expanded ? 'fold it away' : 'show it'}
         >
           <span className="plan-mark" aria-hidden="true" />
           {/* The keyboard's way in, as on a task card: Enter presses it and the
@@ -103,15 +113,11 @@ export function GroupRow({
           <button type="button" className="session-name card-title">
             {title}
             <span className="sr-only">
-              , {kind}, {caption}
-              {needsYou > 0 && `, ${needsYou} needs you`}
+              , {kind}
+              {spoken && `, ${spoken}`}
             </span>
           </button>
-          {needsYou > 0 && <span className="head-break" aria-hidden="true" />}
-          {needsYou > 0 && <span className="needs-you">{needsYou} needs you</span>}
-          {/* The folded count rides on the caption, so a folded group says what it
-              is hiding before you point at it. */}
-          <span className="repo-summary">{[caption, folded > 0 ? `${folded} folded` : undefined].filter(Boolean).join(' · ')}</span>
+          <span className="repo-summary">{summary}</span>
           <button
             className={`card-fold${expanded ? ' open' : ''}`}
             aria-expanded={expanded}
@@ -132,11 +138,23 @@ export function GroupRow({
 }
 
 /**
+ * The milestone's progress as a bar. Hidden from a screen reader: the number
+ * beside it says the same, and is what gets read.
+ */
+function Meter({ value, wide = false }: { value: number; wide?: boolean }): React.JSX.Element {
+  return (
+    <span className={`plan-meter${wide ? ' wide' : ''}${value >= 100 ? ' full' : ''}`} aria-hidden="true">
+      <span style={{ width: `${value}%` }} />
+    </span>
+  );
+}
+
+/**
  * A section's heading in the drawer.
  *
  * `stackable` spells out what it means, because it is the one state here that is
  * not a board column: the work can start, cut from a blocker's branch that is
- * still in review.
+ * still in review. `merged` says why it is still up here rather than folded.
  */
 const GROUP_LABEL: Record<TicketGroup, string> = {
   'needs-you': 'needs you',
@@ -144,15 +162,16 @@ const GROUP_LABEL: Record<TicketGroup, string> = {
   stackable: 'stackable — on a PR still open',
   'in-progress': 'in progress',
   'in-review': 'in review',
+  merged: 'merged — not live yet',
   blocked: 'blocked',
-  done: 'done',
+  done: 'deployed',
 };
 
 /**
  * The plan opened: every ticket of the milestone, grouped by what it is waiting on.
  *
  * Read-only toward Notion. Every link out goes to the card, and nothing here
- * moves one — drift is shown, not fixed, because the board is the team's.
+ * moves one: the board is the team's.
  */
 export function PlanView({
   plan,
@@ -160,6 +179,7 @@ export function PlanView({
   fetchedAt,
   stale,
   refreshing,
+  currentSession,
   onRefresh,
   onStart,
   onOpenTask,
@@ -172,81 +192,127 @@ export function PlanView({
   /** The last read failed, and this is the one before it. */
   stale?: boolean;
   refreshing: boolean;
+  /** The tmux session your terminal is on, to mark the ticket you are working. */
+  currentSession?: string;
   onRefresh: () => void;
   onStart: (ticket: Ticket) => void;
   onOpenTask: (slug: string) => void;
   onResult: (message: string, ok: boolean) => void;
 }): React.JSX.Element {
-  const now = Math.floor(useNow(30_000) / 1000);
+  const nowMs = useNow(30_000);
+  const now = Math.floor(nowMs / 1000);
+  // Shipped work is the bulk of a milestone by its end, and asks nothing.
+  const [showDone, setShowDone] = useState(false);
   const open = (url: string): void => {
     void send({ kind: 'openExternal', url }).then((result) => onResult(result.detail, result.ok));
   };
+  const due = plan.targetDate ? dueLabel(plan.targetDate, nowMs) : undefined;
+  // Fleetwood's own count beside Notion's estimate-weighted percentage: the two
+  // answer different questions, and this one knows about deploys.
+  const counted = rows.filter((row) => row.stage !== 'canceled');
+  const deployed = counted.filter((row) => row.stage === 'deployed').length;
 
   return (
     <div className="plan-view">
       <div className="plan-view-head">
-        {/* The name is already in the rail; this line is the counts, and the way
-            out to the milestone itself. */}
         <button className="plan-view-name" onClick={() => open(plan.url)} title="open the milestone in Notion">
-          {planCounts(rows).progress} <span aria-hidden="true">↗</span>
+          {/* Bound to the last word, so the arrow never wraps onto a line alone. */}
+          {plan.name}
+          {'\u00a0'}
+          <span aria-hidden="true">↗</span>
         </button>
-        {/* Dated rather than hidden, like the quota gauges: a stale plan still
-            says roughly where the milestone stands. */}
-        {stale && (
-          <span className="quota-stale" title="Notion did not answer the last read">
-            as of {duration(now - fetchedAt)} ago
+        <div className="plan-view-facts">
+          {plan.progress !== undefined && (
+            <span className="plan-view-progress">
+              <Meter value={plan.progress} wide />
+              {Math.round(plan.progress)}%
+            </span>
+          )}
+          {due && <span className={due.late ? 'plan-alarm' : undefined}>{due.text}</span>}
+          <span>
+            {deployed} of {counted.length} deployed
           </span>
-        )}
-        <button className="chip" disabled={refreshing} onClick={onRefresh} title="read the milestone from Notion again">
-          {refreshing ? 'reading…' : 'refresh'}
-        </button>
+          {/* Dated rather than hidden, like the quota gauges: a stale plan still
+              says roughly where the milestone stands. */}
+          {stale && (
+            <span className="quota-stale" title="Notion did not answer the last read">
+              as of {duration(now - fetchedAt)} ago
+            </span>
+          )}
+          <button className="chip" disabled={refreshing} onClick={onRefresh} title="read the milestone from Notion again">
+            {refreshing ? 'reading…' : 'refresh'}
+          </button>
+        </div>
       </div>
       {rows.length === 0 && <div className="empty">no tickets read from this milestone</div>}
-      {groupTickets(rows).map(({ group, tickets }) => (
-        <section key={group} className="plan-group">
-          <div className="section-title">
-            {GROUP_LABEL[group]} · {tickets.length}
-          </div>
-          {tickets.map((row) => (
-            <TicketRow key={row.ticket.id} row={row} onOpen={open} onStart={onStart} onOpenTask={onOpenTask} />
-          ))}
-        </section>
-      ))}
+      {groupTickets(rows).map(({ group, tickets }) => {
+        const folds = group === 'done';
+        return (
+          <section key={group} className="plan-group">
+            {folds ? (
+              <button
+                className={`section-title plan-fold${showDone ? ' open' : ''}`}
+                aria-expanded={showDone}
+                onClick={() => setShowDone(!showDone)}
+              >
+                {GROUP_LABEL[group]} · {tickets.length}
+                <Icon name="chevron" />
+              </button>
+            ) : (
+              <div className="section-title">
+                {GROUP_LABEL[group]} · {tickets.length}
+              </div>
+            )}
+            {(!folds || showDone) &&
+              tickets.map((row) => (
+                <TicketRow
+                  key={row.ticket.id}
+                  row={row}
+                  here={row.link?.task.session !== undefined && row.link.task.session === currentSession}
+                  onOpen={open}
+                  onStart={onStart}
+                  onOpenTask={onOpenTask}
+                />
+              ))}
+          </section>
+        );
+      })}
     </div>
   );
 }
 
+/**
+ * One ticket: what it is on the first line, where it has got to on the second.
+ *
+ * The second line leads with the stage in words — one reading, from `todo` to
+ * `deployed`, instead of a dot, a board column and a drift marker to reconcile —
+ * then who is on it: the task working it, what its agent is doing, and `here`
+ * when your terminal is in that task.
+ */
 function TicketRow({
   row,
+  here,
   onOpen,
   onStart,
   onOpenTask,
 }: {
   row: PlanTicket;
+  here: boolean;
   onOpen: (url: string) => void;
   onStart: (ticket: Ticket) => void;
   onOpenTask: (slug: string) => void;
 }): React.JSX.Element {
   const { ticket, link } = row;
   const assignees = ticket.assignees.map((assignee) => assignee.name).join(', ');
-  const canStart = row.group === 'startable' || row.group === 'stackable';
-  /*
-   * Said once: the section heading already names the group, and the dot the
-   * progress, so the meta line only adds who has it and — while nothing has
-   * started — what it waits on. A landed ticket's old blockers are history.
-   */
-  const meta = [
-    assignees || 'unassigned',
-    row.status === 'not-started' && row.blockers.length > 0
-      ? `blocked by ${row.blockers
-          .map((blocker) => `${blocker.label} (${blocker.status ? STATUS_LABEL[blocker.status] : 'unknown'})`)
-          .join(', ')}`
-      : undefined,
-  ].filter(Boolean);
+  const waiting = STAGE[row.stage].status === 'not-started';
+  const agent = link ? agentWord(link.agents, link.task.session !== undefined) : undefined;
   return (
-    <div className={`plan-ticket${row.group === 'done' ? ' plan-ticket-done' : ''}`}>
+    <div className={`plan-ticket${row.group === 'done' ? ' plan-ticket-done' : ''}${here ? ' here' : ''}`}>
       <div className="plan-ticket-line">
-        <span className={`task-status-dot task-status-${row.status}`} title={STATUS_LABEL[row.status]} />
+        <span
+          className={`task-status-dot task-status-${STAGE[row.stage].status}`}
+          title={STATUS_LABEL[STAGE[row.stage].status]}
+        />
         {/* The row's one keyboard stop, on the list's j/k walk; `owes` puts the
             ones waiting on you on `n`, as on the pull requests tab. */}
         <button
@@ -259,39 +325,52 @@ function TicketRow({
         <span className="plan-ticket-title" title={ticket.title}>
           {ticket.title}
         </span>
-        {/* A marker, not a second stop: the id beside it opens the same card. */}
-        {row.drift && (
-          <span
-            className="plan-drift"
-            title={`Fleetwood reads ${STATUS_LABEL[row.status]}, the board says ${ticket.notionStatus} — open the card to move it`}
+        {!link && waiting && (
+          /* Never withheld: a `Blocked by` line is a plan, not a lock, and the
+             part of a ticket that waits on nothing can always start. */
+          <button
+            className="chip"
+            onClick={() => onStart(ticket)}
+            title={
+              row.group === 'blocked'
+                ? 'new task on this ticket — a blocker has no pull request yet, so stack or stub what it needs'
+                : 'new task on this ticket — the branch carries its id'
+            }
           >
-            ≠ {ticket.notionStatus}
-          </span>
-        )}
-        {link ? (
-          <button className="chip" onClick={() => onOpenTask(link.task.slug)} title={`open ${link.task.slug}`}>
-            task
+            start
           </button>
-        ) : (
-          row.status === 'not-started' && (
-            /* Drawn on a blocked ticket too, dimmed, so the rule is on screen
-               rather than the button simply missing. */
-            <button
-              className="chip"
-              disabled={!canStart}
-              onClick={() => canStart && onStart(ticket)}
-              title={
-                canStart
-                  ? 'new task on this ticket — the branch carries its id'
-                  : 'a blocker has no pull request yet, or is outside this milestone'
-              }
-            >
-              start
-            </button>
-          )
         )}
       </div>
-      <div className="plan-ticket-meta">{meta.join(' · ')}</div>
+      {/* Where it has got to, then who is on it. The separators are drawn by
+          the stylesheet, so a part that has nothing to say simply is not here. */}
+      <div className="plan-ticket-meta">
+        <span className="plan-stage" data-stage={row.stage}>
+          {STAGE[row.stage].label}
+          {row.prCount > 1 && ` · ${row.prCount} PRs`}
+        </span>
+        {link && (
+          <button
+            className="plan-ticket-task"
+            onClick={() => onOpenTask(link.task.slug)}
+            title={`open the task ${link.task.slug}`}
+          >
+            {link.task.slug}
+          </button>
+        )}
+        {here && <span className="plan-here">here</span>}
+        {agent && <span className={agent.danger ? 'plan-alarm' : undefined}>{agent.text}</span>}
+        {/* With a task linked it is yours; the name only matters on someone else's. */}
+        {!link && <span>{assignees || 'unassigned'}</span>}
+        {/* A landed ticket's old blockers are history; only a waiting one says them. */}
+        {waiting && row.blockers.length > 0 && (
+          <span>
+            blocked by{' '}
+            {row.blockers
+              .map((blocker) => `${blocker.label} (${blocker.stage ? STAGE[blocker.stage].label : 'unknown'})`)
+              .join(', ')}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

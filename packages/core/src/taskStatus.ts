@@ -105,13 +105,33 @@ export function repoStatus(repo: Pick<TaskRepo, 'dirty' | 'ahead' | 'everCommitt
  * is never briefly more finished than the task is.
  */
 export function taskStatus(repos: TaskRepo[], prs: TaskPr[] | undefined): TaskStatus {
+  const moved = taskRungs(repos, prs, { pr: prStatus, repo: (status) => status });
+  if (moved.length === 0) return 'not-started';
+  return weakest(moved);
+}
+
+/**
+ * The walk `taskStatus` makes, with what each step says left to the caller: one
+ * reading per pull request, one per repo that has none, and nothing for a repo
+ * nobody has touched — the two rules above. The plan drawer reads the same walk
+ * into its own stages, so the rules about which work counts live here, once.
+ */
+export function taskRungs<R>(
+  repos: TaskRepo[],
+  prs: TaskPr[] | undefined,
+  read: { pr: (pr: TaskPr) => R; repo: (status: Exclude<TaskStatus, 'not-started'>) => R },
+): R[] {
   const open = prs ?? [];
-  const rungs: TaskStatus[] = [];
+  const rungs: R[] = [];
 
   for (const repo of repos) {
     const mine = open.filter((pr) => pr.repoName === repo.name);
-    if (mine.length > 0) rungs.push(weakest(mine.map(prStatus)));
-    else rungs.push(repoStatus(repo));
+    if (mine.length > 0) {
+      rungs.push(...mine.map(read.pr));
+      continue;
+    }
+    const status = repoStatus(repo);
+    if (status !== 'not-started') rungs.push(read.repo(status));
   }
 
   // A pull request on the task's branch in a repo the folder does not hold — the
@@ -119,13 +139,10 @@ export function taskStatus(repos: TaskRepo[], prs: TaskPr[] | undefined): TaskSt
   // here will ever speak for it.
   for (const pr of open) {
     if (pr.repoName === undefined || !repos.some((r) => r.name === pr.repoName)) {
-      rungs.push(prStatus(pr));
+      rungs.push(read.pr(pr));
     }
   }
-
-  const moved = rungs.filter((rung) => rung !== 'not-started');
-  if (moved.length === 0) return 'not-started';
-  return weakest(moved);
+  return rungs;
 }
 
 function weakest(rungs: TaskStatus[]): TaskStatus {

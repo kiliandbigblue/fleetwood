@@ -51,6 +51,16 @@ export interface WorkflowRun {
   url: string;
 }
 
+/**
+ * What a merged pull request carries about its deploy — the shape every reader
+ * here takes, structurally, so none of them has to import `MergedPr`.
+ */
+export interface DeployFact {
+  deploy: { state: DeployState };
+  /** When you marked it deployed yourself, in epoch seconds. */
+  deployedByHand?: number;
+}
+
 export interface DeployRollup {
   state: DeployState;
   /** The tag a build run reveals, when the trail went through one. */
@@ -184,12 +194,12 @@ export function isTerminal(state: DeployState): boolean {
  * Structurally typed rather than taking a `MergedPr`, which lives in `github.ts`
  * — that would put the import cycle back.
  */
-export function isDone(pr: { deploy: { state: DeployState }; deployedByHand?: number }): boolean {
+export function isDone(pr: DeployFact): boolean {
   return pr.deployedByHand !== undefined || pr.deploy.state === 'deployed';
 }
 
 /** Still owed: merged, an image exists, and nothing has deployed it. */
-export function needsDeploy(pr: { deploy: { state: DeployState }; deployedByHand?: number }): boolean {
+export function needsDeploy(pr: DeployFact): boolean {
   return !isDone(pr) && pr.deploy.state === 'built';
 }
 
@@ -201,7 +211,7 @@ export function needsDeploy(pr: { deploy: { state: DeployState }; deployedByHand
  * under this morning's deploy that was still running — the one row that asks
  * something of you, below two that ask nothing.
  */
-function urgency(pr: { deploy: { state: DeployState }; deployedByHand?: number }): number {
+function urgency(pr: DeployFact): number {
   if (isDone(pr)) return 4;
   switch (pr.deploy.state) {
     case 'built':
@@ -221,8 +231,8 @@ function urgency(pr: { deploy: { state: DeployState }; deployedByHand?: number }
 
 /** Most urgent first — see `urgency` — and newest first inside each. */
 export function byUrgencyThenRecency(
-  a: { deploy: { state: DeployState }; deployedByHand?: number; mergedAt: string },
-  b: { deploy: { state: DeployState }; deployedByHand?: number; mergedAt: string },
+  a: DeployFact & { mergedAt: string },
+  b: DeployFact & { mergedAt: string },
 ): number {
   return urgency(a) - urgency(b) || b.mergedAt.localeCompare(a.mergedAt);
 }
@@ -238,7 +248,7 @@ export function byUrgencyThenRecency(
  * that the merge did not.
  */
 export function doneBefore(
-  pr: { deploy: { state: DeployState }; deployedByHand?: number; mergedAt: string },
+  pr: DeployFact & { mergedAt: string },
   since: number,
 ): boolean {
   if (!isDone(pr)) return false;

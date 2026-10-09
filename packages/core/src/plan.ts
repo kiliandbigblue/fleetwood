@@ -1,5 +1,7 @@
-import { taskStatus } from './taskStatus.ts';
-import { isMerged } from './taskView.ts';
+import { isDone } from './deployState.ts';
+import { taskRungs } from './taskStatus.ts';
+import { isMerged, prKey } from './taskView.ts';
+import type { DeployFact } from './deployState.ts';
 import type { FleetAgent } from './fleet.ts';
 import type { Task } from './task.ts';
 import type { TaskPr } from './taskPrs.ts';
@@ -90,6 +92,14 @@ export interface Plan {
   milestoneId: string;
   name: string;
   url: string;
+  /**
+   * The milestone's own `Progress`, 0–100, as Notion computes it — weighted by
+   * the tickets' estimates, so it is the number the team reads on the board,
+   * not a ticket count. Absent when the formula gave no number.
+   */
+  progress?: number;
+  /** `Target date`, `YYYY-MM-DD`. */
+  targetDate?: string;
   tickets: Ticket[];
 }
 
@@ -121,50 +131,6 @@ export interface TicketLink {
 }
 
 /**
- * The board's columns on Fleetwood's rungs.
- *
- * Canceled is `done` rather than its own state: what the plan asks of a ticket is
- * whether anything still waits on it, and nothing waits on a canceled one. A
- * column this does not know reads `not-started`, the rung that claims nothing.
- */
-const NOTION_STATUS: Record<string, TaskStatus> = {
-  todo: 'not-started',
-  'in progress': 'wip',
-  'in review': 'in-review',
-  done: 'done',
-  canceled: 'done',
-};
-
-export function notionStatus(name: string): TaskStatus {
-  return NOTION_STATUS[name.trim().toLowerCase()] ?? 'not-started';
-}
-
-/**
- * How far along a ticket is, and whether the board says something else.
- *
- * A ticket with a task reads Fleetwood's own status — the mark its task card
- * already draws, off its worktrees and its pull requests — because that is read
- * from the work, while the board is moved by hand and by an integration that
- * lags it. **Drift** is the two disagreeing. It is shown, with a link to the
- * card, and never written back: the board is the team's, not this panel's.
- *
- * A ticket with no task here reads the board, pull request or not. The spec
- * would have Fleetwood's status for a ticket with a pull request too, but
- * Fleetwood holds no pull request for a ticket it has no task for — the
- * `GitHub Pull Requests` relation is ids the integration cannot open — so the
- * board is the only reading there is, and a reading cannot drift from itself.
- */
-export function ticketStatus(ticket: Ticket, link?: TicketLink): { status: TaskStatus; drift: boolean } {
-  const board = notionStatus(ticket.notionStatus);
-  if (!link) return { status: board, drift: false };
-  const status = taskStatus(link.task.repos, link.prs);
-  // While the first pull request search is out the reading is the worktrees
-  // alone and settles upward as it lands — a ticket in review would flash a
-  // drift marker for the length of one search. Nothing is claimed until it lands.
-  return { status, drift: link.prs !== undefined && status !== board };
-}
-
-/**
  * Where a ticket sits in the drawer. Ordered, and the order is the whole type.
  *
  * What you can act on comes first — what is waiting on you, then what you can
@@ -172,7 +138,15 @@ export function ticketStatus(ticket: Ticket, link?: TicketLink): { status: TaskS
  * review — and what needs nothing of you goes last. That order is the question
  * the drawer exists to answer: what do I pick up next.
  */
-export type TicketGroup = 'needs-you' | 'startable' | 'stackable' | 'in-progress' | 'in-review' | 'blocked' | 'done';
+export type TicketGroup =
+  | 'needs-you'
+  | 'startable'
+  | 'stackable'
+  | 'in-progress'
+  | 'in-review'
+  | 'merged'
+  | 'blocked'
+  | 'done';
 
 export const TICKET_GROUPS: readonly TicketGroup[] = [
   'needs-you',
@@ -180,9 +154,152 @@ export const TICKET_GROUPS: readonly TicketGroup[] = [
   'stackable',
   'in-progress',
   'in-review',
+  'merged',
   'blocked',
   'done',
 ];
+
+/**
+ * Every stage a ticket can be at, from the board's first column to running in
+ * production, and everything the drawer derives from one: the words it says,
+ * the section it sits in, and the rung of a task card's mark it draws.
+ *
+ * The one model. A ticket's section is read off its stage rather than worked
+ * out beside it, so the two can never disagree.
+ *
+ * Listed least advanced first, which is how `rollUp` reads a ticket with
+ * several pull requests. The errands come last: they are the stages only you
+ * can move, they sit under `needs you`, and they win a roll-up outright rather
+ * than being compared.
+ */
+export const STAGE = {
+  todo: { label: 'todo', group: 'startable', status: 'not-started' },
+  stackable: { label: 'stackable', group: 'stackable', status: 'not-started' },
+  blocked: { label: 'blocked', group: 'blocked', status: 'not-started' },
+  started: { label: 'started, no PR yet', group: 'in-progress', status: 'wip' },
+  draft: { label: 'draft PR', group: 'in-progress', status: 'wip' },
+  'in-review': { label: 'in review', group: 'in-review', status: 'in-review' },
+  merged: { label: 'merged', group: 'merged', status: 'done' },
+  deploying: { label: 'deploying', group: 'merged', status: 'done' },
+  deployed: { label: 'deployed', group: 'done', status: 'done' },
+  canceled: { label: 'canceled', group: 'done', status: 'done' },
+  changes: { label: 'changes requested', group: 'needs-you', status: 'in-review' },
+  failing: { label: 'checks failing', group: 'needs-you', status: 'in-review' },
+  built: { label: 'image built, deploy it', group: 'needs-you', status: 'done' },
+  'deploy-failed': { label: 'deploy failed', group: 'needs-you', status: 'done' },
+} as const satisfies Record<string, { label: string; group: TicketGroup; status: TaskStatus }>;
+
+export type TicketStage = keyof typeof STAGE;
+
+const ORDER = Object.keys(STAGE) as TicketStage[];
+
+/** A stage only you can move — see `STAGE`. */
+function isErrand(stage: TicketStage): boolean {
+  return STAGE[stage].group === 'needs-you';
+}
+
+/** The recently-merged list, by pull request — what `readPlan` looks deploys up in. */
+export function deploysByPr<T extends DeployFact & { repo: string; number: number }>(
+  merged: readonly T[] | undefined,
+): Map<string, DeployFact> {
+  return new Map((merged ?? []).map((pr) => [prKey(pr.repo, pr.number), pr]));
+}
+
+/**
+ * How long a merge stays in the recently-merged list, which is the only place a
+ * deploy is read from. Past it, a merge reads `deployed`: by then it almost
+ * always is, and "merged" for weeks would read as stuck.
+ *
+ * ponytail: the default `lookbackHours`, not the configured one; pass the config
+ * through if the window is ever changed.
+ */
+const DEPLOY_WINDOW_MS = 72 * 3_600_000;
+
+function prStage(pr: TaskPr, deploys: ReadonlyMap<string, DeployFact>, now: number): TicketStage {
+  if (!isMerged(pr)) {
+    // A change request outranks the draft flag: a reviewer asked something of you.
+    if (pr.reviewDecision === 'CHANGES_REQUESTED') return 'changes';
+    if (pr.checks === 'failing') return 'failing';
+    return pr.isDraft ? 'draft' : 'in-review';
+  }
+  const fact = deploys.get(prKey(pr.repo, pr.number));
+  if (!fact) {
+    const at = pr.mergedAt ? Date.parse(pr.mergedAt) : NaN;
+    return now - at > DEPLOY_WINDOW_MS ? 'deployed' : 'merged';
+  }
+  if (isDone(fact)) return 'deployed';
+  switch (fact.deploy.state) {
+    case 'built':
+      return 'built';
+    case 'failed':
+      return 'deploy-failed';
+    // No CI on the merge commit: nothing will ever say it went out.
+    case 'none':
+      return 'merged';
+    default:
+      return 'deploying';
+  }
+}
+
+/** An errand if there is one — a red check on one half is the news — else the least advanced. */
+function rollUp(stages: readonly TicketStage[]): TicketStage {
+  const errand = stages.find(isErrand);
+  if (errand) return errand;
+  return stages.reduce((a, b) => (ORDER.indexOf(a) <= ORDER.indexOf(b) ? a : b));
+}
+
+/**
+ * How far along a ticket is, before its blockers are asked about — so never
+ * `stackable` or `blocked`; see `readPlan`.
+ *
+ * A ticket with a task reads the work, walked the way a task card's mark walks
+ * it (`taskRungs`), and a merged pull request on to its deploy. The board is
+ * moved by hand and lags it; it is not consulted, and not corrected either,
+ * because it is the team's.
+ *
+ * A ticket with no task here reads the board: Fleetwood holds no pull request
+ * for it, so `Done` is the most there is to say, and it reads `deployed` by the
+ * same reasoning as an old merge.
+ */
+export function ticketStage(
+  ticket: Ticket,
+  link: TicketLink | undefined,
+  deploys: ReadonlyMap<string, DeployFact> = new Map(),
+  now = Date.now(),
+): TicketStage {
+  const board = ticket.notionStatus.trim().toLowerCase();
+  if (board === 'canceled') return 'canceled';
+  if (!link) {
+    if (board === 'in progress') return 'started';
+    if (board === 'in review') return 'in-review';
+    if (board === 'done') return 'deployed';
+    return 'todo';
+  }
+  const stages = taskRungs<TicketStage>(link.task.repos, link.prs, {
+    pr: (pr) => prStage(pr, deploys, now),
+    // A repo landed straight on the trunk has no pull request to follow to a deploy.
+    repo: (status) => (status === 'done' ? 'merged' : 'started'),
+  });
+  return stages.length > 0 ? rollUp(stages) : 'todo';
+}
+
+/**
+ * What a ticket nobody has started waits on.
+ *
+ * Only asked of `todo` — once work exists, the ticket is moving whatever its
+ * line says, because someone already decided it could go. `undefined` is a
+ * blocker outside the milestone: it is not fetched, so nothing can say it landed.
+ */
+function waitingOn(
+  stage: TicketStage,
+  blockers: ReadonlyArray<{ stage: TicketStage; hasPr: boolean } | undefined>,
+): TicketStage {
+  if (stage !== 'todo') return stage;
+  const landed = (b: (typeof blockers)[number]): boolean => b !== undefined && STAGE[b.stage].status === 'done';
+  if (blockers.every(landed)) return 'todo';
+  if (blockers.every((b) => landed(b) || b?.hasPr === true)) return 'stackable';
+  return 'blocked';
+}
 
 /** One entry of a ticket's `Blocked by`, matched against the milestone. */
 export interface ResolvedBlocker {
@@ -190,18 +307,16 @@ export interface ResolvedBlocker {
   label: string;
   /** The ticket it names. Absent when it is outside the milestone — unknown. */
   ticket?: Ticket;
-  status?: TaskStatus;
-  hasPr?: boolean;
+  stage?: TicketStage;
 }
 
 /** One ticket, with everything the drawer says about it. */
 export interface PlanTicket {
   ticket: Ticket;
   link?: TicketLink;
-  status: TaskStatus;
-  drift: boolean;
-  /** On Notion's relation or among the linked task's pull requests. */
-  hasPr: boolean;
+  stage: TicketStage;
+  /** The linked task's pull requests; the drawer names the count past one. */
+  prCount: number;
   group: TicketGroup;
   blockers: ResolvedBlocker[];
 }
@@ -209,80 +324,64 @@ export interface PlanTicket {
 /**
  * Every ticket of a plan, read against the tasks working it.
  *
- * Blocking is only asked of a ticket nobody has started — once work exists, the
- * ticket is in progress whatever its line says, because someone already decided
- * it could go. Of the rest:
+ * Two passes, because a ticket's stage depends on its blockers' stages: first
+ * each ticket on its own work, then each `todo` against what it waits on —
  *
- * - **startable**: every blocker merged.
+ * - **todo** (startable): every blocker landed.
  * - **stackable**: every blocker has at least a pull request, so the work can be
  *   cut from the blocker's branch and stacked on it.
- * - **blocked**: anything else, including a blocker outside the milestone. That
- *   one is not fetched — it would be a page read per stray mention on every
- *   poll — so nothing can say it merged, and it reads `(unknown)`.
+ * - **blocked**: anything else, including a blocker outside the milestone,
+ *   which reads `(unknown)`.
+ *
+ * The section is the stage's, except for an agent stopped on a permission
+ * prompt — the one errand no stage of the work can say. An idle agent is not
+ * one: it finished its turn, and the card already says so.
  *
  * `links` is keyed by `DEV-NNNN`; see `linkTickets`.
  */
-export function readPlan(plan: Plan, links: ReadonlyMap<string, TicketLink>): PlanTicket[] {
-  const facts = new Map(
-    plan.tickets.map((ticket) => {
-      const link = links.get(ticket.id);
-      const hasPr = ticket.hasPr || (link?.prs?.length ?? 0) > 0;
-      return [ticket.id, { ticket, link, hasPr, ...ticketStatus(ticket, link) }];
-    }),
-  );
+export function readPlan(
+  plan: Plan,
+  links: ReadonlyMap<string, TicketLink>,
+  deploys: ReadonlyMap<string, DeployFact> = new Map(),
+  now = Date.now(),
+): PlanTicket[] {
+  const byId = new Map(plan.tickets.map((ticket) => [ticket.id, ticket]));
   const byPage = new Map(plan.tickets.map((ticket) => [ticket.pageId, ticket]));
+  const named = (blocker: Blocker): Ticket | undefined =>
+    (blocker.id !== undefined ? byId.get(blocker.id) : undefined) ??
+    (blocker.pageId !== undefined ? byPage.get(blocker.pageId) : undefined);
 
-  return plan.tickets.map((ticket) => {
-    const own = facts.get(ticket.id) as NonNullable<ReturnType<typeof facts.get>>;
-    const blockers = ticket.blockers.map((blocker): ResolvedBlocker => {
-      const named =
-        (blocker.id !== undefined ? plan.tickets.find((t) => t.id === blocker.id) : undefined) ??
-        (blocker.pageId !== undefined ? byPage.get(blocker.pageId) : undefined);
-      const fact = named ? facts.get(named.id) : undefined;
-      if (!named || !fact) return { label: blocker.id ?? blocker.title ?? '?' };
-      return { label: named.id, ticket: named, status: fact.status, hasPr: fact.hasPr };
-    });
-    return {
-      ticket,
-      link: own.link,
-      status: own.status,
-      drift: own.drift,
-      hasPr: own.hasPr,
-      group: needsYou(own.link) ? 'needs-you' : groupOf(own.status, blockers),
-      blockers,
-    };
+  const own = plan.tickets.map((ticket) => {
+    const link = links.get(ticket.id);
+    const hasPr = ticket.hasPr || (link?.prs?.length ?? 0) > 0;
+    return { ticket, link, hasPr, stage: ticketStage(ticket, link, deploys, now) };
   });
-}
+  const ownOf = new Map(own.map((fact) => [fact.ticket.id, fact]));
+  const read = own.map((fact) => ({
+    ...fact,
+    stage: waitingOn(
+      fact.stage,
+      fact.ticket.blockers.map((blocker) => {
+        const ticket = named(blocker);
+        return ticket && ownOf.get(ticket.id);
+      }),
+    ),
+  }));
+  const stageOf = new Map(read.map((fact) => [fact.ticket.id, fact.stage]));
 
-/**
- * Whether a ticket is waiting on you, whatever else it is.
- *
- * Three things, and all three are errands only you can run: an agent stopped
- * on a permission prompt, a reviewer asking for changes, a red check. An idle
- * agent is not one of them — it finished its turn, and the card already says so
- * — and neither is a merged pull request's last check run, which is history.
- */
-function needsYou(link: TicketLink | undefined): boolean {
-  if (!link) return false;
-  if (link.agents.some((agent) => agent.status === 'blocked_permission')) return true;
-  return (link.prs ?? []).some(
-    (pr) => !isMerged(pr) && (pr.reviewDecision === 'CHANGES_REQUESTED' || pr.checks === 'failing'),
-  );
-}
-
-function groupOf(status: TaskStatus, blockers: ResolvedBlocker[]): TicketGroup {
-  switch (status) {
-    case 'wip':
-      return 'in-progress';
-    case 'in-review':
-      return 'in-review';
-    case 'done':
-      return 'done';
-    case 'not-started':
-      if (blockers.every((b) => b.status === 'done')) return 'startable';
-      if (blockers.every((b) => b.status === 'done' || b.hasPr === true)) return 'stackable';
-      return 'blocked';
-  }
+  return read.map(({ ticket, link, stage }) => ({
+    ticket,
+    link,
+    stage,
+    prCount: link?.prs?.length ?? 0,
+    group: link?.agents.some((agent) => agent.status === 'blocked_permission') ? 'needs-you' : STAGE[stage].group,
+    blockers: ticket.blockers.map((blocker): ResolvedBlocker => {
+      const found = named(blocker);
+      return found
+        ? { label: found.id, ticket: found, stage: stageOf.get(found.id) }
+        : { label: blocker.id ?? blocker.title ?? '?' };
+    }),
+  }));
 }
 
 /**
@@ -308,32 +407,21 @@ export function groupTickets(rows: readonly PlanTicket[]): Array<{ group: Ticket
 }
 
 /**
- * The plan's row in the fleet list, in one line.
+ * The milestone's target date against today, in whole calendar days.
  *
- * `merged` over the whole milestone, so the count reads as progress through the
- * spec rather than through the part of it you happen to have tasks for. Then
- * only the two numbers that ask something of you, and each only when it is not
- * zero — the shape `prSummary` gives a task's pull requests, for the same reason.
+ * Days rather than a duration: a target is a date on a calendar, so tomorrow at
+ * 9am is `due in 1d` whatever the hour now. A datetime target keeps its date.
  */
-export function planSummary(plan: Pick<Plan, 'name'>, rows: readonly PlanTicket[]): string {
-  const { progress, needsYou } = planCounts(rows);
-  return [plan.name, progress, ...(needsYou > 0 ? [`${needsYou} needs you`] : [])].join(' · ');
-}
-
-/**
- * The same line in the pieces the fleet row draws apart: the name is the card's
- * title, `needs you` is said where every card says it, and the rest is the
- * caption on the gutter. One count, so the row and the drawer cannot disagree.
- */
-export function planCounts(rows: readonly PlanTicket[]): { progress: string; needsYou: number } {
-  // A canceled ticket unblocks like a done one, but nothing of it merged — so it
-  // leaves the count altogether rather than padding progress through the spec.
-  const counted = rows.filter((row) => row.ticket.notionStatus.trim().toLowerCase() !== 'canceled');
-  const done = counted.filter((row) => row.status === 'done').length;
-  const startable = rows.filter((row) => row.group === 'startable').length;
-  const parts = [`${done}/${counted.length} merged`];
-  if (startable > 0) parts.push(`${startable} startable`);
-  return { progress: parts.join(' · '), needsYou: rows.filter((row) => row.group === 'needs-you').length };
+export function dueLabel(targetDate: string, now = Date.now()): { text: string; late: boolean } {
+  const [y = 0, m = 1, d = 1] = targetDate.slice(0, 10).split('-').map(Number);
+  const today = new Date(now);
+  const days = Math.round(
+    (new Date(y, m - 1, d).getTime() - new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()) /
+      86_400_000,
+  );
+  if (days > 0) return { text: `due in ${days}d`, late: false };
+  if (days === 0) return { text: 'due today', late: false };
+  return { text: `${-days}d late`, late: true };
 }
 
 /**

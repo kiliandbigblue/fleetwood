@@ -155,7 +155,18 @@ export type { ActionResult } from './actions.ts';
 export type { PromptOption, ScreenRead } from './screen.ts';
 export type { PlanLimits, LimitWindow } from './limits.ts';
 // Types only: the renderer draws plans off the leaf module, `@fleetwood/core/plan`.
-export type { Blocker, FleetGroup, Plan, PlanTicket, Plans, ResolvedBlocker, Ticket, TicketGroup, TicketLink } from './plan.ts';
+export type {
+  Blocker,
+  FleetGroup,
+  Plan,
+  PlanTicket,
+  Plans,
+  ResolvedBlocker,
+  Ticket,
+  TicketGroup,
+  TicketLink,
+  TicketStage,
+} from './plan.ts';
 export { ticketIdOf } from './plan.ts';
 export type { CursorUsage } from './cursorUsage.ts';
 export { formatUsd } from './cursorUsage.ts';

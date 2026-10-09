@@ -1,6 +1,7 @@
 import { run } from './exec.ts';
 import { ghSearch } from './ghSearch.ts';
 import { loadConfig } from './config.ts';
+import { prKey } from './taskView.ts';
 import type { DeployPatterns, MergedConfig } from './config.ts';
 
 export type ChecksState = 'passing' | 'failing' | 'pending' | 'none';
@@ -784,10 +785,8 @@ export async function fetchPrsForRepoBranches(
   return { ok: true, prs: [...byKey.values()] };
 }
 
-/** Identifier stamped onto a tmux session so a PR maps to exactly one session. */
-export function prKey(repo: string, number: number): string {
-  return `${repo}#${number}`;
-}
+/** Re-exported: it moved to the leaf `taskView.ts` so the renderer can key by it. */
+export { prKey };
 
 // --- recently merged, and whether it still needs deploying ------------------
 

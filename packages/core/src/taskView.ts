@@ -111,6 +111,15 @@ export function isMerged(pr: Pick<PullRequest, 'state'>): boolean {
   return pr.state === 'MERGED';
 }
 
+/**
+ * A pull request's identity, `owner/repo#123`: what a tmux session is stamped
+ * with, and what a merged PR's deploy is looked up by. Here rather than in
+ * `github.ts` so the renderer can key by it too.
+ */
+export function prKey(repo: string, number: number): string {
+  return `${repo}#${number}`;
+}
+
 export function splitPrs<T extends Pick<PullRequest, 'state'>>(
   prs: readonly T[],
 ): { open: T[]; merged: T[] } {
