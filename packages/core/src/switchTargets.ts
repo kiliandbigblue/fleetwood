@@ -130,7 +130,7 @@ export function agentTitle(
 }
 
 /** An agent worth offering: a dead one is a row that goes nowhere. */
-function live(agent: FleetAgent): boolean {
+export function live(agent: FleetAgent): boolean {
   return agent.status !== 'gone' && agent.pane !== undefined;
 }
 
@@ -184,10 +184,15 @@ function taskFor(tasks: readonly Task[], session: FleetSession): Task | undefine
   return tasks.find((t) => t.session === session.name);
 }
 
+/** The sessions in fleet order, hidden ones left out unless `all`. Shared with `nextAgent`. */
+export function rankedSessions<T extends FleetSession>(sessions: readonly T[], all = false): T[] {
+  const ranked = sortSessions(sessions);
+  return all ? ranked : ranked.filter((s) => !isHidden(s.name));
+}
+
 export function buildSwitchTargets(input: SwitchInput): SwitchTarget[] {
   const targets: SwitchTarget[] = [];
-  const ranked = sortSessions(input.sessions);
-  const sessions = input.all ? ranked : ranked.filter((s) => !isHidden(s.name));
+  const sessions = rankedSessions(input.sessions, input.all);
 
   for (const session of sessions) {
     const task = taskFor(input.tasks, session);

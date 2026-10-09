@@ -515,6 +515,9 @@ async function handle(request: Request): Promise<Response> {
     case 'focusPane':
       return actions.focusPane(request.pane);
 
+    case 'nextAgent':
+      return actions.focusNextAgent({ blocked: request.blocked, states: collector?.states });
+
     case 'killSession': {
       const result = await actions.killSession(request.session);
       await pushSnapshot();

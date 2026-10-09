@@ -104,7 +104,8 @@ const STALE_AFTER_SECONDS = 20;
  */
 const ORPHAN_TTL_SECONDS = 600;
 
-function isBlocked(status: AgentStatus): boolean {
+/** Kilian is the bottleneck — every `blocked_*` status, so new ones count everywhere. */
+export function isBlocked(status: AgentStatus): boolean {
   return status === 'blocked_permission';
 }
 

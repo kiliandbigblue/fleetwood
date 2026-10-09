@@ -281,6 +281,12 @@ export function App(): React.JSX.Element {
         setFocusedSlug(undefined);
         setFocusedPlan(undefined);
         setTab(tabs[Number(event.key) - 1] as Tab);
+      } else if ((event.metaKey || event.ctrlKey) && (event.key === 'j' || event.key === 'J')) {
+        // The terminal's ⌘J / ⌘⇧J, so the same keys walk tmux from either window.
+        event.preventDefault();
+        void send({ kind: 'nextAgent', blocked: event.key === 'j' }).then((result) =>
+          setToast({ message: result.detail, ok: result.ok }),
+        );
       } else if ((event.metaKey || event.ctrlKey) && event.key === 'n') {
         event.preventDefault();
         setNotesOpen((open) => !open);

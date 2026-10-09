@@ -985,6 +985,7 @@ fw kill-agent <pane|key>  close one agent, leaving its pane and session alone
 fw switch             pick a live session, one agent's pane, or a dormant task
 fw switch --projects  every directory under your project roots, session or not
 fw focus <session>    point the terminal at a session
+fw next [--blocked]   jump to the next agent in fleet order, or the next blocked one (⌘⇧J, ⌘J — in the terminal and the app)
 fw order [<session> <slot>|none]  where each session sits in the fleet
 fw hide <session>     take a session out of the fleet list — it keeps running
 fw unhide <session>   put it back, in the slot it had

@@ -80,6 +80,9 @@ ${c.bold('commands')}
   switch --projects every directory under your project roots, session or not
                     ${c.dim('find-or-create one — what `prefix+G` runs')}
   focus <session>   point the terminal at a session
+  next [--blocked] [--from pane]
+                    jump to the next agent in fleet order, or the next blocked one
+                    ${c.dim('what ⌘⇧J and ⌘J run; --from defaults to the pane you are in')}
   resume-agent <tool>
                     launch <tool> here, resuming its last conversation in this
                     directory if state.json has one ${c.dim('(for @resurrect-processes, not you)')}
@@ -600,6 +603,14 @@ async function cmdFocus(name: string | undefined): Promise<void> {
   }
   const result = await actions.focusSession(found.name);
   process.stdout.write(`${result.ok ? c.ok('✓') : c.danger('✗')} ${result.detail}\n`);
+  if (!result.ok) process.exitCode = 1;
+}
+
+/** Jump to the agent after `from` in fleet order — what ⌘J and ⌘⇧J run. */
+async function cmdNext(from: string | undefined, blocked: boolean): Promise<void> {
+  const result = await actions.focusNextAgent({ from, blocked });
+  // Plain: the tmux binding shows this line in the status bar.
+  process.stdout.write(`${result.detail}\n`);
   if (!result.ok) process.exitCode = 1;
 }
 
@@ -1269,6 +1280,9 @@ async function main(): Promise<void> {
       break;
     case 'focus':
       await cmdFocus(arg);
+      break;
+    case 'next':
+      await cmdNext(flagValue(argv, '--from'), argv.includes('--blocked'));
       break;
     case 'resume-agent':
       await cmdResumeAgent(argv);

@@ -24,6 +24,7 @@ const KEYS: ReadonlyArray<[string, string]> = [
   ['m', 'its menu — arrows to move, esc to close'],
   ['⌘1 – ⌘4', 'the fleet, pull requests, history and power tabs'],
   ['/', 'on history: filter — esc clears it'],
+  ['⌘J  ⌘⇧J', 'take tmux to the next blocked agent, or the next agent — the terminal has the same keys'],
   ['⌘K', 'jump to a session, project or pull request — or start a task'],
   ['⌘T', 'new task'],
   ['⌘N', 'your notes'],

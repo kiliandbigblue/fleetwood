@@ -1,4 +1,9 @@
+import { hostname } from 'node:os';
 import { basename } from 'node:path';
+import { buildFleet } from './fleet.ts';
+import type { AgentState } from './events.ts';
+import { nextAgent } from './nextAgent.ts';
+import { agentTitle } from './switchTargets.ts';
 import { FW_HOME, NOTES_FILE, ensureDirs } from './paths.ts';
 import { run } from './exec.ts';
 import { looksLikeClaude } from './claudeDaemon.ts';
@@ -86,6 +91,31 @@ export async function focusPane(paneId: string): Promise<ActionResult> {
   await tmux.selectPane(paneId);
   const focus = await focusSession(session);
   return { ok: focus.ok, detail: focus.ok ? `focused ${paneId} in ${session}` : focus.detail };
+}
+
+export interface FocusNextAgentOptions {
+  /** Count from this pane; defaults to the one the attached client is in. */
+  from?: string;
+  /** Skip to the next agent waiting on a prompt. */
+  blocked: boolean;
+  /** The app's collector folds states itself; the CLI reads them from disk. */
+  states?: Map<string, AgentState>;
+}
+
+/** ⌘J / ⌘⇧J — focus the agent after the current pane, as `nextAgent` picks it. */
+export async function focusNextAgent(options: FocusNextAgentOptions): Promise<ActionResult> {
+  const [from, fleet] = await Promise.all([
+    options.from ?? tmux.currentPane(),
+    // A prompt nobody hooked is only seen on screen, so blocked has to look.
+    buildFleet({ states: options.states, capture: options.blocked }),
+  ]);
+  const next = nextAgent(fleet.sessions, from, options.blocked);
+  if (!next) return { ok: false, detail: options.blocked ? 'no other blocked agent' : 'no other agent' };
+  const focus = await focusPane(next.agent.pane);
+  if (!focus.ok) return focus;
+  const pane = next.session.windows.flatMap((w) => w.panes).find((p) => p.paneId === next.agent.pane);
+  const title = agentTitle(pane?.title, pane?.command, hostname());
+  return { ok: true, detail: `→ ${sessionLabel(next.session.name)}${title ? ` · ${title}` : ''}` };
 }
 
 export interface OpenProjectOptions {

@@ -508,6 +508,12 @@ export async function currentSession(): Promise<string | undefined> {
   return pickCurrentClient(await listClients())?.session;
 }
 
+/** The pane of the client you are at — where "next" counts from. */
+export async function currentPane(): Promise<string | undefined> {
+  const session = await currentSession();
+  return session ? activePane(session) : undefined;
+}
+
 /** Point every attached client at `session`. No-op when nothing is attached. */
 export async function switchClient(session: string): Promise<boolean> {
   const clients = await listClients();
@@ -582,7 +588,8 @@ export async function killSessionKeepingClients(name: string): Promise<KillOutco
 
 /** The active pane of a session, for running something in the window it already has. */
 export async function activePane(session: string): Promise<string | undefined> {
-  const { ok, stdout } = await tmux(['display-message', '-p', '-t', `=${session}`, '#{pane_id}']);
+  // The trailing `:` makes it a session target: a bare `=name` resolves to no pane.
+  const { ok, stdout } = await tmux(['display-message', '-p', '-t', `=${session}:`, '#{pane_id}']);
   const id = stdout.trim();
   return ok && id.length > 0 ? id : undefined;
 }

@@ -127,6 +127,8 @@ export type Request =
   | { kind: 'unmarkPrDeployed'; key: string }
   | { kind: 'focusSession'; session: string }
   | { kind: 'focusPane'; pane: string }
+  /** ⌘J / ⌘⇧J: the agent after the tmux pane you are in, as `fw next` picks it. */
+  | { kind: 'nextAgent'; blocked: boolean }
   | { kind: 'killSession'; session: string }
   /** Close one agent by its fleet key — pids are resolved in main, never sent from a snapshot. */
   | { kind: 'killAgent'; key: string }
