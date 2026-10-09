@@ -13,7 +13,7 @@ import {
 } from './sessionOrder.ts';
 import type { SessionRename } from './sessionOrder.ts';
 import * as tmux from './tmux.ts';
-import { concernPrompt, openTour } from './tour.ts';
+import { against, concernPrompt, openTour } from './tour.ts';
 import type { Concern, SendOutcome } from './tour.ts';
 import { paletteFor } from './theme.ts';
 import type { Palette } from './theme.ts';
@@ -270,6 +270,8 @@ export interface OpenReviewOptions {
    * use neither.
    */
   base?: string;
+  /** Only the work not staged yet, so the agent's latest edits. */
+  unstaged?: boolean;
   /** What the page is painted with, read when it loads. Rosé Pine without one. */
   palette?: () => Promise<Palette>;
   /** Hand the review's concerns to the agent. Without one they go to the clipboard. */
@@ -298,6 +300,7 @@ export async function openReview(options: OpenReviewOptions): Promise<ActionResu
     const url = await openTour({
       cwd: options.cwd,
       base,
+      unstaged: options.unstaged,
       palette: options.palette ?? (async () => paletteFor(undefined)),
       send:
         options.send ??
@@ -308,7 +311,7 @@ export async function openReview(options: OpenReviewOptions): Promise<ActionResu
         })),
     });
     await run('open', [url]);
-    return { ok: true, detail: `review of ${where} vs ${base} — ${url}` };
+    return { ok: true, detail: `review of ${where} vs ${against({ base, unstaged: options.unstaged })} — ${url}` };
   } catch (error) {
     return { ok: false, detail: (error as Error).message };
   }

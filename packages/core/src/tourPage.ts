@@ -119,6 +119,10 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 .sections li.done:not(.current) .t { color: var(--dim); }
 .sections li .tag { display: block; color: var(--dim); font-size: 11px; margin-top: 1px; }
 .sections li.uncovered .tag { color: var(--warn); }
+.sections li .n.added { color: var(--ok); }
+.sections li .n.deleted { color: var(--danger); }
+.scope { margin-top: var(--s3); }
+.scope + .scope { margin-top: var(--s2); }
 .legend { border-top: 1px solid var(--edge); padding: var(--s3) var(--s4); color: var(--dim); font-size: 11.5px; display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; }
 
 /* ── stage ── */
@@ -205,10 +209,8 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 .wait { padding: var(--s6); max-width: 760px; }
 .wait h1 { font: 600 20px/1.3 var(--code); margin: 0 0 var(--s2); }
 .wait p { font: 14px/1.6 var(--prose); color: var(--soft); margin: 0 0 var(--s5); max-width: 62ch; }
+.stage-head .clock { font-size: 12px; }
 .clock { font: 500 13px var(--code); color: var(--accent); font-variant-numeric: tabular-nums; }
-.skeleton { display: grid; gap: 9px; margin-top: var(--s5); }
-.skeleton span { height: 10px; border-radius: 3px; background: linear-gradient(90deg, var(--panel) 0%, var(--edge) 50%, var(--panel) 100%); background-size: 200% 100%; animation: shimmer 1.6s linear infinite; }
-@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 .failure { font: 12.5px/1.6 var(--code); color: var(--danger); background: var(--danger-soft); border-radius: var(--radius); padding: var(--s4); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 var(--s4); }
 
 /* ── inspector ── */
@@ -361,9 +363,12 @@ var stale = false;
 var lastThreadKey = '';
 var layout = 'inline';    // 'inline' or 'split', remembered per browser
 try { if (localStorage.getItem('fw-review-layout') === 'split') layout = 'split'; } catch (e) {}
+var view = 'plain';       // what is on screen: 'plain' or 'sections'
+var opensOn = 'sections'; // where a review that has its sections opens, remembered per browser
+try { if (localStorage.getItem('fw-review-view') === 'plain') opensOn = 'plain'; } catch (e) {}
 // Side by side needs room; a narrow window always reads inline.
 var narrow = matchMedia('(max-width: 960px)');
-narrow.addEventListener('change', function () { if (data && data.sections) renderStage(); });
+narrow.addEventListener('change', function () { if (data) renderStage(); });
 try { drafts = JSON.parse(localStorage.getItem('fw-review-drafts:' + base) || '{}') || {}; } catch (e) {}
 function saveDrafts() { try { localStorage.setItem('fw-review-drafts:' + base, JSON.stringify(drafts)); } catch (e) {} }
 function mmss(ms) { var sec = Math.floor(Math.max(0, ms) / 1000); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); }
@@ -576,16 +581,19 @@ function load(first) {
     data = d;
     clockOffset = (d.now || Date.now()) - Date.now();
     document.title = 'Review · ' + (d.repo || '');
-    if (first && d.sections) {
+    // Until the sections come there is only the plain diff, and arriving
+    // sections never take the page from under you: you stay on it.
+    if (first) view = d.sections ? opensOn : 'plain';
+    var arrived = d.sections && before && !before.sections;
+    if ((first || arrived) && d.sections) {
       // A §n in the address wins, so a reload stays put; else the first not yet reviewed.
       var asked = Number((location.hash.match(/^#(\d+)$/) || [])[1]) - 1;
       var open = d.sections.findIndex(function (_, i) { return d.checked.indexOf(i) < 0; });
       current = asked >= 0 && asked < d.sections.length ? asked : open < 0 ? 0 : open;
     }
-    // A poll redraws the code and the thread, never the composer: an answer
-    // arriving must not move the caret, the selection or an open fold.
-    if (first || !before || before.status !== d.status || !document.getElementById('thread')) render();
-    else { renderStage(); refreshThread(); }
+    if (first || !before || before.status !== d.status) render();
+    else VIEWS[view].poll();
+    if (arrived) toast('Sections ready · v to switch');
     announce(before, d);
     var busy = d.status === 'building' || (d.comments || []).some(function (c) { return c.asking; });
     clearTimeout(pollTimer);
@@ -643,8 +651,21 @@ function renderRail() {
   rail.replaceChildren();
   rail.append(h('div', { class: 'rail-head' },
     h('div', { class: 'repo', text: data.repo || data.title }),
-    h('div', { class: 'base' }, icon('branch'), h('span', {}, 'against '), h('span', { class: 'ref', text: data.base || '' }))));
-  if (!data.sections) return;
+    h('div', { class: 'base' }, icon('branch'), h('span', {}, data.unstaged ? 'unstaged, against ' : 'against '), h('span', { class: 'ref', text: data.against || '' })),
+    segmented('What to review', 'scope', !!data.unstaged, [
+      { value: false, label: 'Branch', title: 'Everything since ' + (data.base || 'the trunk') },
+      { value: true, label: 'Unstaged', title: 'Only what is not staged: the latest edits' },
+    ], setScope),
+    // A switch only once there are sections to switch to.
+    data.sections ? segmented('View', 'scope', view, [
+      { value: 'plain', label: 'Plain diff', title: 'Plain diff (v)' },
+      { value: 'sections', label: 'Sections', title: 'Sections (v)' },
+    ], setView) : null));
+  VIEWS[view].rail(rail);
+}
+
+/** The sections' rail: progress, the § list, and the keys. */
+function sectionsRail(rail) {
   var done = data.checked.length, total = data.sections.length;
   rail.append(h('div', { class: 'progress' },
     h('div', { class: 'segments', 'aria-hidden': 'true' }, data.sections.map(function (_, i) {
@@ -670,7 +691,36 @@ function renderRail() {
     h('span', {}, h('kbd', { text: 'c' }), ' ', h('kbd', { text: 'C' })), h('span', { text: 'ask, or raise a concern' }),
     h('span', {}, h('kbd', { text: 'x' })), h('span', { text: 'mark reviewed, go on' }),
     h('span', {}, h('kbd', { text: 's' })), h('span', { text: 'inline or side by side' }),
+    h('span', {}, h('kbd', { text: 'v' })), h('span', { text: 'plain diff or sections' }),
     h('span', {}, h('kbd', { text: 'w' })), h('span', { text: 'widen the inspector' })));
+}
+
+/** The plain diff's rail: the changed files, each a jump to its diff. */
+function plainRail(rail) {
+  var n = data.plain.length;
+  rail.append(h('div', { class: 'progress' },
+    h('div', { class: 'progress-label' }, h('b', { text: String(n) }), ' file' + (n > 1 ? 's' : '') + ' changed')));
+  rail.append(h('ol', { class: 'sections' }, data.plain.map(function (sf) {
+    var path = sf.path;
+    var f = data.files[path];
+    var parts = path.split('/');
+    var name = parts.pop();
+    var letter = { added: 'A', deleted: 'D', renamed: 'R' }[f.status] || 'M';
+    return h('li', { onclick: function () {
+      var el = document.querySelector('#stage [data-file="' + CSS.escape(path) + '"]');
+      if (el) el.scrollIntoView({ block: 'start' });
+    } },
+      h('span', { class: 'mark' }),
+      h('span', { class: 'n ' + f.status, text: letter }),
+      h('span', {}, h('span', { class: 't', text: name }), parts.length ? h('span', { class: 'tag', text: parts.join('/') }) : null));
+  })));
+}
+
+function setScope(unstaged) {
+  api('POST', 'scope', { unstaged: unstaged }).then(function (r) {
+    if (r.key) location.href = base.replace(/[^/]+$/, r.key);
+    else toast(r.error || 'Could not switch');
+  });
 }
 
 /* ── stage ── */
@@ -678,27 +728,18 @@ function renderStage() {
   var stage = document.getElementById('stage');
   var top = stage.scrollTop;
   stage.replaceChildren();
-  if (data.status === 'building') return renderBuilding(stage);
-  if (data.status === 'error') {
-    stage.append(h('div', { class: 'wait' },
-      h('h1', { text: 'The recap did not come through' }),
-      h('p', { text: 'The agent that cuts the change into sections failed. Nothing is lost: your checkoffs and comments are kept with this snapshot. Run it again; if it keeps failing, the message below says why.' }),
-      h('pre', { class: 'failure', text: data.error || 'unknown error' }),
-      h('button', { class: 'primary', onclick: regenerate }, icon('refresh'), 'Run the recap again')));
-    return;
-  }
+  VIEWS[view].stage(stage);
+  stage.scrollTop = top;
+}
+
+function sectionStage(stage) {
   var s = section();
   var isDone = data.checked.indexOf(current) >= 0;
   stage.append(h('header', { class: 'stage-head' },
     h('h1', {}, h('span', { class: 'n', text: '§' + (current + 1) }), h('span', { text: s.title }),
       s.mechanical ? h('span', { class: 'kind', text: 'mechanical' }) : null),
     h('div', { class: 'head-actions' },
-      h('div', { class: 'layout', role: 'radiogroup', 'aria-label': 'Diff layout' }, [['inline', 'Inline'], ['split', 'Side by side']].map(function (o) {
-        return h('button', {
-          class: layout === o[0] ? 'on' : '', role: 'radio', 'aria-checked': layout === o[0] ? 'true' : 'false',
-          title: o[1] + ' (s)', onclick: function () { setLayout(o[0]); },
-        }, icon(o[0]), o[0] === 'split' ? 'Split' : 'Inline');
-      })),
+      layoutEl(),
       h('button', { class: isDone ? 'done' : 'primary', onclick: toggleChecked },
         icon(isDone ? 'check' : 'done'), isDone ? 'Reviewed' : 'Mark reviewed', h('kbd', { text: 'x' })))));
   if (stale) {
@@ -706,35 +747,76 @@ function renderStage() {
       h('span', { text: 'The worktree has moved since this review was pinned. What you see is the earlier state.' }),
       h('button', { onclick: regenerate }, icon('refresh'), 'Review the new state')));
   }
-  var body = h('div', { class: 'stage-body' });
-  var code = s.files.filter(function (f) { return !TEST.test(f.path); });
-  var tests = s.files.filter(function (f) { return TEST.test(f.path); });
-  code.forEach(function (f) { body.append(fileEl(f)); });
-  if (tests.length) {
-    body.append(h('details', { class: 'fold' },
-      h('summary', {}, icon('chevron'), 'Tests', h('span', { class: 'count', text: tests.length + ' file' + (tests.length > 1 ? 's' : '') })),
-      tests.map(fileEl)));
-  }
-  stage.append(body);
-  stage.scrollTop = top;
+  stage.append(filesEl(s.files, current));
 }
 
+/** Every file, each change with the code around it: to read before the sections come, or instead of them. */
+function plainStage(stage) {
+  stage.append(h('header', { class: 'stage-head' },
+    h('h1', {}, h('span', { text: 'Plain diff' }), recapClock()),
+    h('div', { class: 'head-actions' }, layoutEl())));
+  stage.append(recapFailure() || '', filesEl(data.plain, null));
+}
+
+/** How long the recap has been building, ticking in place; nothing once it is done. */
 var clockTimer;
-function renderBuilding(stage) {
+function recapClock() {
+  if (data.status !== 'building') return null;
   var clock = h('span', { class: 'clock' });
   var offset = (data.now || Date.now()) - Date.now();
   function tick() { clock.textContent = mmss(Date.now() + offset - (data.startedAt || Date.now())); }
   tick();
   clearInterval(clockTimer);
   clockTimer = setInterval(function () { if (!clock.isConnected) return clearInterval(clockTimer); tick(); }, 1000);
-  var widths = [62, 48, 71, 35, 80, 54, 66, 41, 74, 58, 30, 69];
-  stage.append(h('div', { class: 'wait' },
-    h('h1', {}, 'Reading the change ', clock),
-    h('p', { text: 'An agent is cutting the diff into sections that follow its logic. It usually takes one to three minutes; this page fills in on its own.' }),
-    h('div', { class: 'skeleton', 'aria-hidden': 'true' }, widths.map(function (w) { return h('span', { style: 'width:' + w + '%' }); }))));
+  return h('span', { class: 'kind' }, 'an agent is cutting it into sections · ', clock);
 }
 
-function fileEl(sf) {
+/** Why the recap failed, and the way to run it again; nothing unless it did. */
+function recapFailure() {
+  if (data.status !== 'error') return null;
+  return h('div', { class: 'wait' },
+    h('h1', { text: 'The recap did not come through' }),
+    h('p', { text: 'The agent that cuts the change into sections failed. Nothing is lost: your checkoffs and comments are kept with this snapshot. Run it again; if it keeps failing, the message below says why. The plain diff is below.' }),
+    h('pre', { class: 'failure', text: data.error || 'unknown error' }),
+    h('button', { class: 'primary', onclick: regenerate }, icon('refresh'), 'Run the recap again'));
+}
+
+/** A row of buttons with one on; pick gets the value of another one clicked. */
+function segmented(label, cls, value, options, pick) {
+  return h('div', { class: 'layout' + (cls ? ' ' + cls : ''), role: 'radiogroup', 'aria-label': label }, options.map(function (o) {
+    var on = o.value === value;
+    return h('button', {
+      class: on ? 'on' : '', role: 'radio', 'aria-checked': on ? 'true' : 'false', title: o.title,
+      onclick: function () { if (!on) pick(o.value); },
+    }, o.icon ? icon(o.icon) : null, o.label);
+  }));
+}
+
+function layoutEl() {
+  return segmented('Diff layout', '', layout, [
+    { value: 'inline', label: 'Inline', title: 'Inline (s)', icon: 'inline' },
+    { value: 'split', label: 'Split', title: 'Side by side (s)', icon: 'split' },
+  ], setLayout);
+}
+
+/**
+ * The code files in order, the tests folded under them. A changed line that
+ * belongs to a section other than at is dimmed; with at null, none is.
+ */
+function filesEl(files, at) {
+  var body = h('div', { class: 'stage-body' });
+  var code = files.filter(function (f) { return !TEST.test(f.path); });
+  var tests = files.filter(function (f) { return TEST.test(f.path); });
+  code.forEach(function (f) { body.append(fileEl(f, at)); });
+  if (tests.length) {
+    body.append(h('details', { class: 'fold' },
+      h('summary', {}, icon('chevron'), 'Tests', h('span', { class: 'count', text: tests.length + ' file' + (tests.length > 1 ? 's' : '') })),
+      tests.map(function (f) { return fileEl(f, at); })));
+  }
+  return body;
+}
+
+function fileEl(sf, at) {
   var file = data.files[sf.path];
   var rows = file.rows;
   var lang = langOf(sf.path);
@@ -756,7 +838,7 @@ function fileEl(sf) {
     var r = rows[i];
     var own = owner(sf.path, i);
     var cls = 'row' + (r.kind === '+' ? ' add' : r.kind === '-' ? ' del' : '');
-    var foreign = r.kind !== ' ' && own !== current && own >= 0;
+    var foreign = at != null && r.kind !== ' ' && own !== at && own >= 0;
     if (foreign) cls += ' other';
     if (cursor && cursor.path === sf.path && cursor.row === i) cls += ' cursor';
     var m = marks[i];
@@ -801,7 +883,7 @@ function fileEl(sf) {
   var name = parts.pop();
   var dir = parts.length ? parts.join('/') + '/' : '';
   var renamed = file.oldPath && file.oldPath !== sf.path;
-  return h('section', { class: 'file' },
+  return h('section', { class: 'file', 'data-file': sf.path },
     h('div', { class: 'file-head' },
       h('span', { class: 'path' }, renamed ? file.oldPath + ' → ' : '', dir, h('b', { text: name })),
       file.status !== 'modified' ? h('span', { class: 'status ' + file.status, text: file.status }) : null,
@@ -815,14 +897,18 @@ function fileEl(sf) {
 function threadKey(on) { return on ? on.path + ':' + on.row : 'section:' + current; }
 function cursorOn() { return cursor && data.files[cursor.path] ? cursor : null; }
 
-function renderInspector() {
-  var insp = document.getElementById('inspector');
-  if (data.status !== 'ready') {
-    insp.replaceChildren(h('div', { class: 'inspector-scroll' }, h('div', { class: 'pane' },
-      h('h2', { text: 'Inspector' }),
-      h('p', { class: 'muted', text: 'The section summary, the code it leans on and your comments will show here.' }))));
-    return;
-  }
+function renderInspector() { VIEWS[view].inspector(document.getElementById('inspector')); }
+
+/** The plain diff has nothing to say about a line: it says where that is said. */
+function plainInspector(insp) {
+  var why = data.sections ? 'Questions and concerns are asked in the sections. v to switch.'
+    : data.status === 'building' ? 'Comments open with the sections, in a minute or two. Their summaries, the code they lean on and your threads will show here.'
+    : 'The section summary, the code it leans on and your comments will show here.';
+  insp.replaceChildren(h('div', { class: 'inspector-scroll' }, h('div', { class: 'pane' },
+    h('h2', { text: 'Inspector' }), h('p', { class: 'muted', text: why }))));
+}
+
+function sectionInspector(insp) {
   var s = section();
   var on = cursorOn();
   var key = threadKey(on);
@@ -1122,6 +1208,20 @@ function queueEl() {
 }
 
 /* ── behaviour ── */
+/**
+ * The two ways to read the change. Each draws the rail below its head, the
+ * stage and the inspector, and says what a poll redraws: the sections redraw
+ * the code and the thread, never the composer, so an answer arriving does not
+ * move the caret, the selection or an open fold; the plain diff stands still.
+ */
+var VIEWS = {
+  plain: { rail: plainRail, stage: plainStage, inspector: plainInspector, poll: function () {} },
+  sections: {
+    rail: sectionsRail, stage: sectionStage, inspector: sectionInspector,
+    poll: function () { if (document.getElementById('thread')) { renderStage(); refreshThread(); } else render(); },
+  },
+};
+
 function render() {
   if (!data) return;
   renderRail();
@@ -1264,8 +1364,23 @@ function moveCursor(step) {
   setCursor(rows[next].dataset.path, Number(rows[next].dataset.row), true);
 }
 
+/**
+ * Switch between the plain diff and the sections, keeping the line you are on:
+ * into the sections, to the one that owns it.
+ */
+function setView(next) {
+  if (next === view || !data.sections) return;
+  view = opensOn = next;
+  try { localStorage.setItem('fw-review-view', next); } catch (e) {}
+  var own = cursor ? owner(cursor.path, cursor.row) : -1;
+  if (view === 'sections' && own >= 0 && own !== current) { current = own; history.replaceState(null, '', '#' + (own + 1)); }
+  render();
+  document.getElementById('stage').scrollTop = 0;
+  if (cursor) setCursor(cursor.path, cursor.row, true);
+}
+
 function go(i) {
-  if (!data.sections || i < 0 || i >= data.sections.length) return;
+  if (view !== 'sections' || i < 0 || i >= data.sections.length) return;
   current = i; cursor = null;
   history.replaceState(null, '', '#' + (i + 1));
   render();
@@ -1273,6 +1388,7 @@ function go(i) {
 }
 
 function toggleChecked() {
+  if (view !== 'sections') return;
   var on = data.checked.indexOf(current) < 0;
   api('POST', 'check', { section: current, checked: on }).then(function (r) {
     data.checked = r.checked;
@@ -1295,7 +1411,7 @@ function send() {
 }
 
 document.addEventListener('keydown', function (e) {
-  if (!data || !data.sections || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (!data || e.metaKey || e.ctrlKey || e.altKey) return;
   var tag = e.target.tagName;
   if (tag === 'TEXTAREA' || tag === 'INPUT') return;
   if (e.key === 'j') moveCursor(1);
@@ -1304,6 +1420,7 @@ document.addEventListener('keydown', function (e) {
   else if (e.key === 'p') go(current - 1);
   else if (e.key === 'x') toggleChecked();
   else if (e.key === 's') setLayout(layout === 'split' ? 'inline' : 'split');
+  else if (e.key === 'v') setView(view === 'plain' ? 'sections' : 'plain');
   else if (e.key === 'w') toggleWide();
   else if (e.key === 'c') focusComposer();
   else if (e.key === 'C') { kinds[threadKey(cursorOn())] = 'concern'; renderInspector(); focusComposer(); }

@@ -662,6 +662,7 @@ async function handle(request: Request): Promise<Response> {
       return actions.openReview({
         cwd: request.cwd,
         base: request.base,
+        unstaged: request.unstaged,
         // Read when the page loads, so it follows the panel's theme.
         palette: async () => paletteFor((await configModule.loadConfig()).theme),
         // Looked up at the click, not now: the task's agent may be started, or

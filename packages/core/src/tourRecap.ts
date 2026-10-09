@@ -238,8 +238,7 @@ export function checkRecap(recap: Recap, files: FileDiff[]): CheckedRecap {
     const target = sections[mech] as TourSection;
     for (const f of rowless) {
       if (target.files.some((x) => x.path === f.path)) continue;
-      const what = f.binary ? 'binary file' : f.status === 'renamed' ? `renamed from ${f.oldPath}` : `${f.status}, empty`;
-      target.files.push({ path: f.path, windows: [], note: what });
+      target.files.push({ path: f.path, windows: [], note: rowlessNote(f) });
     }
   }
 
@@ -262,13 +261,9 @@ export function checkRecap(recap: Recap, files: FileDiff[]): CheckedRecap {
   const uncovered: TourSectionFile[] = [];
   for (const f of files) {
     const own = owners[f.path] as number[];
-    const list: [number, number][] = [];
-    f.rows.forEach((row, i) => {
-      if (row.kind === ' ' || own[i] !== -1) return;
-      own[i] = sections.length;
-      list.push([Math.max(0, i - CONTEXT), Math.min(f.rows.length - 1, i + CONTEXT)]);
-    });
-    if (list.length) uncovered.push({ path: f.path, windows: merge(list) });
+    const left = changedRows(f).filter((i) => own[i] === -1);
+    for (const i of left) own[i] = sections.length;
+    if (left.length) uncovered.push({ path: f.path, windows: around(left, f.rows.length) });
   }
   if (uncovered.length) {
     sections.push({
@@ -281,6 +276,32 @@ export function checkRecap(recap: Recap, files: FileDiff[]): CheckedRecap {
     });
   }
   return { sections, owners };
+}
+
+/**
+ * The whole change as a plain diff, before or instead of the recap: every
+ * changed line with the same context the "Not covered" section gives it.
+ */
+export function plainDiff(files: FileDiff[]): TourSectionFile[] {
+  return files.map((f) => ({
+    path: f.path,
+    windows: around(changedRows(f), f.rows.length),
+    ...(f.rows.length ? {} : { note: rowlessNote(f) }),
+  }));
+}
+
+/** What a file with no rows to show is: binary, a pure rename, or empty. */
+function rowlessNote(f: FileDiff): string {
+  return f.binary ? 'binary file' : f.status === 'renamed' ? `renamed from ${f.oldPath}` : `${f.status}, empty`;
+}
+
+function changedRows(f: FileDiff): number[] {
+  return f.rows.flatMap((row, i) => (row.kind === ' ' ? [] : [i]));
+}
+
+/** Windows holding each of `rows` with CONTEXT lines around it, merged. */
+function around(rows: number[], length: number): [number, number][] {
+  return merge(rows.map((i): [number, number] => [Math.max(0, i - CONTEXT), Math.min(length - 1, i + CONTEXT)]));
 }
 
 /** The first row at or past `line` going `dir`, on that side; the file's edge when there is none. */

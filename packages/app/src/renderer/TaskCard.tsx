@@ -185,6 +185,13 @@ export function RepoRow({
       >
         review
       </button>
+      <button
+        className="chip repo-review"
+        onClick={() => void act({ kind: 'openReview', cwd: repo.path, base, session, unstaged: true })}
+        title={`Review only what is not staged in ${repo.path}: the agent's latest edits, untracked files included. Stage what you have read to keep the next one short.`}
+      >
+        unstaged
+      </button>
       {/* The landed-PR case: this branch is merged, the checkout is dead weight,
           and the task is still going. Two steps, like archive — and never
           forced from here: uncommitted work refuses, and clearing it is a

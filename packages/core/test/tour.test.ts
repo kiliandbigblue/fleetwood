@@ -4,8 +4,8 @@ import { mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { run } from '../src/exec.ts';
-import { agentDiff, mergeBase, snapshotTree, wholeDiff } from '../src/tourDiff.ts';
-import { checkRecap } from '../src/tourRecap.ts';
+import { agentDiff, indexTree, mergeBase, snapshotTree, wholeDiff } from '../src/tourDiff.ts';
+import { checkRecap, plainDiff } from '../src/tourRecap.ts';
 
 async function repo(): Promise<string> {
   const dir = await realpath(await mkdtemp(join(tmpdir(), 'fw-tour-test-')));
@@ -44,6 +44,30 @@ test('a snapshot holds uncommitted work and leaves the index alone', async () =>
   // Same worktree, same snapshot: the cache key holds.
   assert.equal(await snapshotTree(dir), tree);
   assert.equal(await readFile(join(dir, 'consumer.go'), 'utf8'), 'package main\n\nfunc register() {}\n');
+});
+
+test('the index against the snapshot leaves only what is not staged', async () => {
+  const dir = await repo();
+  // Staged, then edited again: only the second edit is unstaged.
+  await writeFile(join(dir, 'main.go'), 'package main\n\nfunc main() {\n\tregister()\n\trun()\n\tstop()\n}\n');
+  await run('git', ['-C', dir, 'add', 'main.go']);
+  await writeFile(join(dir, 'main.go'), 'package main\n\nfunc main() {\n\tregister()\n\trun()\n\tstop()\n\twait()\n}\n');
+
+  const files = await wholeDiff(dir, await indexTree(dir), await snapshotTree(dir));
+  const byPath = Object.fromEntries(files.map((f) => [f.path, f]));
+  // The staged deletion of old.txt is gone; the untracked file and the last edit stay.
+  assert.deepEqual(Object.keys(byPath).sort(), ['consumer.go', 'main.go']);
+  assert.deepEqual(byPath['main.go']?.rows.filter((r) => r.kind !== ' ').map((r) => r.kind + r.text), ['+\twait()']);
+});
+
+test('the plain diff shows every change with its context, and says what a rowless file is', async () => {
+  const dir = await repo();
+  const files = await wholeDiff(dir, await mergeBase(dir, 'trunk'), await snapshotTree(dir));
+  const plain = Object.fromEntries(plainDiff(files).map((f) => [f.path, f]));
+  // main.go has 6 rows, one changed at index 3: five lines either side is the whole file.
+  assert.deepEqual(plain['main.go']?.windows, [[0, 5]]);
+  assert.deepEqual(plain['old.txt']?.windows, [[0, 0]]);
+  assert.equal(plain['main.go']?.note, undefined);
 });
 
 test('checkRecap places every changed line once, and collects what was left out', async () => {

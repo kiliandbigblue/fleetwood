@@ -34,15 +34,25 @@ export interface FileDiff {
  * new files are included without being marked intent-to-add.
  * `add -A` still honours `.gitignore`.
  */
-export async function snapshotTree(cwd: string): Promise<string> {
+export const snapshotTree = (cwd: string): Promise<string> => writeTree(cwd, true);
+
+/**
+ * The index as it stands: what is staged. Against the snapshot, it leaves only
+ * the unstaged work, untracked files included.
+ */
+export const indexTree = (cwd: string): Promise<string> => writeTree(cwd, false);
+
+async function writeTree(cwd: string, all: boolean): Promise<string> {
   const index = (await run('git', ['rev-parse', '--git-path', 'index'], { cwd })).stdout.trim();
   const dir = await mkdtemp(join(tmpdir(), 'fw-tour-'));
   const tmpIndex = join(dir, 'index');
   try {
     await copyFile(resolve(cwd, index), tmpIndex).catch(() => undefined);
     const env = { ...process.env, GIT_INDEX_FILE: tmpIndex };
-    const add = await run('git', ['add', '-A'], { cwd, env, timeoutMs: 60_000 });
-    if (add.code !== 0) throw new Error(`git add: ${add.stderr.trim()}`);
+    if (all) {
+      const add = await run('git', ['add', '-A'], { cwd, env, timeoutMs: 60_000 });
+      if (add.code !== 0) throw new Error(`git add: ${add.stderr.trim()}`);
+    }
     const tree = await run('git', ['write-tree'], { cwd, env });
     if (tree.code !== 0) throw new Error(`git write-tree: ${tree.stderr.trim()}`);
     return tree.stdout.trim();

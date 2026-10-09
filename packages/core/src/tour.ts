@@ -9,9 +9,9 @@ import { run } from './exec.ts';
 import { FW_HOME } from './paths.ts';
 import type { Palette } from './theme.ts';
 import type { FleetSession } from './fleet.ts';
-import { agentDiff, mergeBase, snapshotTree, wholeDiff } from './tourDiff.ts';
+import { agentDiff, indexTree, mergeBase, snapshotTree, wholeDiff } from './tourDiff.ts';
 import type { FileDiff } from './tourDiff.ts';
-import { RECAP_SCHEMA, checkRecap, recapPrompt } from './tourRecap.ts';
+import { RECAP_SCHEMA, checkRecap, plainDiff, recapPrompt } from './tourRecap.ts';
 import type { Recap } from './tourRecap.ts';
 import { tourPage } from './tourPage.ts';
 
@@ -51,7 +51,8 @@ export interface TourComment {
 export interface TourState {
   cwd: string;
   base: string;
-  mergeBase: string;
+  /** Where the diff starts: the merge base with `base`, or the index's tree for an unstaged review. */
+  from: string;
   tree: string;
   status: 'building' | 'ready' | 'error';
   /** When the current build started, so the page can say how long it has run. */
@@ -85,6 +86,8 @@ export interface TourOptions {
   cwd: string;
   /** The ref to diff against; the merge base with HEAD is what is shown. */
   base: string;
+  /** Only what is not staged yet: the index against the worktree, so the agent's latest edits. */
+  unstaged?: boolean;
   /** Hand concerns to the agent. Asked at click time: the agent may have changed since. */
   send: (concerns: Concern[]) => Promise<SendOutcome>;
 }
@@ -104,7 +107,10 @@ async function loadState(key: string): Promise<TourState | undefined> {
   const cached = states.get(key);
   if (cached) return cached;
   try {
-    const state = JSON.parse(await readFile(stateFile(key), 'utf8')) as TourState;
+    const state = JSON.parse(await readFile(stateFile(key), 'utf8')) as TourState & { mergeBase?: string };
+    // Kept before `from` was named for what it is; drop once reviews from before the rename are gone.
+    state.from ??= state.mergeBase as string;
+    delete state.mergeBase;
     // A build or an answer that was running when the app quit never finishes.
     if (state.status === 'building') {
       state.status = 'error';
@@ -179,7 +185,7 @@ async function build(tour: Open, state: TourState): Promise<void> {
     const result = await claude(
       tour.cwd,
       ['--json-schema', JSON.stringify(RECAP_SCHEMA)],
-      recapPrompt(agentDiff(tour.files), tour.base),
+      recapPrompt(agentDiff(tour.files), against(tour)),
       BUILD_MS,
     );
     const recap = result.structured_output as Recap | undefined;
@@ -195,12 +201,23 @@ async function build(tour: Open, state: TourState): Promise<void> {
   await save(tour.key);
 }
 
+/** What a review's diff is against, as the page and the prompt say it. */
+export function against(options: Pick<TourOptions, 'base' | 'unstaged'>): string {
+  return options.unstaged ? 'the index' : options.base;
+}
+
+/** Both ends of the diff: where it starts from, and the worktree as it stands. */
+function pin(options: TourOptions): Promise<[string, string]> {
+  const from = options.unstaged ? indexTree(options.cwd) : mergeBase(options.cwd, options.base);
+  return Promise.all([from, snapshotTree(options.cwd)]);
+}
+
 /** Pin the worktree as it stands, and start its recap unless one is kept for it. */
 async function prepare(options: TourOptions): Promise<Open> {
-  const [from, tree] = await Promise.all([mergeBase(options.cwd, options.base), snapshotTree(options.cwd)]);
+  const [from, tree] = await pin(options);
   const key = `${from.slice(0, 12)}-${tree.slice(0, 12)}`;
   const files = await wholeDiff(options.cwd, from, tree);
-  if (files.length === 0) throw new Error(`nothing to review in ${basename(options.cwd)} against ${options.base}`);
+  if (files.length === 0) throw new Error(`nothing to review in ${basename(options.cwd)} against ${against(options)}`);
   const tour: Open = { ...options, key, files };
   tours.set(key, tour);
 
@@ -209,7 +226,7 @@ async function prepare(options: TourOptions): Promise<Open> {
     const state: TourState = {
       cwd: options.cwd,
       base: options.base,
-      mergeBase: from,
+      from,
       tree,
       status: 'building',
       startedAt: Date.now(),
@@ -263,21 +280,31 @@ async function refLines(tour: Open, state: TourState, path: string, start: numbe
   return lines.slice(Math.max(0, start - 1), Math.min(lines.length, end));
 }
 
-/** What the page draws from. Rebuilt from git each time; only the agent's cut is kept. */
+/**
+ * What the page draws from. Rebuilt from git each time; only the agent's cut is kept.
+ * The files and the plain diff never wait for the recap: they are read while it builds.
+ */
 async function pageData(tour: Open, state: TourState): Promise<unknown> {
+  const checked = state.status === 'ready' && state.recap ? checkRecap(state.recap, tour.files) : undefined;
+  const files = Object.fromEntries(
+    tour.files.map((f) => [f.path, { rows: f.rows, owners: checked?.owners[f.path] ?? [], status: f.status, oldPath: f.oldPath }]),
+  );
   const base = {
-    title: `${basename(tour.cwd)} vs ${tour.base}`,
+    title: `${basename(tour.cwd)} vs ${against(tour)}`,
     repo: basename(tour.cwd),
     base: tour.base,
+    against: against(tour),
+    unstaged: tour.unstaged === true,
     startedAt: state.startedAt,
     now: Date.now(),
     status: state.status,
     error: state.error,
     checked: state.checked,
     comments: state.comments,
+    files,
+    plain: plainDiff(tour.files),
   };
-  if (state.status !== 'ready' || !state.recap) return base;
-  const checked = checkRecap(state.recap, tour.files);
+  if (!checked) return base;
   const sections = await Promise.all(
     checked.sections.map(async (section) => ({
       ...section,
@@ -286,10 +313,7 @@ async function pageData(tour: Open, state: TourState): Promise<unknown> {
       ),
     })),
   );
-  const files = Object.fromEntries(
-    tour.files.map((f) => [f.path, { rows: f.rows, owners: checked.owners[f.path], status: f.status, oldPath: f.oldPath }]),
-  );
-  return { ...base, sections, files };
+  return { ...base, sections };
 }
 
 /** A repo-relative path as an agent in `paneCwd` would write it. */
@@ -368,8 +392,18 @@ async function route(req: IncomingMessage, res: ServerResponse, palette: () => P
 
   // Has the worktree moved past the snapshot this review is pinned to?
   if (req.method === 'GET' && action === 'stale') {
-    const [from, tree] = await Promise.all([mergeBase(tour.cwd, tour.base), snapshotTree(tour.cwd)]);
-    return json(res, { stale: from !== state.mergeBase || tree !== state.tree });
+    const [from, tree] = await pin(tour);
+    return json(res, { stale: from !== state.from || tree !== state.tree });
+  }
+  // The same worktree, the whole branch or only what is not staged.
+  if (req.method === 'POST' && action === 'scope') {
+    const { unstaged } = (await body(req)) as { unstaged?: boolean };
+    try {
+      const next = await prepare({ ...tour, unstaged: unstaged === true });
+      return json(res, { key: next.key });
+    } catch (error) {
+      return json(res, { error: (error as Error).message }, 400);
+    }
   }
   if (req.method === 'POST' && action === 'regenerate') {
     // Same snapshot: a rerun after an error. A new one: a fresh review.

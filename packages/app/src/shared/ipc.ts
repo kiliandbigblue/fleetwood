@@ -214,9 +214,10 @@ export type Request =
    * browser, so this works on a task that has never been started. `base` is the head pull request's own base branch when the snapshot
    * holds one — the only record of what a stacked layer sits on — and main falls
    * back to the repo's trunk without it. `session` is the task's, when it has
-   * one: it is where the review's concerns are sent.
+   * one: it is where the review's concerns are sent. `unstaged` reviews only the
+   * work not staged yet: the agent's latest edits.
    */
-  | { kind: 'openReview'; cwd: string; base?: string; session?: string }
+  | { kind: 'openReview'; cwd: string; base?: string; session?: string; unstaged?: boolean }
   | { kind: 'archiveTask'; slug: string; force?: boolean }
   | { kind: 'listProjects' }
   | { kind: 'openExternal'; url: string }
