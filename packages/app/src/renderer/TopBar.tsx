@@ -69,6 +69,8 @@ interface Props {
    */
   focusedTask?: string;
   onBack: () => void;
+  /** Where back goes — a task opened from a plan returns to the plan. */
+  backTo: string;
   /** Start a task. Lives in the rail because it belongs to no row in the list. */
   onNewTask: () => void;
 }
@@ -116,6 +118,7 @@ export function TopBar({
   themePicker,
   focusedTask,
   onBack,
+  backTo,
   onNewTask,
 }: Props): React.JSX.Element {
   /*
@@ -194,7 +197,7 @@ export function TopBar({
         <div className="nav nav-focused">
           {/* One way back, in the place the tabs were, so the eye does not have to
               go looking for it. Escape does the same thing. */}
-          <button className="nav-back" onClick={onBack} title="back to the fleet (esc)">
+          <button className="nav-back" onClick={onBack} title={`back to ${backTo} (esc)`}>
             <svg
               className="icon"
               viewBox="0 0 24 24"

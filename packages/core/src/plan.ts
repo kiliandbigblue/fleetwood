@@ -198,12 +198,35 @@ function isErrand(stage: TicketStage): boolean {
   return STAGE[stage].group === 'needs-you';
 }
 
-/** The recently-merged list, by pull request — what `readPlan` looks deploys up in. */
-export function deploysByPr<T extends DeployFact & { repo: string; number: number }>(
-  merged: readonly T[] | undefined,
-): Map<string, DeployFact> {
-  return new Map((merged ?? []).map((pr) => [prKey(pr.repo, pr.number), pr]));
+/** One row of the recently-merged list, as much of `MergedPr` as a plan reads. */
+export type MergedRow = DeployFact & Pick<TaskPr, 'repo' | 'number' | 'title'> & { branch?: string; mergedAt: string };
+
+/**
+ * The recently-merged list, read two ways: a merge's deploy by its pull
+ * request, and the merges a ticket has by the `DEV-NNNN` in their branch (or,
+ * failing that, their title).
+ *
+ * The second is for a ticket with no task left here — archived once it merged,
+ * which is the usual end of one. Its merge is still on the list, still saying
+ * whether it went out, and that is a better reading than the board's column.
+ */
+export interface Merged {
+  byPr: ReadonlyMap<string, DeployFact>;
+  byTicket: ReadonlyMap<string, MergedRow[]>;
 }
+
+export function readMerged(rows: readonly MergedRow[] | undefined): Merged {
+  const byPr = new Map<string, DeployFact>();
+  const byTicket = new Map<string, MergedRow[]>();
+  for (const row of rows ?? []) {
+    byPr.set(prKey(row.repo, row.number), row);
+    const id = ticketIdOf(row.branch ?? '') ?? ticketIdOf(row.title);
+    if (id) byTicket.set(id, [...(byTicket.get(id) ?? []), row]);
+  }
+  return { byPr, byTicket };
+}
+
+const NOTHING_MERGED: Merged = { byPr: new Map(), byTicket: new Map() };
 
 /**
  * How long a merge stays in the recently-merged list, which is the only place a
@@ -215,16 +238,23 @@ export function deploysByPr<T extends DeployFact & { repo: string; number: numbe
  */
 const DEPLOY_WINDOW_MS = 72 * 3_600_000;
 
-function prStage(pr: TaskPr, deploys: ReadonlyMap<string, DeployFact>, now: number): TicketStage {
-  if (!isMerged(pr)) {
-    // A change request outranks the draft flag: a reviewer asked something of you.
-    if (pr.reviewDecision === 'CHANGES_REQUESTED') return 'changes';
-    if (pr.checks === 'failing') return 'failing';
-    return pr.isDraft ? 'draft' : 'in-review';
-  }
-  const fact = deploys.get(prKey(pr.repo, pr.number));
+/** A task's pull request: open by its review and checks, merged by its deploy. */
+function prStage(pr: TaskPr, merged: Merged, now: number): TicketStage {
+  if (isMerged(pr)) return mergeStage(merged.byPr.get(prKey(pr.repo, pr.number)), pr.mergedAt, now);
+  // A change request outranks the draft flag: a reviewer asked something of you.
+  if (pr.reviewDecision === 'CHANGES_REQUESTED') return 'changes';
+  if (pr.checks === 'failing') return 'failing';
+  return pr.isDraft ? 'draft' : 'in-review';
+}
+
+/**
+ * A merge, by what the recently-merged list says of its deploy. No `fact` is a
+ * merge the list does not hold: past its window it reads deployed, inside it —
+ * someone else's merge, still going out — merged.
+ */
+function mergeStage(fact: DeployFact | undefined, mergedAt: string | undefined, now: number): TicketStage {
   if (!fact) {
-    const at = pr.mergedAt ? Date.parse(pr.mergedAt) : NaN;
+    const at = mergedAt ? Date.parse(mergedAt) : NaN;
     return now - at > DEPLOY_WINDOW_MS ? 'deployed' : 'merged';
   }
   if (isDone(fact)) return 'deployed';
@@ -257,26 +287,28 @@ function rollUp(stages: readonly TicketStage[]): TicketStage {
  * moved by hand and lags it; it is not consulted, and not corrected either,
  * because it is the team's.
  *
- * A ticket with no task here reads the board: Fleetwood holds no pull request
- * for it, so `Done` is the most there is to say, and it reads `deployed` by the
- * same reasoning as an old merge.
+ * A ticket with no task here reads its merges off the recently-merged list
+ * when it has any — see `Merged`. Otherwise the board is all there is: `Done`
+ * reads `deployed` by the same reasoning as an old merge.
  */
 export function ticketStage(
   ticket: Ticket,
   link: TicketLink | undefined,
-  deploys: ReadonlyMap<string, DeployFact> = new Map(),
+  merged: Merged = NOTHING_MERGED,
   now = Date.now(),
 ): TicketStage {
   const board = ticket.notionStatus.trim().toLowerCase();
   if (board === 'canceled') return 'canceled';
   if (!link) {
+    const merges = merged.byTicket.get(ticket.id) ?? [];
+    if (merges.length > 0) return rollUp(merges.map((row) => mergeStage(row, row.mergedAt, now)));
     if (board === 'in progress') return 'started';
     if (board === 'in review') return 'in-review';
     if (board === 'done') return 'deployed';
     return 'todo';
   }
   const stages = taskRungs<TicketStage>(link.task.repos, link.prs, {
-    pr: (pr) => prStage(pr, deploys, now),
+    pr: (pr) => prStage(pr, merged, now),
     // A repo landed straight on the trunk has no pull request to follow to a deploy.
     repo: (status) => (status === 'done' ? 'merged' : 'started'),
   });
@@ -342,7 +374,7 @@ export interface PlanTicket {
 export function readPlan(
   plan: Plan,
   links: ReadonlyMap<string, TicketLink>,
-  deploys: ReadonlyMap<string, DeployFact> = new Map(),
+  merged: Merged = NOTHING_MERGED,
   now = Date.now(),
 ): PlanTicket[] {
   const byId = new Map(plan.tickets.map((ticket) => [ticket.id, ticket]));
@@ -354,7 +386,7 @@ export function readPlan(
   const own = plan.tickets.map((ticket) => {
     const link = links.get(ticket.id);
     const hasPr = ticket.hasPr || (link?.prs?.length ?? 0) > 0;
-    return { ticket, link, hasPr, stage: ticketStage(ticket, link, deploys, now) };
+    return { ticket, link, hasPr, stage: ticketStage(ticket, link, merged, now) };
   });
   const ownOf = new Map(own.map((fact) => [fact.ticket.id, fact]));
   const read = own.map((fact) => ({

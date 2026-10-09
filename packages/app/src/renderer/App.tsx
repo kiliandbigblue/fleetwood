@@ -24,7 +24,7 @@ import { needsDeploy } from '@fleetwood/core/deployState';
 import { isHidden, sessionLabel, sortSessions } from '@fleetwood/core/sessionOrder';
 import { isFleetSession } from '@fleetwood/core/fleetList';
 import { dormantTasks } from '@fleetwood/core/taskView';
-import { deploysByPr, groupFleet, hasLiveAgent, linkTickets, OTHER_GROUP, readPlan, ticketIdOf } from '@fleetwood/core/plan';
+import { groupFleet, hasLiveAgent, linkTickets, OTHER_GROUP, readMerged, readPlan, ticketIdOf } from '@fleetwood/core/plan';
 import { resolveFocus } from './focus.ts';
 import {
   answerFocusedPrompt,
@@ -168,6 +168,12 @@ export function App(): React.JSX.Element {
   });
   /** A move is out: the card's name is about to change, so the next key waits. */
   const arranging = useRef(false);
+  /*
+   * One step back out — see `back`, written further down where the open task is
+   * resolved. A ref for the reason `arrangeLists` is one: Escape's handler is
+   * bound once per overlay change, and must step out of what is open now.
+   */
+  const goBack = useRef<() => void>(() => {});
   /*
    * The card a key just moved, and until when to keep focus on it.
    *
@@ -355,8 +361,7 @@ export function App(): React.JSX.Element {
          * behind it. The inline editors — notes, add-repo — do stop it, because
          * this handler cannot see them.
          */
-        setFocusedSlug(undefined);
-        setFocusedPlan(undefined);
+        goBack.current();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -523,9 +528,29 @@ export function App(): React.JSX.Element {
   );
   // A merged ticket's deploy is read off the recently-merged list, the same
   // rollup the merged tab draws, so the two can never disagree about a PR.
-  const deploys = deploysByPr(snapshot?.merged?.prs);
-  const planRows = new Map(plans.map((plan) => [plan.milestoneId, readPlan(plan, links, deploys)]));
+  const mergedFacts = readMerged(snapshot?.merged?.prs);
+  const planRows = new Map(plans.map((plan) => [plan.milestoneId, readPlan(plan, links, mergedFacts)]));
   const openPlan = plans.find((plan) => plan.milestoneId === focusedPlan);
+  /*
+   * Back is one step, not home. A task opened from a plan goes back to that
+   * plan, and the plan to the fleet — the plan is kept open under the task for
+   * exactly this. A task that is gone (archived from the terminal) is no step:
+   * back goes past it rather than spending a press on a pane already closed.
+   * Asking for a list — a tab, ⌘T, ⌘1–4 — is not back; it leaves both.
+   *
+   * Where it goes and what the button calls it are one decision, made here.
+   */
+  const back =
+    focused && openPlan
+      ? { to: openPlan.name, go: () => setFocusedSlug(undefined) }
+      : {
+          to: 'the fleet',
+          go: () => {
+            setFocusedSlug(undefined);
+            setFocusedPlan(undefined);
+          },
+        };
+  goBack.current = back.go;
   /*
    * The list as groups: every plan by name, then Other — see `groupFleet`.
    * Sessions and parked tasks are grouped as one list, running ones first, so a
@@ -736,10 +761,8 @@ export function App(): React.JSX.Element {
         onRefresh={refresh}
         refreshing={refreshing}
         focusedTask={focused?.task.slug ?? openPlan?.name}
-        onBack={() => {
-          setFocusedSlug(undefined);
-          setFocusedPlan(undefined);
-        }}
+        onBack={back.go}
+        backTo={back.to}
         onNewTask={() => {
           setNewTaskDraft(EMPTY_DRAFT);
           setNewTaskOpen(true);
@@ -794,7 +817,7 @@ export function App(): React.JSX.Element {
         )}
 
         {/* A plan opened, alone in the body like an opened task. A task opened
-            from it takes over, and back goes to the fleet, as from any task. */}
+            from it takes over, and back comes back here — see `back`. */}
         {snapshot?.plans && !focused && openPlan && (
           <PlanView
             plan={openPlan}
@@ -805,10 +828,7 @@ export function App(): React.JSX.Element {
             currentSession={snapshot.currentSession}
             onRefresh={refreshPlans}
             onStart={onStartTicket}
-            onOpenTask={(slug) => {
-              setFocusedPlan(undefined);
-              setFocusedSlug(slug);
-            }}
+            onOpenTask={setFocusedSlug}
             onResult={onResult}
           />
         )}
