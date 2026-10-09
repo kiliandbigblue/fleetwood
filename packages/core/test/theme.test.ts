@@ -8,6 +8,7 @@ import {
   withAlpha,
   contrastRatio,
   readableDim,
+  windowGround,
   THEMES,
   THEME_NAMES,
   isThemeName,
@@ -171,6 +172,18 @@ test('readableDim clears 4.5:1 on the window in every theme', () => {
     const palette = THEMES[name].palette;
     const dim = readableDim(palette);
     assert.ok(contrastRatio(dim, palette.bg) >= 4.5, `${name}: ${dim} on ${palette.bg}`);
+  }
+});
+
+test('readableDim clears 4.5:1 on the window as painted, or gives `soft`', () => {
+  for (const name of THEME_NAMES) {
+    const palette = THEMES[name].palette;
+    for (const opacity of [1, 0.85, 0.6, MIN_BG_OPACITY]) {
+      const dim = readableDim(palette, opacity);
+      const ground = windowGround(palette, opacity);
+      // `soft` is as far as a lift goes, never past it toward `text`.
+      assert.ok(dim === palette.soft || contrastRatio(dim, ground) >= 4.5, `${name} at ${opacity}: ${dim} on ${ground}`);
+    }
   }
 });
 

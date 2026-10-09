@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import type { Plan, PlanTicket, Ticket, TicketGroup } from '@fleetwood/core';
 // The leaf modules: the barrel re-exports tmux and process scanning, which fail
 // the renderer bundle on `node:child_process`.
-import { canStart, dueLabel, groupTickets, STAGE } from '@fleetwood/core/plan';
+import { canStart, dueLabel, groupTickets, landed, STAGE } from '@fleetwood/core/plan';
 import { STATUS_LABEL } from '@fleetwood/core/taskStatus';
 import { agentWord } from './fleetSignals.ts';
 import { Icon } from './Icon.tsx';
@@ -101,16 +101,15 @@ export function GroupRow({
 }): React.JSX.Element {
   return (
     <>
-      <div className="card plan-card">
+      <div className="card group-card">
         <div
           className="card-head"
           onClick={onOpen ?? onToggle}
           title={onOpen ? 'open the plan — every ticket, and where each one has got to' : expanded ? 'fold it away' : 'show it'}
         >
-          <span className="plan-mark" aria-hidden="true" />
           {/* The keyboard's way in, as on a task card: Enter presses it and the
               press bubbles to the head. */}
-          <button type="button" className="session-name card-title">
+          <button type="button" className="card-title group-title">
             {title}
             <span className="sr-only">
               , {kind}
@@ -249,20 +248,20 @@ export function PlanView({
         const folds = group === 'done';
         return (
           <section key={group} className="plan-group">
-            {folds ? (
-              <button
-                className={`section-title plan-fold${showDone ? ' open' : ''}`}
-                aria-expanded={showDone}
-                onClick={() => setShowDone(!showDone)}
-              >
-                {GROUP_LABEL[group]} · {tickets.length}
-                <Icon name="chevron" />
-              </button>
-            ) : (
-              <div className="section-title">
-                {GROUP_LABEL[group]} · {tickets.length}
-              </div>
-            )}
+            <div className="section-title" role="heading" aria-level={2}>
+              {folds ? (
+                <button
+                  className={`plan-fold${showDone ? ' open' : ''}`}
+                  aria-expanded={showDone}
+                  onClick={() => setShowDone(!showDone)}
+                >
+                  {GROUP_LABEL[group]} · {tickets.length}
+                  <Icon name="chevron" />
+                </button>
+              ) : (
+                `${GROUP_LABEL[group]} · ${tickets.length}`
+              )}
+            </div>
             {(!folds || showDone) &&
               tickets.map((row) => (
                 <TicketRow
@@ -306,6 +305,9 @@ function TicketRow({
   const assignees = ticket.assignees.map((assignee) => assignee.name).join(', ');
   const waiting = STAGE[row.stage].status === 'not-started';
   const agent = link ? agentWord(link.agents, link.task.session !== undefined) : undefined;
+  // A landed blocker blocks nothing, and naming it beside the live one made the
+  // ticket read as more stuck than it is.
+  const blockers = row.blockers.filter((blocker) => !blocker.stage || !landed(blocker.stage));
   return (
     <div className={`plan-ticket${row.group === 'done' ? ' plan-ticket-done' : ''}${here ? ' here' : ''}`}>
       <div className="plan-ticket-line">
@@ -362,10 +364,10 @@ function TicketRow({
         {/* With a task linked it is yours; the name only matters on someone else's. */}
         {!link && <span>{assignees || 'unassigned'}</span>}
         {/* A landed ticket's old blockers are history; only a waiting one says them. */}
-        {waiting && row.blockers.length > 0 && (
+        {waiting && blockers.length > 0 && (
           <span>
             blocked by{' '}
-            {row.blockers
+            {blockers
               .map((blocker) => `${blocker.label} (${blocker.stage ? STAGE[blocker.stage].label : 'unknown'})`)
               .join(', ')}
           </span>

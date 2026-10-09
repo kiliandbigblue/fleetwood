@@ -50,6 +50,6 @@ export function applyTheme(name: ThemeName, bgOpacity: number): void {
    * edge — it is a shape, and a shape reads at 3:1, so it keeps the palette's
    * own value and stays as quiet as the theme meant it.
    */
-  style.setProperty('--dim', readableDim(palette));
+  style.setProperty('--dim', readableDim(palette, bgOpacity));
   style.setProperty('--dim-mark', palette.dim);
 }

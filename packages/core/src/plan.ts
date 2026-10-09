@@ -316,6 +316,15 @@ export function ticketStage(
 }
 
 /**
+ * Whether a blocker at this stage has stopped blocking: merged, deployed or
+ * canceled. The one rule for it — `waitingOn` starts a ticket by it, and the
+ * drawer leaves such a blocker unnamed.
+ */
+export function landed(stage: TicketStage): boolean {
+  return STAGE[stage].status === 'done';
+}
+
+/**
  * What a ticket nobody has started waits on.
  *
  * Only asked of `todo` — once work exists, the ticket is moving whatever its
@@ -327,9 +336,9 @@ function waitingOn(
   blockers: ReadonlyArray<{ stage: TicketStage; hasPr: boolean } | undefined>,
 ): TicketStage {
   if (stage !== 'todo') return stage;
-  const landed = (b: (typeof blockers)[number]): boolean => b !== undefined && STAGE[b.stage].status === 'done';
-  if (blockers.every(landed)) return 'todo';
-  if (blockers.every((b) => landed(b) || b?.hasPr === true)) return 'stackable';
+  const done = (b: (typeof blockers)[number]): boolean => b !== undefined && landed(b.stage);
+  if (blockers.every(done)) return 'todo';
+  if (blockers.every((b) => done(b) || b?.hasPr === true)) return 'stackable';
   return 'blocked';
 }
 

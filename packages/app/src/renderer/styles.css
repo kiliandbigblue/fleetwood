@@ -3590,6 +3590,10 @@ button.activity:focus-visible {
    under the pointer, and the two chips beside it must not collapse around it. */
 .task-repo:has(.chip.confirming) .chip {
   opacity: 1;
+  /* The chip's own box, which a narrow window takes away at rest — below. */
+  max-width: none;
+  padding-inline: 5px;
+  margin-left: 0;
 }
 .task-repo .chip:hover {
   color: var(--ok);
@@ -3601,6 +3605,26 @@ button.activity:focus-visible {
  */
 .task-repo .chip.danger:hover {
   color: var(--danger);
+}
+
+/*
+ * A narrow window, where the reserve is the row.
+ *
+ * Held in the flow, the four chips ask for ~240px whether or not they are
+ * showing, and at the panel's 380px floor that left a worktree's name 17px —
+ * `a…` — and pushed the dirty count past the edge. Here they take no room until
+ * they are revealed: the name gives way to them on hover rather than to their
+ * absence all the time. Still in the tab order; focus reveals them as before.
+ */
+@media (max-width: 560px) {
+  /* Every reveal above outranks this, so it gives the box back. */
+  .task-repo .chip {
+    max-width: 0;
+    padding-inline: 0;
+    /* Cancels the row's gap, which a zero-width item still takes. */
+    margin-left: calc(-1 * var(--s3));
+    overflow: hidden;
+  }
 }
 
 /*
@@ -3637,6 +3661,7 @@ button.activity:focus-visible {
 .task-pr:focus-visible {
   outline: none;
   background: color-mix(in srgb, var(--text) 7%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--text) 60%, transparent);
 }
 
 .task-pr:hover {
@@ -3809,9 +3834,14 @@ button.activity:focus-visible {
  * the one row with nothing left to do. The whole row dims: its checks and its
  * `↗` are history too, and leaving them at full weight put a finished task's
  * loudest mark on its most finished row.
+ *
+ * Dimmed to `dim` rather than faded with opacity: `dim` is already the floor
+ * of what can be read, and half of it was 2.5:1. Two classes, to outrank the
+ * two-class child rules such as `.task-pr .checks-passing`.
  */
-.task-pr-landed {
-  opacity: 0.55;
+.task-pr.task-pr-landed,
+.task-pr.task-pr-landed * {
+  color: var(--dim);
 }
 
 /*
@@ -5064,35 +5094,63 @@ body:has(.warning) {
 /* --- Plans ---------------------------------------------------------------- */
 
 /*
- * A plan's row, and the tasks folded under it.
+ * A group's head — a plan, or Other — set as a heading over the list, not as
+ * one more card in it. It keeps `.card` and `.card-title` only because those
+ * are what the list's keys walk and fold (see `listKeys.ts`); none of a task
+ * title's type comes with it.
  *
- * The mark is a hollow square rather than a dot: every dot in this list is an
- * agent's state or a task's progress, and a plan is neither — it is a heading
- * over tasks, so it gets a shape nothing else uses. Boxed at `--dot` so the
- * title starts on the same rail as every task title under it.
+ * It was a card: a task's 16px display face, a task's row, and a hollow square
+ * where a task has its dot. So a milestone and the tasks under it read as
+ * siblings, told apart by one odd glyph. A heading takes its rank from a
+ * different register instead: the caps the list's own labels are set in, a step
+ * up in size and ink from `.section-title` because it heads cards rather than
+ * rows, and hung on the list's outer edge — left of every task's dot — so the
+ * cards under it are under it by position before a word is read.
+ *
+ * And the widest interval in the list, wider than the `--s5` between two tasks:
+ * a new group is the biggest change the list makes. The air goes above the
+ * rule, not under it — under it, the rule hugged the group before and the
+ * heading floated free of the line that starts it.
  */
-.plan-mark {
-  flex: none;
-  align-self: center;
-  display: grid;
-  place-items: center;
-  width: var(--dot);
-  height: var(--dot);
+.group-card {
+  margin-top: var(--s5);
+  padding-top: 0;
 }
-.plan-mark::before {
-  content: '';
-  width: 9px;
-  height: 9px;
-  border: 1.5px solid var(--dim);
-  border-radius: 2px;
+.body > .group-card:first-child {
+  margin-top: 0;
+}
+/* Centred, not on the baseline: the caption leads with a bar, which has no
+   baseline, and the caps title rode a few pixels above it. */
+.group-card .card-head {
+  align-items: center;
+}
+/* Corner to corner: a task's seam is inset, a group's is the sheet's own cut. */
+.group-card::before {
+  left: 0;
+  right: 0;
+}
+.group-title {
+  flex: 0 1 auto;
+  font-family: var(--mono-display);
+  font-variant-ligatures: none;
+  font-size: var(--fs-body);
+  font-weight: 500;
+  letter-spacing: var(--caps-track);
+  text-transform: uppercase;
+  color: var(--soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.card-head:hover > .group-title {
+  color: var(--text);
 }
 
-/* Indented one step, so the folded tasks read as under the row, not beside it. */
-.plan-tasks {
-  margin-left: var(--s4);
-  border-left: 1px solid var(--edge);
+/* The heading already says these belong together, and sits close to what it
+   heads: nearer its first card than the group above it. */
+.plan-tasks > .card:first-child {
+  padding-top: 0;
 }
-/* The rule on the left already says these belong together. */
 .plan-tasks > .card:first-child::before {
   content: none;
 }
@@ -5207,8 +5265,12 @@ body:has(.warning) {
   display: flex;
   align-items: center;
   gap: var(--s2);
-  width: calc(100% - 2 * var(--s4));
+  width: 100%;
+  padding: 0;
   text-align: left;
+  /* A button resets both; the heading it sits in sets them. */
+  letter-spacing: inherit;
+  text-transform: inherit;
 }
 .plan-fold:hover {
   color: var(--text);
@@ -5234,9 +5296,11 @@ body:has(.warning) {
   font-size: var(--fs-note);
 }
 
-/* Landed work has stopped asking for anything, so it steps back like a merged PR row. */
-.plan-ticket-done {
-  opacity: 0.6;
+/* Landed work has stopped asking for anything, so it steps back like a merged
+   PR row — by a step of ink, not by opacity: faded, `dim` went to 2.5:1. The
+   stage keeps its `deployed` teal; that is the one thing the row says. */
+.plan-ticket-done .plan-ticket-title {
+  color: var(--soft);
 }
 
 .plan-ticket-line {
@@ -5265,6 +5329,16 @@ body:has(.warning) {
   border-radius: 4px;
 }
 .plan-ticket-task {
+  /* A slug is longer than the drawer often enough: it gives way, with its
+     ellipsis, rather than running past the edge. The title has the whole name.
+     A 12ch basis keeps it on the stage's line instead of wrapping under it, and
+     the cap stops it growing past its own text. */
+  flex: 1 1 12ch;
+  min-width: 0;
+  max-width: max-content;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--soft);
 }
 .plan-ticket-id:hover,
@@ -5276,6 +5350,7 @@ body:has(.warning) {
   outline: none;
   color: var(--text);
   background: color-mix(in srgb, var(--text) 7%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--text) 60%, transparent);
 }
 .plan-ticket.here .plan-ticket-task {
   color: var(--accent);

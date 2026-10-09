@@ -440,6 +440,15 @@ function mixHex(from: string, to: string, t: number): string {
   return `#${mixed.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
 }
 
+/** What a translucent window is assumed to show through: the desktop is unknown,
+    and a dark wallpaper only does better than a mid grey. */
+const DESKTOP = '#808080';
+
+/** The window's ground as painted at this opacity, for measuring ink against. */
+export function windowGround(palette: Palette, bgOpacity: number): string {
+  return mixHex(DESKTOP, palette.bg, clampBgOpacity(bgOpacity));
+}
+
 /**
  * The palette's `dim`, lifted toward `soft` until it can be read on `bg`.
  *
@@ -454,11 +463,16 @@ function mixHex(from: string, to: string, t: number): string {
  *
  * 4.5:1 is WCAG AA for text this size. A theme whose `soft` is itself under it
  * gets `soft`, which is as far as a lift can go without inventing a colour.
+ *
+ * Measured on the window as it is painted, not on `bg`: below full opacity the
+ * desktop shows through — see `windowGround` — and a grey that clears 4.5:1 on
+ * an opaque window does not on a wallpaper's lighter patch.
  */
-export function readableDim(palette: Palette, floor = 4.5): string {
+export function readableDim(palette: Palette, bgOpacity = 1): string {
+  const ground = windowGround(palette, bgOpacity);
   for (let step = 0; step <= 20; step += 1) {
     const candidate = mixHex(palette.dim, palette.soft, step / 20);
-    if (contrastRatio(candidate, palette.bg) >= floor) return candidate;
+    if (contrastRatio(candidate, ground) >= 4.5) return candidate;
   }
   return palette.soft;
 }
