@@ -19,6 +19,8 @@ export const TOURS_DIR = join(FW_HOME, 'tours');
 
 /** Read-only: the recap agent looks around the repo and never touches it. */
 const AGENT_TOOLS = 'Read,Grep,Glob';
+/** Sonnet, not the user's default: a recap is reading, and Opus is slow at it. */
+const AGENT_MODEL = 'sonnet';
 const BUILD_MS = 15 * 60_000;
 const ASK_MS = 5 * 60_000;
 
@@ -151,7 +153,7 @@ interface ClaudeResult {
 
 function claude(cwd: string, args: string[], prompt: string, timeoutMs: number): Promise<ClaudeResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn('claude', ['-p', '--output-format', 'json', '--tools', AGENT_TOOLS, ...args], {
+    const child = spawn('claude', ['-p', '--output-format', 'json', '--model', AGENT_MODEL, '--tools', AGENT_TOOLS, ...args], {
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
