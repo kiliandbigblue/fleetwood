@@ -27,7 +27,7 @@ import type { MenuItem } from './CardMenu.tsx';
 import { Slug } from './Slug.tsx';
 import { TaskNotes } from './TaskNotes.tsx';
 import { send } from './api.ts';
-import { blockedPane, byUrgency, leadNote, liveSeverity, needsYouLabel, prHeadline, workingIsGuessed } from './fleetSignals.ts';
+import { blockedPane, byUrgency, leadNote, liveSeverity, needsYouLabel, prHeadline } from './fleetSignals.ts';
 
 interface Props {
   task: Task;
@@ -566,17 +566,17 @@ export function TaskCard({
   const status = taskStatus(task.repos, prs);
   const dormant = !task.session;
   /*
-   * What leads the card: its agents when it has any, its progress when not.
+   * What leads the card: an agent stopped on you, and otherwise its progress.
    *
-   * A live task is scanned for what its agents are doing, and that was the one
-   * thing its head did not say. With nothing running there is nothing to say
-   * about agents, and how far along the work is becomes the whole question — so
-   * a parked task keeps the progress ring, and a live one carries the same mark
-   * a session card does, in the same colours as the rows under it.
+   * The agents used to lead whenever there were any, so a task in review with an
+   * idle claude wore the same grey dot as one nobody had touched. Working and
+   * idle are already said on each agent row and in the status bar's count; the
+   * one agent fact worth taking the title's mark for is a prompt waiting on you.
+   * Then it is red, and the progress moves to the summary on the right.
    */
   const live = session !== undefined && session.agents.length > 0;
   const severity = liveSeverity(session?.agents ?? []);
-  const guessed = severity === 'ok' && workingIsGuessed(session?.agents ?? []);
+  const agentsLead = live && severity === 'danger';
   const askingPane = blockedPane(session?.agents ?? []);
   const needsYou = needsYouLabel(session?.agents ?? []);
   const attached = (session?.attached ?? 0) > 0;
@@ -588,6 +588,13 @@ export function TaskCard({
   const foldable = compact === true || (session !== undefined && session.agents.length === 0);
   const folded = foldable && !expanded;
   const rung = ticket && DEPLOY_RUNG[ticket.stage];
+  const summary = [
+    folded ? repoSummary(task.repos, task.branch) : undefined,
+    folded && prs ? prHeadline(prs) : undefined,
+    folded ? rung : undefined,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   const openNotes = (): void => {
     setDraft(task.notes ?? '');
@@ -682,13 +689,12 @@ export function TaskCard({
             : `${task.branch} · no session yet — open one on ${task.dir}`
         }`}
       >
-        {live ? (
+        {agentsLead ? (
           /* The session card's mark, drawn by the same rule — see `liveSeverity`. */
           <span
-            /* Always filled: hollow is kept for one meaning, a guessed status.
-               Whether a client is attached is in the tooltip. */
-            className={`attached-dot sev-${severity}${guessed ? ' guessed' : ''}`}
-            title={`${leadNote(severity, guessed)} · ${
+            /* Whether a client is attached is in the tooltip. */
+            className={`attached-dot sev-${severity}`}
+            title={`${leadNote(severity, false)} · ${
               attached ? 'attached' : 'running, not attached'
             }`}
           />
@@ -705,7 +711,7 @@ export function TaskCard({
         <button type="button" className="session-name card-title">
           <Slug text={task.slug} />
           <span className="sr-only">
-            , {live ? leadNote(severity, guessed) : `${STATUS_LABEL[status]}${task.session ? '' : ', no session'}`}
+            , {agentsLead ? leadNote(severity, false) : `${STATUS_LABEL[status]}${task.session ? '' : ', no session'}`}
             {here && ", you're here"}
           </span>
         </button>
@@ -739,7 +745,7 @@ export function TaskCard({
         {/*
          * The summary on the gutter, and where progress went.
          *
-         * A live card's mark is its agents now, so its progress is said here in
+         * While a card's mark is an agent asking, its progress is said here in
          * words. A folded card has no rows under it to open, so the one pull
          * request fact worth crossing the panel for rides here too — and so
          * does the repo count. An open card's worktree rows sit right under
@@ -747,14 +753,16 @@ export function TaskCard({
          * the same fact twice, and the one that truncated first.
          */}
         <span className="repo-summary">
-          {[
-            live ? STATUS_LABEL[status] : undefined,
-            folded ? repoSummary(task.repos, task.branch) : undefined,
-            folded && prs ? prHeadline(prs) : undefined,
-            folded ? rung : undefined,
-          ]
-            .filter(Boolean)
-            .join(' · ')}
+          {/* The parked card's mark beside the word, as Linear sets a state:
+              the head's own dot is the agents', so progress needs its own. */}
+          {agentsLead && (
+            <span className="summary-status">
+              <span className={`task-status-dot task-status-${status}`} aria-hidden="true" />
+              {STATUS_LABEL[status]}
+              {summary && ' · '}
+            </span>
+          )}
+          {summary}
         </span>
         {/* Two arrows out of a box: the same mark a window uses for "make this
             the whole of the view", which is exactly what it does. Drawn rather

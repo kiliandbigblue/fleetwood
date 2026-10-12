@@ -1497,17 +1497,19 @@ button {
  * made it unreadable: colour said urgency, fill said which tmux client you were
  * attached to, and neither said whether the work was finished.
  *
- * So one channel, four rungs, and the glyph fills up as the work does: an empty
- * ring, a small core, a large core, a solid disc. One property does all of it —
- * the gap between the ring and its fill — which is what keeps every step
- * concentric. The first attempt filled the left half of the inner disc instead,
- * and a half-moon hugging one side of a ring 11px across does not read as "half
- * done"; it reads as a mark that failed to render.
+ * So one channel, four rungs, drawn the way Linear draws an issue's state,
+ * because that is the mark Kilian's tickets already wear: a dotted ring, then a
+ * ring whose core fills clockwise from twelve o'clock — half, then three
+ * quarters — and a solid disc with a check. The sweep is a pie, not the half-moon
+ * an earlier attempt drew: a sector from the top reads as a clock hand moving,
+ * and a left half reads as a mark that failed to render.
  *
- * The shape carries it alone, in one ink. The rungs had a hue each — gold,
- * iris, teal — and each of those already means something that asks for you
- * elsewhere on the panel, so a parked task wore the colours of work it was not
- * doing. A shape that fills up is legible to anyone, hue or no hue.
+ * And a hue per rung, Linear's order on this palette: gold while you write it,
+ * `ok` once it waits on a reviewer, accent once it has landed. The shape still
+ * carries it alone — a pie that fills is legible to anyone, hue or no hue — so
+ * the colour only makes the list scannable from across the desk. It does not
+ * collide with `.attached-dot`, which shares the column: a task card swaps to
+ * that full disc only while an agent is stopped on you.
  *
  * Same column and same `--dot` / `--dot-mark` split as `.attached-dot`, since
  * `--indent` and every row's text rail are derived from that width.
@@ -1551,9 +1553,10 @@ button {
   box-sizing: border-box;
   width: var(--dot-mark);
   height: var(--dot-mark);
-  border: 1.75px solid currentColor;
+  border: 1.5px solid currentColor;
   border-radius: 50%;
-  padding: 1.75px;
+  /* The gap between the ring and its pie. */
+  padding: 1.5px;
   /* Clipped to the content box, so the ring stays a ring whatever fills it. */
   background-clip: content-box;
   background-color: transparent;
@@ -1571,39 +1574,39 @@ button {
   border-style: dotted;
 }
 
-/* Something is being written. A small core — the ring has started to fill — in
-   the same gold the dirty count uses, which is the fact underneath it most of
-   the time. */
+/* Something is being written: half the pie, in the gold the dirty count uses,
+   which is the fact underneath it most of the time. */
+/* A hard stop at 11px is a staircase: each pie edge fades over 1%, and the sweep
+   starts from transparent so twelve o'clock has no seam. */
 .task-status-dot.task-status-wip {
-  /* The fill says how far along; the ring does not add a hue. Gold, iris and
-     teal each already mean something that asks — costly context, merged and
-     waiting to deploy, working — and a parked task asks for none of them. */
-  color: var(--soft);
+  color: var(--warn);
 }
 .task-status-dot.task-status-wip::before {
-  background-color: currentColor;
-  padding: 2.5px;
+  background-image: conic-gradient(transparent, currentColor 1%, currentColor 49%, transparent 50%);
 }
 
-/* Written, and waiting on somebody else. The core grows to meet the ring, and
-   the hue changes hands: gold is work you are doing, iris is work that has left
-   you. */
+/* Written, and waiting on somebody else: three quarters, and the hue changes
+   hands — gold is work you are doing, `ok` is work that has left you. */
 .task-status-dot.task-status-in-review {
-  color: var(--soft);
+  color: var(--ok);
 }
 .task-status-dot.task-status-in-review::before {
-  background-color: currentColor;
+  background-image: conic-gradient(transparent, currentColor 1%, currentColor 74%, transparent 75%);
 }
 
-/* Landed. The ring closes — border and fill are one ink, the only rung with no
-   gap in it at all — which is what makes it read as finished down a list rather
-   than as "in review but greener". */
+/* Landed. The ring closes into a solid disc with the check cut out of it, so it
+   reads as finished down a list rather than as "in review but another colour".
+   A mask and not a drawn glyph: the check is a hole, so it shows whatever the
+   card is painted on at any `bgOpacity`. */
 .task-status-dot.task-status-done {
-  color: var(--soft);
+  color: var(--accent);
 }
 .task-status-dot.task-status-done::before {
-  background-color: currentColor;
+  border: none;
   padding: 0;
+  background-color: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cmask id='m'%3E%3Crect width='12' height='12' fill='white'/%3E%3Cpath d='M3.5 6.2 5.2 7.9 8.5 4.4' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/mask%3E%3Ccircle cx='6' cy='6' r='6' mask='url(%23m)'/%3E%3C/svg%3E")
+    center / 100% 100% no-repeat;
 }
 
 /*
@@ -5294,12 +5297,21 @@ body:has(.warning) {
   min-width: 0;
 }
 /* The dot's lift is tuned for the title face; on a body-size row it centres. */
-.plan-ticket .task-status-dot {
+.plan-ticket .task-status-dot,
+.summary-status .task-status-dot {
   transform: none;
   align-self: center;
 }
 
 /* An identifier, so mono like every other one — and a column, so titles line up. */
+/* A live card's progress on its summary, the way Linear sets a state: mark, then word. */
+.summary-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  white-space: pre;
+}
+
 .plan-ticket-id {
   flex: none;
   padding: 0;
