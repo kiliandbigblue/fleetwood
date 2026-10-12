@@ -806,8 +806,7 @@ button {
  * blocked card's band is drawn over this one. Before `.attention` on purpose:
  * where the two meet, the card that needs you wins the fill.
  */
-.card.here,
-.plan-ticket.here {
+.card.here {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, var(--accent) 40%, transparent),
@@ -3310,8 +3309,8 @@ button.activity:focus-visible {
  * than a count you can read again by moving the pointer away. Same duration as
  * the controls fading in, so the swap reads as one movement rather than two.
  */
-.card-head:hover .repo-summary,
-.card-head:has(.row-act:focus-within) .repo-summary {
+.card-head:hover:has(> .row-act) .repo-summary,
+.card-head:has(> .row-act:focus-within) .repo-summary {
   opacity: 0;
 }
 
@@ -5180,9 +5179,6 @@ body:has(.warning) {
   background: var(--edge);
   overflow: hidden;
 }
-.plan-meter.wide {
-  width: 96px;
-}
 .plan-meter > span {
   position: absolute;
   inset: 0 auto 0 0;
@@ -5204,59 +5200,29 @@ body:has(.warning) {
   flex-direction: column;
 }
 
-/*
- * The milestone's name heads the drawer at the fleet's own title size, with its
- * facts on one quiet line under it. The name was left to the rail before, which
- * made the drawer the one page in the panel that never said what it was.
- */
-.plan-view-head {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s2);
-  padding: var(--s4) var(--s4) var(--s3) var(--indent);
-}
-
-.plan-view-name {
-  align-self: flex-start;
-  padding: 0;
-  font-family: var(--mono-display);
-  font-variant-ligatures: none;
-  font-size: var(--fs-head);
-  font-weight: 500;
-  letter-spacing: -0.02em;
-  color: var(--text);
-  text-align: left;
-}
-.plan-view-name > span {
-  color: var(--dim);
-}
-.plan-view-name:hover > span {
-  color: var(--text);
-}
-
-.plan-view-facts {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--s2) var(--s4);
-  font-size: var(--fs-body);
-  font-variant-numeric: tabular-nums;
-  color: var(--soft);
-}
-.plan-view-facts > .chip {
-  margin-left: auto;
-}
-
-.plan-view-progress {
+/* A group's trailing control: the fold on the fleet, `refresh` in the drawer. */
+.group-control {
+  flex: none;
   display: inline-flex;
-  align-items: center;
-  gap: var(--s3);
 }
+
+/*
+ * The drawer's head is the rail row it opened from — see `PlanView`. On the
+ * fleet a group earns air above its rule; here it is the top of the page, so
+ * neither the air nor the rule.
+ */
+.plan-view > .group-card {
+  margin-top: 0;
+}
+.plan-view > .group-card::before {
+  content: none;
+}
+
 
 /* Each group starts with the list's own seam, as the fleet's sections do. */
 .plan-group > .section-title {
   margin: var(--s2) var(--s4) 0;
-  padding: var(--s3) calc(var(--indent) - var(--s4)) var(--s2);
+  padding: var(--s3) calc(var(--indent) - var(--s4)) 0;
   border-top: 1px solid var(--edge);
 }
 
@@ -5285,68 +5251,46 @@ body:has(.warning) {
 }
 
 /*
- * On the rows' geometry: the mark in the mark column, the id on the rail.
- *
- * One step up from where it was: the title at the note size and the line under
- * it at body size. At 12 and 11 the drawer read as fine print beside the fleet
- * list it opens from, and a ticket title is a sentence, meant to be read.
+ * A ticket is a fleet task — a `.card`, with `.card-head` and `.session-name` —
+ * so its seam, its `here` band and its spacing are the fleet's own. The drawer
+ * was its own small sans list, and opening a milestone read as leaving the fleet
+ * for another app.
  */
 .plan-ticket {
-  padding: var(--s1) var(--s4) var(--s3) calc(var(--row-indent) - var(--mark-col));
-  font-size: var(--fs-note);
+  padding-bottom: var(--s2);
 }
 
 /* Landed work has stopped asking for anything, so it steps back like a merged
    PR row — by a step of ink, not by opacity: faded, `dim` went to 2.5:1. The
    stage keeps its `deployed` teal; that is the one thing the row says. */
-.plan-ticket-done .plan-ticket-title {
+.plan-ticket-done .session-name {
   color: var(--soft);
 }
 
-.plan-ticket-line {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  /* The 28px row floor — see `.agent`, which sets it for the same reason. */
-  min-height: 28px;
-  min-width: 0;
-}
-/* The dot's lift is tuned for the title face; on a body-size row it centres. */
-.plan-ticket .task-status-dot {
-  transform: none;
-  align-self: center;
-}
-
-/* An identifier, so mono like every other one — and a column, so titles line up. */
+/* Identifiers, so mono like every other one. */
 .plan-ticket-id,
 .plan-ticket-task {
   flex: none;
   padding: 0;
   font-family: var(--mono);
   font-size: var(--fs-body);
-  font-variant-numeric: tabular-nums;
   color: var(--dim);
   border-radius: 4px;
 }
 .plan-ticket-task {
   /* A slug is longer than the drawer often enough: it gives way, with its
-     ellipsis, rather than running past the edge. The title has the whole name.
-     A 12ch basis keeps it on the stage's line instead of wrapping under it, and
-     the cap stops it growing past its own text. */
-  flex: 1 1 12ch;
+     ellipsis, rather than running past the edge. The head has the whole name. */
+  flex: 0 1 auto;
   min-width: 0;
-  max-width: max-content;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--soft);
 }
-.plan-ticket-id:hover,
-.plan-ticket-task:hover {
+.plan-ticket-id:hover {
   color: var(--text);
 }
-.plan-ticket-id:focus-visible,
-.plan-ticket-task:focus-visible {
+.plan-ticket-id:focus-visible {
   outline: none;
   color: var(--text);
   background: color-mix(in srgb, var(--text) 7%, transparent);
@@ -5356,26 +5300,15 @@ body:has(.warning) {
   color: var(--accent);
 }
 
-.plan-ticket-title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text);
-}
-
-/*
- * Where the ticket has got to, then who is on it. The stage leads and is the
- * only part with a colour of its own, and only when it is an errand or the
- * finish line — every other stage is said in the line's own grey.
- */
+/* Which ticket, then who is on it, on the title's rail like a task's rows. */
 .plan-ticket-meta {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
   gap: 0 var(--s2);
-  padding-left: var(--mark-col);
+  padding: 0 var(--s4) 0 calc(var(--s4) + var(--mark-col));
+  min-height: 28px;
+  align-content: center;
   font-size: var(--fs-body);
   color: var(--soft);
 }
@@ -5384,9 +5317,17 @@ body:has(.warning) {
   margin-right: var(--s2);
   color: var(--dim);
 }
+/*
+ * Where the ticket has got to, on the head's right edge where a fleet task says
+ * `in review`. The only part of a ticket with a colour of its own, and only when
+ * it is an errand or a finish line — every other stage is said in grey.
+ */
 .plan-stage {
-  font-weight: 500;
-  color: var(--text);
+  flex: none;
+  margin-left: auto;
+  font-size: var(--fs-micro);
+  white-space: nowrap;
+  color: var(--soft);
 }
 .plan-stage:is([data-stage='todo'], [data-stage='stackable'], [data-stage='blocked'], [data-stage='canceled']) {
   color: var(--dim);

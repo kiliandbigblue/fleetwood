@@ -41,24 +41,16 @@ export function PlanRow({
   children?: ReactNode;
 }): React.JSX.Element {
   const now = useNow(60_000);
-  const percent = plan.progress !== undefined ? `${Math.round(plan.progress)}%` : undefined;
-  const due = plan.targetDate ? dueLabel(plan.targetDate, now) : undefined;
+  const caption = planCaption(plan, now);
   return (
     <GroupRow
       title={plan.name}
       kind="plan"
-      summary={
-        <span className="plan-caption">
-          {plan.progress !== undefined && <Meter value={plan.progress} />}
-          {percent && <span>{percent}</span>}
-          {due && <span className={due.late ? 'plan-alarm' : undefined}>{due.text}</span>}
-        </span>
-      }
-      spoken={[percent, due?.text].filter(Boolean).join(', ')}
-      expanded={expanded}
-      folded={folded}
-      onToggle={onToggle}
-      onOpen={onOpen}
+      summary={caption.drawn}
+      spoken={caption.spoken}
+      onHead={onOpen}
+      headHint="open the plan — every ticket, and where each one has got to"
+      control={<Fold expanded={expanded} folded={folded} onToggle={onToggle} />}
     >
       {children}
     </GroupRow>
@@ -66,22 +58,57 @@ export function PlanRow({
 }
 
 /**
- * A group of the fleet list — a plan, or Other — and the items drawn under it.
+ * A plan's caption: its progress as a bar and a number, then anything the
+ * caller adds, then its date. Shared by the rail row and the drawer's head, so
+ * the two say the same thing in the same place.
+ */
+interface CaptionFact {
+  text: string;
+  className?: string;
+  title?: string;
+}
+
+function planCaption(
+  plan: Plan,
+  nowMs: number,
+  extra: CaptionFact[] = [],
+): { drawn: React.JSX.Element; spoken: string } {
+  const percent = plan.progress !== undefined ? `${Math.round(plan.progress)}%` : undefined;
+  const due = plan.targetDate ? dueLabel(plan.targetDate, nowMs) : undefined;
+  return {
+    drawn: (
+      <span className="plan-caption">
+        {plan.progress !== undefined && <Meter value={plan.progress} />}
+        {percent && <span>{percent}</span>}
+        {extra.map((fact) => (
+          <span key={fact.text} className={fact.className} title={fact.title}>
+            {fact.text}
+          </span>
+        ))}
+        {due && <span className={due.late ? 'plan-alarm' : undefined}>{due.text}</span>}
+      </span>
+    ),
+    spoken: [percent, ...extra.map((fact) => fact.text), due?.text].filter(Boolean).join(', '),
+  };
+}
+
+/**
+ * A group of the fleet list — a plan, or Other — and the items drawn under it;
+ * and, as the drawer's head, the plan opened.
  *
- * Every group folds the same way, which is why this is one row: collapsed, only
- * what has a live agent stays in view (see `groupFleet`). The head opens the
- * group when it has something to open — a plan's drawer — and otherwise is the
- * fold itself, since Other has nothing behind it but its own items.
+ * One row, so a group looks the same wherever it is drawn. The caller says what
+ * the head does — open a plan's drawer, or for Other fold its items, since it
+ * has nothing behind it — and what sits on its trailing edge: the fold on the
+ * fleet, `refresh` in the drawer.
  */
 export function GroupRow({
   title,
   kind = 'group',
   summary,
   spoken,
-  expanded,
-  folded,
-  onToggle,
-  onOpen,
+  onHead,
+  headHint,
+  control,
   children,
 }: {
   title: string;
@@ -91,22 +118,17 @@ export function GroupRow({
   summary: ReactNode;
   /** The caption in words, for a screen reader. */
   spoken: string;
-  expanded: boolean;
-  /** How many of the group's items are out of view right now. */
-  folded: number;
-  onToggle: () => void;
-  /** Absent for a group with nothing to open: then the head folds. */
-  onOpen?: () => void;
+  onHead: () => void;
+  /** What a click on the head does, in words. */
+  headHint: string;
+  /** The trailing control. Its clicks are its own, never the head's too. */
+  control: ReactNode;
   children?: ReactNode;
 }): React.JSX.Element {
   return (
     <>
       <div className="card group-card">
-        <div
-          className="card-head"
-          onClick={onOpen ?? onToggle}
-          title={onOpen ? 'open the plan — every ticket, and where each one has got to' : expanded ? 'fold it away' : 'show it'}
-        >
+        <div className="card-head" onClick={onHead} title={headHint}>
           {/* The keyboard's way in, as on a task card: Enter presses it and the
               press bubbles to the head. */}
           <button type="button" className="card-title group-title">
@@ -117,18 +139,9 @@ export function GroupRow({
             </span>
           </button>
           <span className="repo-summary">{summary}</span>
-          <button
-            className={`card-fold${expanded ? ' open' : ''}`}
-            aria-expanded={expanded}
-            title={expanded ? 'fold it away' : `show what is under it${folded > 0 ? ` — ${folded} folded` : ''}`}
-            onClick={(event) => {
-              // The head may open a drawer; unfolding must not also do that.
-              event.stopPropagation();
-              onToggle();
-            }}
-          >
-            <Icon name="chevron" />
-          </button>
+          <span className="group-control" onClick={(event) => event.stopPropagation()}>
+            {control}
+          </span>
         </div>
       </div>
       {children && <div className="plan-tasks">{children}</div>}
@@ -136,13 +149,36 @@ export function GroupRow({
   );
 }
 
+/** A group's fold: what is under it, shown or put away. */
+export function Fold({
+  expanded,
+  folded,
+  onToggle,
+}: {
+  expanded: boolean;
+  /** How many of the group's items are out of view right now. */
+  folded: number;
+  onToggle: () => void;
+}): React.JSX.Element {
+  return (
+    <button
+      className={`card-fold${expanded ? ' open' : ''}`}
+      aria-expanded={expanded}
+      title={expanded ? 'fold it away' : `show what is under it${folded > 0 ? ` — ${folded} folded` : ''}`}
+      onClick={onToggle}
+    >
+      <Icon name="chevron" />
+    </button>
+  );
+}
+
 /**
  * The milestone's progress as a bar. Hidden from a screen reader: the number
  * beside it says the same, and is what gets read.
  */
-function Meter({ value, wide = false }: { value: number; wide?: boolean }): React.JSX.Element {
+function Meter({ value }: { value: number }): React.JSX.Element {
   return (
-    <span className={`plan-meter${wide ? ' wide' : ''}${value >= 100 ? ' full' : ''}`} aria-hidden="true">
+    <span className={`plan-meter${value >= 100 ? ' full' : ''}`} aria-hidden="true">
       <span style={{ width: `${value}%` }} />
     </span>
   );
@@ -205,44 +241,37 @@ export function PlanView({
   const open = (url: string): void => {
     void send({ kind: 'openExternal', url }).then((result) => onResult(result.detail, result.ok));
   };
-  const due = plan.targetDate ? dueLabel(plan.targetDate, nowMs) : undefined;
   // Fleetwood's own count beside Notion's estimate-weighted percentage: the two
   // answer different questions, and this one knows about deploys.
   const counted = rows.filter((row) => row.stage !== 'canceled');
   const deployed = counted.filter((row) => row.stage === 'deployed').length;
+  const caption = planCaption(plan, nowMs, [
+    { text: `${deployed} of ${counted.length} deployed` },
+    // Dated rather than hidden, like the quota gauges: a stale plan still says
+    // roughly where the milestone stands.
+    ...(stale
+      ? [{ text: `as of ${duration(now - fetchedAt)} ago`, className: 'quota-stale', title: 'Notion did not answer the last read' }]
+      : []),
+  ]);
 
   return (
     <div className="plan-view">
-      <div className="plan-view-head">
-        <button className="plan-view-name" onClick={() => open(plan.url)} title="open the milestone in Notion">
-          {/* Bound to the last word, so the arrow never wraps onto a line alone. */}
-          {plan.name}
-          {'\u00a0'}
-          <span aria-hidden="true">↗</span>
-        </button>
-        <div className="plan-view-facts">
-          {plan.progress !== undefined && (
-            <span className="plan-view-progress">
-              <Meter value={plan.progress} wide />
-              {Math.round(plan.progress)}%
-            </span>
-          )}
-          {due && <span className={due.late ? 'plan-alarm' : undefined}>{due.text}</span>}
-          <span>
-            {deployed} of {counted.length} deployed
-          </span>
-          {/* Dated rather than hidden, like the quota gauges: a stale plan still
-              says roughly where the milestone stands. */}
-          {stale && (
-            <span className="quota-stale" title="Notion did not answer the last read">
-              as of {duration(now - fetchedAt)} ago
-            </span>
-          )}
+      {/* The rail row you opened, so opening a milestone reads as that row
+          unfolding rather than as another page. The count of deploys joins its
+          caption, and `refresh` takes the place of the fold. */}
+      <GroupRow
+        title={plan.name}
+        kind="milestone"
+        summary={caption.drawn}
+        spoken={caption.spoken}
+        onHead={() => open(plan.url)}
+        headHint="open the milestone in Notion"
+        control={
           <button className="chip" disabled={refreshing} onClick={onRefresh} title="read the milestone from Notion again">
             {refreshing ? 'reading…' : 'refresh'}
           </button>
-        </div>
-      </div>
+        }
+      />
       {rows.length === 0 && <div className="empty">no tickets read from this milestone</div>}
       {groupTickets(rows).map(({ group, tickets }) => {
         const folds = group === 'done';
@@ -281,12 +310,12 @@ export function PlanView({
 }
 
 /**
- * One ticket: what it is on the first line, where it has got to on the second.
+ * One ticket, drawn as a fleet task is: its name and stage on the head, which
+ * ticket and who is on it on the row under.
  *
- * The second line leads with the stage in words — one reading, from `todo` to
- * `deployed`, instead of a dot, a board column and a drift marker to reconcile —
- * then who is on it: the task working it, what its agent is doing, and `here`
- * when your terminal is in that task.
+ * The stage is one reading, from `todo` to `deployed`, instead of a dot, a
+ * board column and a drift marker to reconcile. The row under says the task
+ * working it, what its agent is doing, and `here` when your terminal is in it.
  */
 function TicketRow({
   row,
@@ -308,31 +337,43 @@ function TicketRow({
   // A landed blocker blocks nothing, and naming it beside the live one made the
   // ticket read as more stuck than it is.
   const blockers = row.blockers.filter((blocker) => !blocker.stage || !landed(blocker.stage));
+  const head = link
+    ? { go: () => onOpenTask(link.task.slug), says: `open the task ${link.task.slug}` }
+    : { go: () => onOpen(ticket.url), says: `open ${ticket.id} in Notion` };
   return (
-    <div className={`plan-ticket${row.group === 'done' ? ' plan-ticket-done' : ''}${here ? ' here' : ''}`}>
-      <div className="plan-ticket-line">
+    <div className={`card plan-ticket${row.group === 'done' ? ' plan-ticket-done' : ''}${here ? ' here' : ''}`}>
+      {/*
+       * A fleet task's head: the mark, the name in the title face, and where it
+       * has got to on the right edge. The head goes where a ticket lives — its
+       * task when one works it, the card in Notion when none does.
+       */}
+      <div className="card-head" onClick={head.go} title={`${ticket.title} · ${head.says}`}>
         <span
           className={`task-status-dot task-status-${STAGE[row.stage].status}`}
           title={STATUS_LABEL[STAGE[row.stage].status]}
         />
         {/* The row's one keyboard stop, on the list's j/k walk; `owes` puts the
             ones waiting on you on `n`, as on the pull requests tab. */}
-        <button
-          className={`plan-ticket-id list-stop${row.group === 'needs-you' ? ' owes' : ''}`}
-          onClick={() => onOpen(ticket.url)}
-          title={`open ${ticket.id} in Notion`}
-        >
-          {ticket.id}
-        </button>
-        <span className="plan-ticket-title" title={ticket.title}>
+        <button type="button" className={`session-name card-title list-stop${row.group === 'needs-you' ? ' owes' : ''}`}>
           {ticket.title}
+          <span className="sr-only">
+            , {ticket.id}
+            {here && ", you're here"}
+          </span>
+        </button>
+        <span className="plan-stage" data-stage={row.stage}>
+          {STAGE[row.stage].label}
+          {row.prCount > 1 && ` · ${row.prCount} PRs`}
         </span>
         {canStart(row) && (
           /* Never withheld: a `Blocked by` line is a plan, not a lock, and the
              part of a ticket that waits on nothing can always start. */
           <button
             className="chip"
-            onClick={() => onStart(ticket)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onStart(ticket);
+            }}
             title={
               row.group === 'blocked'
                 ? 'new task on this ticket — a blocker has no pull request yet, so stack or stub what it needs'
@@ -343,22 +384,15 @@ function TicketRow({
           </button>
         )}
       </div>
-      {/* Where it has got to, then who is on it. The separators are drawn by
-          the stylesheet, so a part that has nothing to say simply is not here. */}
+      {/* Under the name, on its rail, as a task's worktree rows are: which ticket,
+          then who is on it. The separators are drawn by the stylesheet, so a part
+          that has nothing to say simply is not here. */}
       <div className="plan-ticket-meta">
-        <span className="plan-stage" data-stage={row.stage}>
-          {STAGE[row.stage].label}
-          {row.prCount > 1 && ` · ${row.prCount} PRs`}
-        </span>
-        {link && (
-          <button
-            className="plan-ticket-task"
-            onClick={() => onOpenTask(link.task.slug)}
-            title={`open the task ${link.task.slug}`}
-          >
-            {link.task.slug}
-          </button>
-        )}
+        <button className="plan-ticket-id" onClick={() => onOpen(ticket.url)} title={`open ${ticket.id} in Notion`}>
+          {ticket.id}
+        </button>
+        {/* Named, not a second way in: the head already opens it. */}
+        {link && <span className="plan-ticket-task">{link.task.slug}</span>}
         {here && <span className="plan-here">here</span>}
         {agent && <span className={agent.danger ? 'plan-alarm' : undefined}>{agent.text}</span>}
         {/* With a task linked it is yours; the name only matters on someone else's. */}
