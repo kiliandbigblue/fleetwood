@@ -5143,6 +5143,15 @@ body:has(.warning) {
 .group-card .card-head {
   align-items: center;
 }
+/*
+ * A plan's own colour — see `planHue`. The hue is the plan's, the lightness
+ * and chroma the theme's accent's, so every plan reads as a sibling of that
+ * accent and clears the same contrast on `bg` it does. Unset on `Other`, where
+ * the reference is invalid and every use falls back to its grey.
+ */
+.group-card {
+  --plan: oklch(from var(--accent) l c var(--plan-h));
+}
 /* Corner to corner: a task's seam is inset, a group's is the sheet's own cut. */
 .group-card::before {
   left: 0;
@@ -5156,7 +5165,7 @@ body:has(.warning) {
   font-weight: 500;
   letter-spacing: var(--caps-track);
   text-transform: uppercase;
-  color: var(--soft);
+  color: var(--plan, var(--soft));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5203,7 +5212,7 @@ body:has(.warning) {
   position: absolute;
   inset: 0 auto 0 0;
   border-radius: inherit;
-  background: var(--soft);
+  background: var(--plan, var(--soft));
 }
 /* Finished is the one state the bar colours: the milestone has nothing left. */
 .plan-meter.full > span {

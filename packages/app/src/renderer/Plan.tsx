@@ -7,6 +7,7 @@ import { dueLabel, landed, splitPlan, STAGE } from '@fleetwood/core/plan';
 import { STATUS_LABEL } from '@fleetwood/core/taskStatus';
 import { Icon } from './Icon.tsx';
 import { duration, send } from './api.ts';
+import { planHue } from './planHue.ts';
 import { useNow } from './useNow.ts';
 
 /**
@@ -45,6 +46,7 @@ export function PlanRow({
     <GroupRow
       title={plan.name}
       kind="plan"
+      hue={planHue(plan.milestoneId)}
       summary={caption.drawn}
       spoken={caption.spoken}
       onHead={onOpen}
@@ -103,6 +105,7 @@ function planCaption(
 export function GroupRow({
   title,
   kind = 'group',
+  hue,
   summary,
   spoken,
   onHead,
@@ -113,6 +116,8 @@ export function GroupRow({
   title: string;
   /** What a screen reader hears the row is. */
   kind?: string;
+  /** A plan's hue: its title and its bar take it. `Other` has none. */
+  hue?: number;
   /** The caption on the head's right edge. */
   summary: ReactNode;
   /** The caption in words, for a screen reader. */
@@ -126,7 +131,10 @@ export function GroupRow({
 }): React.JSX.Element {
   return (
     <>
-      <div className="card group-card">
+      <div
+        className="card group-card"
+        style={hue === undefined ? undefined : ({ '--plan-h': hue } as React.CSSProperties)}
+      >
         <div className="card-head" onClick={onHead} title={headHint}>
           {/* The keyboard's way in, as on a task card: Enter presses it and the
               press bubbles to the head. */}
@@ -283,6 +291,7 @@ export function PlanView({
       <GroupRow
         title={plan.name}
         kind="milestone"
+        hue={planHue(plan.milestoneId)}
         summary={caption.drawn}
         spoken={caption.spoken}
         onHead={() => open(plan.url)}
