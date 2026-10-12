@@ -320,8 +320,13 @@ const transfers = { ...plan(ticket('DEV-1'), ticket('DEV-2')), milestoneId: 'm-s
 const billing = { ...plan(ticket('DEV-3')), milestoneId: 'm-b', name: 'billing' };
 
 /** Each group as `[key, items, shown]`, the shape every grouping question is asked in. */
-function grouped(items: string[], expanded: Set<string>, live: (item: string) => boolean = (item) => item === 'dev-2-api') {
-  return groupFleet(items, [transfers, billing], ticketIdOf, live, expanded).map((group) => [
+function grouped(
+  items: string[],
+  expanded: Set<string>,
+  live: (item: string) => boolean = (item) => item === 'dev-2-api',
+  plans: Plan[] = [transfers, billing],
+) {
+  return groupFleet(items, plans, ticketIdOf, live, expanded).map((group) => [
     group.key,
     group.items,
     group.shown,
@@ -343,15 +348,21 @@ test('a collapsed group, plan or Other, keeps only the items with a live agent i
   const items = ['home', 'dev-1-form', 'dev-2-api', 'flow'];
   const live = (item: string) => item === 'dev-2-api' || item === 'flow';
   assert.deepEqual(grouped(items, new Set(), live), [
+    ['m-b', [], []],
     ['m-st', ['dev-1-form', 'dev-2-api'], ['dev-2-api']],
     [OTHER_GROUP, ['home', 'flow'], ['flow']],
   ]);
-  assert.deepEqual(grouped(items, new Set(['m-st']), live)[0], ['m-st', ['dev-1-form', 'dev-2-api'], ['dev-1-form', 'dev-2-api']]);
+  assert.deepEqual(grouped(items, new Set(['m-st']), live).find(([key]) => key === 'm-st'), ['m-st', ['dev-1-form', 'dev-2-api'], ['dev-1-form', 'dev-2-api']]);
 });
 
-test('with no plan in the fleet there is only Other, and an empty group is never drawn', () => {
-  assert.deepEqual(grouped(['home', 'dev-9-x'], new Set([OTHER_GROUP])), [[OTHER_GROUP, ['home', 'dev-9-x'], ['home', 'dev-9-x']]]);
-  assert.deepEqual(grouped(['dev-1-form'], new Set()), [['m-st', ['dev-1-form'], []]]);
+test('every plan gets its row, tasks or not, and an empty Other is never drawn', () => {
+  assert.deepEqual(grouped(['home', 'dev-9-x'], new Set([OTHER_GROUP]), () => false, []), [
+    [OTHER_GROUP, ['home', 'dev-9-x'], ['home', 'dev-9-x']],
+  ]);
+  assert.deepEqual(grouped(['dev-1-form'], new Set()), [
+    ['m-b', [], []],
+    ['m-st', ['dev-1-form'], []],
+  ]);
 });
 
 test('while the first pull request search is out, committed work reads started', () => {

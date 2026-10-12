@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { blockersOf, milestoneFacts, parseTicket, retryDelayMs, signedInAs, wantsBody } from '../src/notion.ts';
+import { blockersOf, milestoneFacts, parseTicket, planTicketsFilter, retryDelayMs, signedInAs, wantsBody } from '../src/notion.ts';
 
 /*
  * Blocks shaped the way `GET /v1/blocks/{id}/children` returns them, trimmed to
@@ -135,4 +135,24 @@ test('the token reads Notion as the person who signed the connection in, not as 
   assert.equal(signedInAs({ object: 'user', type: 'bot', bot: { owner: { type: 'user', user: { id: 'u-1' } } } }), 'u-1');
   assert.equal(signedInAs({ object: 'user', type: 'bot', bot: { owner: { type: 'workspace', workspace: true } } }), undefined);
   assert.equal(signedInAs(undefined), undefined);
+});
+
+test('a plan is found from the tickets tasks are linked to and the open ones assigned to you, in one query', () => {
+  assert.deepEqual(planTicketsFilter(['DEV-1735', 'DEV-1735', 'DEV-9'], 'me'), {
+    or: [
+      { property: 'ID', unique_id: { equals: 1735 } },
+      { property: 'ID', unique_id: { equals: 9 } },
+      {
+        and: [
+          { property: 'Assignee', people: { contains: 'me' } },
+          { property: 'Status', status: { does_not_equal: 'Done' } },
+          { property: 'Status', status: { does_not_equal: 'Canceled' } },
+        ],
+      },
+    ],
+  });
+  // Nobody signed in: only the tasks count.
+  assert.deepEqual(planTicketsFilter(['DEV-9'], undefined), { or: [{ property: 'ID', unique_id: { equals: 9 } }] });
+  // Nothing to ask is no query, not an empty `or`.
+  assert.equal(planTicketsFilter([], undefined), undefined);
 });

@@ -217,6 +217,9 @@ export function retryDelayMs(retryAfter: string | null): number {
   return retryAfter !== null && Number.isFinite(seconds) && seconds >= 0 ? seconds * 1_000 : 1_000;
 }
 
+/** The board's columns a ticket is finished in, spelled as the board spells them. */
+const CLOSED = ['Done', 'Canceled'];
+
 /**
  * Whether a ticket's body is worth a request.
  *
@@ -227,7 +230,35 @@ export function retryDelayMs(retryAfter: string | null): number {
 export function wantsBody(page: unknown): boolean {
   const status = propertiesOf(page).Status?.status as { name?: unknown } | undefined;
   const name = typeof status?.name === 'string' ? status.name.trim().toLowerCase() : '';
-  return name !== 'done' && name !== 'canceled';
+  return !CLOSED.some((closed) => closed.toLowerCase() === name);
+}
+
+/**
+ * The query for every ticket that makes its milestone a plan: one a task here is
+ * linked to, by `ID`, or one still open and assigned to you.
+ *
+ * One `or` rather than a query per id: every branch is asking the same thing —
+ * which milestone is this ticket in. `undefined` when there is nothing to ask,
+ * which an empty `or` would not say. Without `me` only the tasks count; see
+ * `signedInAs`.
+ *
+ * ponytail: Notion caps a compound filter at 100 conditions, so 99 linked tasks;
+ * chunk the ids if the fleet ever runs that many.
+ */
+export function planTicketsFilter(ticketIds: readonly string[], me: string | undefined): object | undefined {
+  const conditions: object[] = [...new Set(ticketIds)].map((id) => ({
+    property: 'ID',
+    unique_id: { equals: Number(id.replace(/^\D+-/, '')) },
+  }));
+  if (me) {
+    conditions.push({
+      and: [
+        { property: 'Assignee', people: { contains: me } },
+        ...CLOSED.map((name) => ({ property: 'Status', status: { does_not_equal: name } })),
+      ],
+    });
+  }
+  return conditions.length > 0 ? { or: conditions } : undefined;
 }
 
 /**
@@ -286,11 +317,14 @@ export interface PlansOptions {
 }
 
 /**
- * The milestone of every ticket the fleet works, with all of its tickets.
+ * The milestone of every ticket the fleet works or you are assigned, with all
+ * of its tickets.
  *
  * A milestone becomes a plan the moment one task is linked to one of its
- * tickets, so the walk starts from the tasks: each id is looked up by the `ID`
- * property, its `Milestone` relation names the plan, and the plan's tickets are
+ * tickets, or one of its open tickets is assigned to you — what you are
+ * assigned is on your plate before anyone cut a branch for it. The walk starts
+ * from those tickets, found in one query (`planTicketsFilter`): their
+ * `Milestone` relation names the plan, and the plan's tickets are
  * one query on that relation — every ticket with its properties, which the
  * milestone's own `Tasks` relation would have given as bare ids, capped at 25.
  * Then one page read per ticket for its body, which is where the blockers are.
@@ -308,14 +342,12 @@ export async function fetchPlans(options: PlansOptions): Promise<{ plans: Plan[]
   if (!token) return undefined;
 
   try {
-    const ids = [...new Set(options.ticketIds)];
-    const found = await mapLimit(ids, CONCURRENCY, (id) =>
-      queryAll(token, { filter: { property: 'ID', unique_id: { equals: Number(id.replace(/^\D+-/, '')) } } }),
-    );
-    const milestones = [...new Set(found.flatMap((pages) => relationIds(pages[0], 'Milestone')))];
-
-    // Not worth the plans: unknown, only unassigned tickets count as yours.
+    // Unknown, only unassigned tickets count as yours, and your assigned
+    // tickets bring in no milestone — see `planTicketsFilter`.
     const me = signedInAs(await call(token, '/users/me').catch(() => undefined));
+    const filter = planTicketsFilter(options.ticketIds, me);
+    const linked = filter ? await queryAll(token, { filter }) : [];
+    const milestones = [...new Set(linked.flatMap((page) => relationIds(page, 'Milestone')))];
     const plans = await mapLimit(milestones, 1, async (milestoneId): Promise<Plan> => {
       const milestone = await call(token, `/pages/${milestoneId}`);
       const pages = await queryAll(token, {

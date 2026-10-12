@@ -51,7 +51,8 @@ export function PlanRow({
       spoken={caption.spoken}
       onHead={onOpen}
       headHint="open the plan — every ticket, and where each one has got to"
-      control={<Fold expanded={expanded} folded={folded} onToggle={onToggle} />}
+      // A plan with no task here has nothing to fold.
+      control={children === undefined && folded === 0 ? undefined : <Fold expanded={expanded} folded={folded} onToggle={onToggle} />}
     >
       {children}
     </GroupRow>

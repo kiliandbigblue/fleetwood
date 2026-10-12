@@ -104,7 +104,7 @@ export interface Plan {
 }
 
 /**
- * Every plan the fleet has a task in, on Notion's slow clock.
+ * Every plan the fleet has a task in or you have an open ticket in, on Notion's slow clock.
  *
  * Kept across a failed fetch and flagged `stale`, like the quota gauges: a plan
  * that blanks on one flaky request reads as the milestone having emptied.
@@ -578,7 +578,8 @@ export interface FleetGroup<T> {
  * items `staysInView` keeps — a live agent, the session you are at — because a
  * group is somewhere to put work away, not somewhere to lose an agent that is
  * running or the card ⌘J just took you to. `expanded` holds the
- * open keys; the caller starts with Other in it. An empty group is not returned.
+ * open keys; the caller starts with Other in it. A plan with no item is still
+ * returned, empty; an empty Other is not.
  *
  * With no plan at all this is one Other group, and the caller draws the list as
  * it was before plans existed.
@@ -593,7 +594,10 @@ export function groupFleet<T>(
   const planOf = new Map<string, Plan>();
   for (const plan of plans) for (const ticket of plan.tickets) planOf.set(ticket.id, plan);
 
-  const groups = new Map<string, FleetGroup<T>>();
+  // Every plan gets its row, tasks or not: an empty one is still somewhere to start from.
+  const groups = new Map<string, FleetGroup<T>>(
+    plans.map((plan) => [plan.milestoneId, { key: plan.milestoneId, plan, items: [], shown: [] }]),
+  );
   for (const item of items) {
     const id = idOf(item);
     const plan = id ? planOf.get(id) : undefined;

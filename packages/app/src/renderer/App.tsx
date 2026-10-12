@@ -605,9 +605,10 @@ export function App(): React.JSX.Element {
     expandedGroups,
   );
   /*
-   * Grouped only once a plan exists. Before that — Notion not set up, or no task
-   * linked to a ticket — there is nothing to group by, and the list is drawn as
-   * it always was: running sessions, then `not running`.
+   * Grouped only once a plan exists — a task linked to a ticket, or an open
+   * ticket assigned to you. Before that — Notion not set up, or neither — there
+   * is nothing to group by, and the list is drawn as it always was: running
+   * sessions, then `not running`.
    */
   const grouped = groups.some((group) => group.plan);
   /*
