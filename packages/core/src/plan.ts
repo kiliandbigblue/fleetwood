@@ -179,6 +179,7 @@ export const STAGE = {
   started: { label: 'started, no PR yet', group: 'in-progress', status: 'wip' },
   draft: { label: 'draft PR', group: 'in-progress', status: 'wip' },
   'in-review': { label: 'in review', group: 'in-review', status: 'in-review' },
+  approved: { label: 'approved', group: 'in-review', status: 'in-review' },
   merged: { label: 'merged', group: 'merged', status: 'done' },
   deploying: { label: 'deploying', group: 'merged', status: 'done' },
   deployed: { label: 'deployed', group: 'done', status: 'done' },
@@ -244,7 +245,8 @@ function prStage(pr: TaskPr, merged: Merged, now: number): TicketStage {
   // A change request outranks the draft flag: a reviewer asked something of you.
   if (pr.reviewDecision === 'CHANGES_REQUESTED') return 'changes';
   if (pr.checks === 'failing') return 'failing';
-  return pr.isDraft ? 'draft' : 'in-review';
+  if (pr.isDraft) return 'draft';
+  return pr.reviewDecision === 'APPROVED' ? 'approved' : 'in-review';
 }
 
 /**

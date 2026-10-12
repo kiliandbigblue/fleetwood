@@ -3806,19 +3806,6 @@ button.activity:focus-visible {
  * column has to hold `changes requested` and `waiting on #3808`, not any
  * string either could ever be.
  */
-/*
- * `approved` on a fill of its own: the one review state that hands the row back
- * to you — it can be merged. Teal text alone, at the micro step and a column
- * away from the title, read as one more quiet label down the card. The fill is
- * the approve button's, so the same green means the same go-ahead.
- */
-.task-pr .review-APPROVED {
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--ok) 22%, var(--panel));
-  font-weight: 600;
-}
-
 .task-pr-state {
   flex: none;
   min-width: 15ch;
@@ -5410,7 +5397,7 @@ body:has(.warning) {
 .plan-stage[data-stage='built'] {
   color: var(--warn);
 }
-.plan-stage[data-stage='deployed'] {
+.plan-stage:is([data-stage='approved'], [data-stage='deployed']) {
   color: var(--ok);
 }
 .plan-here {

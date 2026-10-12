@@ -105,6 +105,7 @@ test('an open pull request reads draft, in review, or the errand a reviewer or a
   const stage = (pr: Partial<TaskPr>) => ticketStage(t, link('dev-2-a', [pr]), undefined, NOW);
   assert.equal(stage({ isDraft: true }), 'draft');
   assert.equal(stage({}), 'in-review');
+  assert.equal(stage({ reviewDecision: 'APPROVED' }), 'approved');
   assert.equal(stage({ isDraft: true, reviewDecision: 'CHANGES_REQUESTED' }), 'changes');
   assert.equal(stage({ checks: 'failing' }), 'failing');
   // A task with nothing committed yet is still todo, task or not.
@@ -117,6 +118,7 @@ test('a ticket with several pull requests is its least advanced one, unless one 
     ticketStage(t, link('dev-3-a', [a, { ...b, repoName: 'atlas' }]), undefined, NOW);
   assert.equal(two(merged(80), { isDraft: true }), 'draft');
   assert.equal(two({ isDraft: true }, { checks: 'failing' }), 'failing');
+  assert.equal(two({ reviewDecision: 'APPROVED' }, {}), 'in-review');
 });
 
 test("a ticket nobody here works reads Notion's column", () => {
