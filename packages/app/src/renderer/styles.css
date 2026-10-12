@@ -68,6 +68,15 @@
   --ok: #9ccfd8;
   --accent: #c4a7e7;
   --branch: #ebbcba;
+  /*
+   * Not a twelfth colour: the ink of a word you can press, before you point at
+   * it. Hue in this panel is spent on state, so without one ink kept for
+   * actions, `review` and `ABC-12 ↗` read exactly like `merged` and `draft`.
+   * Accent, held halfway back toward `dim`: a quiet violet that clears 4.5:1 on
+   * `bg` in every theme, and turns full accent under the pointer. Accent as a
+   * *fill* stays what it was, the choice you made.
+   */
+  --action: color-mix(in srgb, var(--accent) 55%, var(--dim));
   --radius: 8px;
 
   /*
@@ -1661,14 +1670,18 @@ button {
      the 30px its own padding used to make it. */
   padding: var(--s1) var(--s3);
   border-radius: 5px;
-  color: var(--dim);
+  color: var(--action);
   /* Squeezed chips were being drawn on top of the row's text. */
   flex: none;
   white-space: nowrap;
 }
 .chip:hover {
   background: var(--edge);
-  color: var(--text);
+  color: var(--accent);
+}
+/* Destructive, so never in the action ink: it only reddens when you aim at it. */
+.chip.danger {
+  color: var(--dim);
 }
 .chip.danger:hover {
   background: color-mix(in srgb, var(--danger) 25%, var(--panel));
@@ -2297,7 +2310,7 @@ button.activity:focus-visible {
 }
 
 .subagents {
-  color: var(--accent);
+  color: var(--soft);
   font-size: var(--fs-micro);
   flex: none;
 }
@@ -3562,7 +3575,7 @@ button.activity:focus-visible {
 .task-repo .chip {
   font-size: var(--fs-micro);
   padding: 1px 5px;
-  color: var(--dim);
+  color: var(--action);
   /*
    * Absent until you point at the row.
    *
@@ -3582,6 +3595,9 @@ button.activity:focus-visible {
   opacity: 0;
   transition: opacity 90ms ease-out;
 }
+.task-repo .chip.danger {
+  color: var(--dim);
+}
 .task-repo:hover .chip,
 .task-repo .chip:focus-visible,
 /* The whole set on any one of them, so tabbing along a row does not make the
@@ -3597,12 +3613,12 @@ button.activity:focus-visible {
   margin-left: 0;
 }
 .task-repo .chip:hover {
-  color: var(--ok);
+  color: var(--accent);
 }
 /*
  * Except the destructive one. `.task-repo .chip:hover` is as specific as
  * `.chip.danger:hover` and comes after it, so without this the remove chip
- * lights up green like the two chips that only ever open something.
+ * lights up in the action ink like the two chips that only ever open something.
  */
 .task-repo .chip.danger:hover {
   color: var(--danger);
@@ -3873,10 +3889,9 @@ button.activity:focus-visible {
 }
 
 /* Says the row opens GitHub. Not a button — the row itself is the target. */
-/* `--dim`, not `--edge`: a border colour used as ink is a fourth text tier by
-   the back door, and this row already reads as clickable from its hover. */
+/* `--action`: the one mark on the row that says it leaves the panel for GitHub. */
 .task-pr-open {
-  color: var(--dim);
+  color: var(--action);
   font-size: var(--mark-sm);
   flex: none;
 }
@@ -5291,11 +5306,11 @@ body:has(.warning) {
   font-family: var(--mono);
   font-size: var(--fs-body);
   font-variant-numeric: tabular-nums;
-  color: var(--dim);
+  color: var(--action);
   border-radius: 4px;
 }
 .plan-ticket-id:hover {
-  color: var(--text);
+  color: var(--accent);
 }
 .plan-ticket-id:focus-visible {
   outline: none;
@@ -5380,6 +5395,7 @@ body:has(.warning) {
 
 /* A chip that cannot act says so at rest and under the pointer. */
 .chip:disabled {
+  color: var(--dim);
   opacity: 0.45;
   cursor: default;
 }
