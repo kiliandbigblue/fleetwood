@@ -9,7 +9,7 @@ import { TaskCard } from './TaskCard.tsx';
 import { NewTask } from './NewTask.tsx';
 import { EMPTY_DRAFT, draftFromTicket } from './newTaskFlow.ts';
 import type { Draft } from './newTaskFlow.ts';
-import { Fold, GroupRow, PlanRow, PlanView } from './Plan.tsx';
+import { GroupRow, PlanRow, PlanView } from './Plan.tsx';
 import { Power } from './Power.tsx';
 import { Notes } from './Notes.tsx';
 import { Drawer } from './Drawer.tsx';
@@ -903,16 +903,9 @@ export function App(): React.JSX.Element {
                       title="Other"
                       summary={`${group.items.length} not in a plan`}
                       spoken={`${group.items.length} not in a plan`}
-                      // Nothing behind Other but its own items, so its head is the fold.
-                      onHead={() => toggleGroup(group.key)}
-                      headHint={expandedGroups.has(group.key) ? 'fold it away' : 'show it'}
-                      control={
-                        <Fold
-                          expanded={expandedGroups.has(group.key)}
-                          folded={group.items.length - group.shown.length}
-                          onToggle={() => toggleGroup(group.key)}
-                        />
-                      }
+                      expanded={expandedGroups.has(group.key)}
+                      folded={group.items.length - group.shown.length}
+                      onToggle={() => toggleGroup(group.key)}
                     >
                       {children}
                     </GroupRow>
