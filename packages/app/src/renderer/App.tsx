@@ -546,6 +546,16 @@ export function App(): React.JSX.Element {
   const planRows = new Map(plans.map((plan) => [plan.milestoneId, readPlan(plan, links, mergedFacts)]));
   const openPlan = plans.find((plan) => plan.milestoneId === focusedPlan);
   // Each task's ticket, for its card to say — the same reading the plan draws.
+  /*
+   * Your open pull request per ticket, by the id its branch carries, so a ticket
+   * in review with no task here can be opened on that branch — as the pull
+   * requests tab does. The first one wins, as in `linkTickets`.
+   */
+  const prByTicket = new Map<string, string>();
+  for (const pr of snapshot?.prs?.mine ?? []) {
+    const id = ticketIdOf(pr.branch ?? '') ?? ticketIdOf(pr.title);
+    if (id && !prByTicket.has(id)) prByTicket.set(id, `${pr.repo}#${pr.number}`);
+  }
   const ticketBySlug = new Map(
     [...planRows.values()].flat().flatMap((row) => (row.link ? [[row.link.task.slug, row] as const] : [])),
   );
@@ -865,6 +875,7 @@ export function App(): React.JSX.Element {
             refreshing={refreshingPlans}
             taskOrder={[...sessions.flatMap((s) => taskBySession.get(s.name)?.slug ?? []), ...dormant.map((t) => t.slug)]}
             renderTask={taskRow}
+            prByTicket={prByTicket}
             onRefresh={refreshPlans}
             onStart={onStartTicket}
             onResult={onResult}

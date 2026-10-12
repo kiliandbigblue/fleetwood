@@ -222,6 +222,7 @@ export function PlanView({
   refreshing,
   taskOrder,
   renderTask,
+  prByTicket,
   onRefresh,
   onStart,
   onResult,
@@ -239,6 +240,8 @@ export function PlanView({
   taskOrder: readonly string[];
   /** The fleet's own card for a task. */
   renderTask: (slug: string) => ReactNode;
+  /** Your open pull request per ticket id, as `owner/repo#N`. */
+  prByTicket: ReadonlyMap<string, string>;
   onRefresh: () => void;
   onStart: (ticket: Ticket) => void;
   onResult: (message: string, ok: boolean) => void;
@@ -328,7 +331,17 @@ export function PlanView({
               )}
             </div>
             {(!folds || showDone) &&
-              tickets.map((row) => <TicketRow key={row.ticket.id} row={row} onOpen={open} />)}
+              tickets.map((row) => (
+                <TicketRow
+                  key={row.ticket.id}
+                  row={row}
+                  pr={prByTicket.get(row.ticket.id)}
+                  onOpen={open}
+                  onOpenPr={(ref) =>
+                    void send({ kind: 'openPrRef', ref }).then((result) => onResult(result.detail, result.ok))
+                  }
+                />
+              ))}
           </section>
         );
       })}
@@ -420,9 +433,21 @@ function GhostCard({
 /**
  * A ticket that is not yours to start: a teammate's, or yours already moving
  * with no task here. What it is on the first line, where it has got to and who
- * is on it on the second. Not a card: there is no task here to become.
+ * is on it on the second. Not a card: there is no task here to become — but one
+ * of your open pull requests is `open`, a task on its branch.
  */
-function TicketRow({ row, onOpen }: { row: PlanTicket; onOpen: (url: string) => void }): React.JSX.Element {
+function TicketRow({
+  row,
+  pr,
+  onOpen,
+  onOpenPr,
+}: {
+  row: PlanTicket;
+  /** Your open pull request on it, when you have one — see `prByTicket`. */
+  pr?: string;
+  onOpen: (url: string) => void;
+  onOpenPr: (ref: string) => void;
+}): React.JSX.Element {
   const { ticket } = row;
   const assignees = ticket.assignees.map((assignee) => assignee.name).join(', ');
   const blocked = blockerText(row);
@@ -445,6 +470,12 @@ function TicketRow({ row, onOpen }: { row: PlanTicket; onOpen: (url: string) => 
         <span className="plan-ticket-title" title={ticket.title}>
           {ticket.title}
         </span>
+        {pr && (
+          /* Not `start`: the work exists, on the pull request's branch. */
+          <button className="chip" onClick={() => onOpenPr(pr)} title={`a task on ${pr}'s branch — as the pull requests tab opens one`}>
+            open
+          </button>
+        )}
       </div>
       {/* The separators are drawn by the stylesheet, so a part that has nothing
           to say simply is not here. */}
