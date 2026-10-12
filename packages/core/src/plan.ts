@@ -111,6 +111,8 @@ export interface Plan {
  */
 export interface Plans {
   plans: Plan[];
+  /** The Notion user the token signed in as. Absent when Notion did not say. */
+  me?: string;
   /** Epoch seconds. */
   fetchedAt: number;
   stale?: boolean;
@@ -440,25 +442,48 @@ export function canStart(row: Pick<PlanTicket, 'link' | 'stage'>): boolean {
 }
 
 /**
- * The drawer's sections, in `TICKET_GROUPS` order, mine first in each.
+ * Whether a ticket is yours to pick up: assigned to you, or to nobody.
  *
- * "Mine" is worked out rather than configured. A ticket I have a task for is
- * mine; so is one assigned to whoever the tickets I have tasks for are assigned
- * to. The integration token is a bot, so Notion's own "me" is the bot, and a
- * setting naming yourself would be one more thing to get wrong — whereas the
- * tickets you are already working say who you are on this board.
+ * `me` is the Notion user the token signed in as — see `fetchPlans`. Unknown,
+ * only the unassigned count: guessing would put a teammate's ticket up as yours.
+ */
+export function isMine(ticket: Pick<Ticket, 'assignees'>, me: string | undefined): boolean {
+  return ticket.assignees.length === 0 || ticket.assignees.some((assignee) => assignee.id === me);
+}
+
+/**
+ * The drawer, in three parts.
  *
- * Stable within a section otherwise: the milestone's own order is the order the
+ * - **tasks**: every ticket a task here works — drawn as that task's own card.
+ * - **toStart**: yours, no task yet, and `canStart` — drawn as the task it would
+ *   become. In `TICKET_GROUPS` order, so what is free to start leads.
+ * - **rest**: everything else — a teammate's, or yours already moving without a
+ *   task here — by section, yours first in each.
+ *
+ * Stable within a part otherwise: the milestone's own order is the order the
  * spec cut the tickets in, which is usually the order they are meant to land.
  */
-export function groupTickets(rows: readonly PlanTicket[]): Array<{ group: TicketGroup; tickets: PlanTicket[] }> {
-  const me = new Set(rows.filter((row) => row.link).flatMap((row) => row.ticket.assignees.map((a) => a.id)));
-  const isMine = (row: PlanTicket): boolean =>
-    row.link !== undefined || row.ticket.assignees.some((assignee) => me.has(assignee.id));
-  return TICKET_GROUPS.map((group) => {
-    const inGroup = rows.filter((row) => row.group === group);
-    return { group, tickets: [...inGroup.filter(isMine), ...inGroup.filter((row) => !isMine(row))] };
-  }).filter((section) => section.tickets.length > 0);
+export function splitPlan(
+  rows: readonly PlanTicket[],
+  me: string | undefined,
+): {
+  tasks: PlanTicket[];
+  toStart: PlanTicket[];
+  rest: Array<{ group: TicketGroup; tickets: PlanTicket[] }>;
+} {
+  const byGroup = (list: readonly PlanTicket[]): PlanTicket[] =>
+    TICKET_GROUPS.flatMap((group) => list.filter((row) => row.group === group));
+  const toStart = rows.filter((row) => canStart(row) && isMine(row.ticket, me));
+  const rest = rows.filter((row) => !row.link && !toStart.includes(row));
+  const mine = (row: PlanTicket): boolean => isMine(row.ticket, me);
+  return {
+    tasks: rows.filter((row) => row.link),
+    toStart: byGroup(toStart),
+    rest: TICKET_GROUPS.map((group) => {
+      const inGroup = rest.filter((row) => row.group === group);
+      return { group, tickets: [...inGroup.filter(mine), ...inGroup.filter((row) => !mine(row))] };
+    }).filter((section) => section.tickets.length > 0),
+  };
 }
 
 /**

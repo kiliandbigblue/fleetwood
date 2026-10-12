@@ -806,8 +806,7 @@ button {
  * blocked card's band is drawn over this one. Before `.attention` on purpose:
  * where the two meet, the card that needs you wins the fill.
  */
-.card.here,
-.plan-ticket.here {
+.card.here {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, var(--accent) 40%, transparent),
@@ -3310,7 +3309,7 @@ button.activity:focus-visible {
  * than a count you can read again by moving the pointer away. Same duration as
  * the controls fading in, so the swap reads as one movement rather than two.
  */
-.card-head:hover .repo-summary,
+.card-head:hover:has(.row-act) .repo-summary,
 .card-head:has(.row-act:focus-within) .repo-summary {
   opacity: 0;
 }
@@ -3473,6 +3472,8 @@ button.activity:focus-visible {
  */
 /* A session's branch line pads its own bottom, so the agents under it take none. */
 .branch-line + .agents,
+.task-ticket + .agents,
+.task-ticket + .task-repos,
 .agents + .task-repos,
 .agents + .task-prs,
 .task-repos + .task-prs,
@@ -5180,9 +5181,6 @@ body:has(.warning) {
   background: var(--edge);
   overflow: hidden;
 }
-.plan-meter.wide {
-  width: 96px;
-}
 .plan-meter > span {
   position: absolute;
   inset: 0 auto 0 0;
@@ -5204,53 +5202,22 @@ body:has(.warning) {
   flex-direction: column;
 }
 
-/*
- * The milestone's name heads the drawer at the fleet's own title size, with its
- * facts on one quiet line under it. The name was left to the rail before, which
- * made the drawer the one page in the panel that never said what it was.
- */
-.plan-view-head {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s2);
-  padding: var(--s4) var(--s4) var(--s3) var(--indent);
-}
-
-.plan-view-name {
-  align-self: flex-start;
-  padding: 0;
-  font-family: var(--mono-display);
-  font-variant-ligatures: none;
-  font-size: var(--fs-head);
-  font-weight: 500;
-  letter-spacing: -0.02em;
-  color: var(--text);
-  text-align: left;
-}
-.plan-view-name > span {
-  color: var(--dim);
-}
-.plan-view-name:hover > span {
-  color: var(--text);
-}
-
-.plan-view-facts {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--s2) var(--s4);
-  font-size: var(--fs-body);
-  font-variant-numeric: tabular-nums;
-  color: var(--soft);
-}
-.plan-view-facts > .chip {
-  margin-left: auto;
-}
-
-.plan-view-progress {
+/* A group's trailing control: the fold on the fleet, `refresh` in the drawer. */
+.group-control {
+  flex: none;
   display: inline-flex;
-  align-items: center;
-  gap: var(--s3);
+}
+
+/*
+ * The drawer's head is the rail row it opened from — see `PlanView`. On the
+ * fleet a group earns air above its rule; here it is the top of the page, so
+ * neither the air nor the rule.
+ */
+.plan-view > .group-card {
+  margin-top: 0;
+}
+.plan-view > .group-card::before {
+  content: none;
 }
 
 /* Each group starts with the list's own seam, as the fleet's sections do. */
@@ -5318,8 +5285,7 @@ body:has(.warning) {
 }
 
 /* An identifier, so mono like every other one — and a column, so titles line up. */
-.plan-ticket-id,
-.plan-ticket-task {
+.plan-ticket-id {
   flex: none;
   padding: 0;
   font-family: var(--mono);
@@ -5328,32 +5294,14 @@ body:has(.warning) {
   color: var(--dim);
   border-radius: 4px;
 }
-.plan-ticket-task {
-  /* A slug is longer than the drawer often enough: it gives way, with its
-     ellipsis, rather than running past the edge. The title has the whole name.
-     A 12ch basis keeps it on the stage's line instead of wrapping under it, and
-     the cap stops it growing past its own text. */
-  flex: 1 1 12ch;
-  min-width: 0;
-  max-width: max-content;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--soft);
-}
-.plan-ticket-id:hover,
-.plan-ticket-task:hover {
+.plan-ticket-id:hover {
   color: var(--text);
 }
-.plan-ticket-id:focus-visible,
-.plan-ticket-task:focus-visible {
+.plan-ticket-id:focus-visible {
   outline: none;
   color: var(--text);
   background: color-mix(in srgb, var(--text) 7%, transparent);
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--text) 60%, transparent);
-}
-.plan-ticket.here .plan-ticket-task {
-  color: var(--accent);
 }
 
 .plan-ticket-title {
@@ -5400,8 +5348,34 @@ body:has(.warning) {
 .plan-stage:is([data-stage='approved'], [data-stage='deployed']) {
   color: var(--ok);
 }
-.plan-here {
-  color: var(--accent);
+
+/*
+ * A task's ticket, under its name on the title's rail, as a session's branch
+ * line sits — see `TaskCard` and `GhostCard`. One line: the title gives way.
+ */
+.task-ticket {
+  flex-wrap: nowrap;
+  padding: 0 var(--s4) var(--s3) var(--indent);
+}
+.task-ticket-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-ticket > .plan-stage {
+  flex: none;
+}
+
+/*
+ * A ticket of yours with no task yet: a parked card a step dimmer, because
+ * nothing exists yet — its title in `dim` until the pointer is on it.
+ */
+.card.ghost .session-name {
+  color: var(--dim);
+}
+.card.ghost .card-head:hover .session-name {
+  color: var(--text);
 }
 
 /* A chip that cannot act says so at rest and under the pointer. */

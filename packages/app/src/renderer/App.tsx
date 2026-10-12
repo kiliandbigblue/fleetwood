@@ -9,7 +9,7 @@ import { TaskCard } from './TaskCard.tsx';
 import { NewTask } from './NewTask.tsx';
 import { EMPTY_DRAFT, draftFromTicket } from './newTaskFlow.ts';
 import type { Draft } from './newTaskFlow.ts';
-import { GroupRow, PlanRow, PlanView } from './Plan.tsx';
+import { Fold, GroupRow, PlanRow, PlanView } from './Plan.tsx';
 import { Power } from './Power.tsx';
 import { Notes } from './Notes.tsx';
 import { Drawer } from './Drawer.tsx';
@@ -545,6 +545,10 @@ export function App(): React.JSX.Element {
   const mergedFacts = readMerged(snapshot?.merged?.prs);
   const planRows = new Map(plans.map((plan) => [plan.milestoneId, readPlan(plan, links, mergedFacts)]));
   const openPlan = plans.find((plan) => plan.milestoneId === focusedPlan);
+  // Each task's ticket, for its card to say — the same reading the plan draws.
+  const ticketBySlug = new Map(
+    [...planRows.values()].flat().flatMap((row) => (row.link ? [[row.link.task.slug, row] as const] : [])),
+  );
   /*
    * Back is one step, not home. A task opened from a plan goes back to that
    * plan, and the plan to the fleet — the plan is kept open under the task for
@@ -657,6 +661,7 @@ export function App(): React.JSX.Element {
         onResult={onResult}
         onFocus={() => setFocusedSlug(task.slug)}
         here={here}
+        ticket={ticketBySlug.get(task.slug)}
       />
     ) : (
       <SessionCard
@@ -746,8 +751,23 @@ export function App(): React.JSX.Element {
         onResult={onResult}
         onFocus={() => setFocusedSlug(task.slug)}
         compact
+        ticket={ticketBySlug.get(task.slug)}
       />
     );
+  }
+
+  /**
+   * A task's card wherever its session is — on the list, behind the hidden
+   * drawer, or parked — for the plan, which draws the fleet's own card rather
+   * than a second rendering of it.
+   */
+  function taskRow(slug: string): React.JSX.Element | null {
+    const task = snapshot?.tasks.find((t) => t.slug === slug);
+    if (!task) return null;
+    const session = fleet.find((s) => s.name === task.session);
+    if (!session) return dormantRow(task);
+    const order = isHidden(session.name) ? hiddenOrder : (groupOrders.get(focusedPlan ?? '') ?? []);
+    return sessionRow(session, order);
   }
 
   return (
@@ -829,6 +849,7 @@ export function App(): React.JSX.Element {
             onResult={onResult}
             onArchive={() => setFocusedSlug(undefined)}
             here={focused.session !== undefined && focused.session.name === snapshot.currentSession}
+            ticket={ticketBySlug.get(focused.task.slug)}
           />
         )}
 
@@ -838,13 +859,14 @@ export function App(): React.JSX.Element {
           <PlanView
             plan={openPlan}
             rows={planRows.get(openPlan.milestoneId) ?? []}
+            me={snapshot.plans.me}
             fetchedAt={snapshot.plans.fetchedAt}
             stale={snapshot.plans.stale}
             refreshing={refreshingPlans}
-            currentSession={snapshot.currentSession}
+            taskOrder={[...sessions.flatMap((s) => taskBySession.get(s.name)?.slug ?? []), ...dormant.map((t) => t.slug)]}
+            renderTask={taskRow}
             onRefresh={refreshPlans}
             onStart={onStartTicket}
-            onOpenTask={setFocusedSlug}
             onResult={onResult}
           />
         )}
@@ -903,9 +925,16 @@ export function App(): React.JSX.Element {
                       title="Other"
                       summary={`${group.items.length} not in a plan`}
                       spoken={`${group.items.length} not in a plan`}
-                      expanded={expandedGroups.has(group.key)}
-                      folded={group.items.length - group.shown.length}
-                      onToggle={() => toggleGroup(group.key)}
+                      // Nothing behind Other but its own items, so its head is the fold.
+                      onHead={() => toggleGroup(group.key)}
+                      headHint={expandedGroups.has(group.key) ? 'fold it away' : 'show it'}
+                      control={
+                        <Fold
+                          expanded={expandedGroups.has(group.key)}
+                          folded={group.items.length - group.shown.length}
+                          onToggle={() => toggleGroup(group.key)}
+                        />
+                      }
                     >
                       {children}
                     </GroupRow>

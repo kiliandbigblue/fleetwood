@@ -245,7 +245,7 @@ async function readPlans(): Promise<PlansOutcome> {
     const ids = linkedTicketIds(await getTasks());
     const fetched = await notionApi.fetchPlans({ tokenCommand: command, ticketIds: ids });
     if (fetched) {
-      plans = { plans: fetched, fetchedAt: Math.floor(Date.now() / 1000) };
+      plans = { ...fetched, fetchedAt: Math.floor(Date.now() / 1000) };
       // Only once Notion answered: a failed fetch asked nothing, and must not
       // hold a newly linked task back for a whole poll.
       plansAskedFor = new Set(ids);

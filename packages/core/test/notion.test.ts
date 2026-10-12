@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { blockersOf, milestoneFacts, parseTicket, retryDelayMs, wantsBody } from '../src/notion.ts';
+import { blockersOf, milestoneFacts, parseTicket, retryDelayMs, signedInAs, wantsBody } from '../src/notion.ts';
 
 /*
  * Blocks shaped the way `GET /v1/blocks/{id}/children` returns them, trimmed to
@@ -129,4 +129,10 @@ test("a milestone's Progress is the formula's result, clamped, and its target da
   assert.deepEqual(milestoneFacts(page(140, '2026-10-14T09:00:00.000+02:00')), { progress: 100, targetDate: '2026-10-14' });
   // A formula that errors or goes empty comes back null; no number, no bar.
   assert.deepEqual(milestoneFacts(page(null)), {});
+});
+
+test('the token reads Notion as the person who signed the connection in, not as a workspace', () => {
+  assert.equal(signedInAs({ object: 'user', type: 'bot', bot: { owner: { type: 'user', user: { id: 'u-1' } } } }), 'u-1');
+  assert.equal(signedInAs({ object: 'user', type: 'bot', bot: { owner: { type: 'workspace', workspace: true } } }), undefined);
+  assert.equal(signedInAs(undefined), undefined);
 });

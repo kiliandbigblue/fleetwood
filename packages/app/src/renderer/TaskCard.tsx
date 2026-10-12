@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { FleetSession, StackRow, Task, TaskPr, TaskRepo, TaskStatus } from '@fleetwood/core';
+import type { FleetSession, PlanTicket, StackRow, Task, TaskPr, TaskRepo, TaskStatus, TicketStage } from '@fleetwood/core';
 // The leaf module: the barrel re-exports tmux and process scanning, which fail the
 // renderer bundle on `node:child_process`.
 import {
@@ -16,11 +16,13 @@ import {
 } from '@fleetwood/core/taskView';
 import { STATUS_LABEL, taskStatus } from '@fleetwood/core/taskStatus';
 import { hasDriftedOffBranch, worktreeShortName } from '@fleetwood/core/naming';
+import { STAGE } from '@fleetwood/core/plan';
 import { AddRepo } from './AddRepo.tsx';
 import { AgentRow } from './AgentRow.tsx';
 import { Icon } from './Icon.tsx';
 import { CHECK_GLYPH, REVIEW_LABEL } from './PrList.tsx';
 import { CardMenu } from './CardMenu.tsx';
+import { TicketId } from './Plan.tsx';
 import type { MenuItem } from './CardMenu.tsx';
 import { Slug } from './Slug.tsx';
 import { TaskNotes } from './TaskNotes.tsx';
@@ -98,7 +100,26 @@ interface Props {
    * The terminal you are at is showing this session — see `.card.here`.
    */
   here?: boolean;
+  /**
+   * The Notion ticket this task works, when a plan has it — see `linkTickets`.
+   *
+   * Its id and title, and past the merge where the deploy has got to: the one
+   * thing the card's own mark cannot say. Never its board column, which lags
+   * the work; the mark is read off the work itself.
+   */
+  ticket?: Pick<PlanTicket, 'ticket' | 'stage'>;
 }
+
+/**
+ * The rungs past a merge, in words; nothing before one, where the mark already
+ * says it. `deployed` is the end and says nothing either: the mark is done.
+ */
+const DEPLOY_RUNG: Partial<Record<TicketStage, string>> = {
+  merged: 'merged, not live',
+  deploying: STAGE.deploying.label,
+  built: STAGE.built.label,
+  'deploy-failed': STAGE['deploy-failed'].label,
+};
 
 /** `nvim -u NONE` is a legal editor setting; only the command itself names the button. */
 export function editorLabel(editor: string): string {
@@ -484,6 +505,7 @@ export function TaskCard({
   onArchive,
   compact,
   here,
+  ticket,
 }: Props): React.JSX.Element {
   const [addingRepo, setAddingRepo] = useState(false);
   /* Window state, like the hidden drawer: opening a parked card to look is not a
@@ -565,6 +587,7 @@ export function TaskCard({
    */
   const foldable = compact === true || (session !== undefined && session.agents.length === 0);
   const folded = foldable && !expanded;
+  const rung = ticket && DEPLOY_RUNG[ticket.stage];
 
   const openNotes = (): void => {
     setDraft(task.notes ?? '');
@@ -651,13 +674,13 @@ export function TaskCard({
         /* The branch rides along here now that it has no line of its own: the
            slug beside it is that branch minus its type prefix, so `feature/` is
            the only part a second row was spelling out. */
-        title={
+        title={`${ticket ? `${ticket.ticket.id} ${ticket.ticket.title} · ` : ''}${
           askingPane
             ? `${task.branch} · go to the pane asking for permission (${askingPane})`
             : task.session
             ? `${task.branch} · focus ${task.session} · ${task.dir}`
             : `${task.branch} · no session yet — open one on ${task.dir}`
-        }
+        }`}
       >
         {live ? (
           /* The session card's mark, drawn by the same rule — see `liveSeverity`. */
@@ -728,6 +751,7 @@ export function TaskCard({
             live ? STATUS_LABEL[status] : undefined,
             folded ? repoSummary(task.repos, task.branch) : undefined,
             folded && prs ? prHeadline(prs) : undefined,
+            folded ? rung : undefined,
           ]
             .filter(Boolean)
             .join(' · ')}
@@ -770,6 +794,26 @@ export function TaskCard({
         <CardMenu session={task.session} order={order} actions={actions} onResult={onResult} />
         </span>
       </div>
+
+      {/* The ticket under the name, on its rail, as a ticket still to start
+          draws it — see `GhostCard`. Folded, the title is on the head's hover
+          and the deploy rides in the summary. */}
+      {!folded && ticket && (
+        <div className="plan-ticket-meta task-ticket">
+          <TicketId
+            ticket={ticket.ticket}
+            onOpen={(url) => void act({ kind: 'openExternal', url })}
+          />
+          <span className="task-ticket-title" title={ticket.ticket.title}>
+            {ticket.ticket.title}
+          </span>
+          {rung && (
+            <span className="plan-stage" data-stage={ticket.stage}>
+              {rung}
+            </span>
+          )}
+        </div>
+      )}
 
       {!folded && agents.length > 0 && (
         <div className="agents">

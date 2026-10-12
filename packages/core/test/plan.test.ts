@@ -4,7 +4,7 @@ import {
   canStart,
   groupFleet,
   OTHER_GROUP,
-  groupTickets,
+  splitPlan,
   hasLiveAgent,
   dueLabel,
   linkTickets,
@@ -245,7 +245,7 @@ test('a ticket needs you when its agent is stopped on you, or its PR has changes
 const ME = { id: 'u-kilian', name: 'Kilian' };
 const ORIANE = { id: 'u-oriane', name: 'Oriane' };
 
-test('the drawer groups tickets in the order that answers what to pick up next, mine first in each', () => {
+test('the drawer splits tasks, what is yours to start, and the rest by section', () => {
   const read = readPlan(
     plan(
       ticket('DEV-50', { notionStatus: 'Done' }),
@@ -254,7 +254,6 @@ test('the drawer groups tickets in the order that answers what to pick up next, 
       ticket('DEV-53', { notionStatus: 'In Progress' }),
       ticket('DEV-54', { blockers: [{ id: 'DEV-52' }], assignees: [ORIANE] }),
       ticket('DEV-55', { assignees: [ORIANE] }),
-      // Mine without a task yet: assigned to whoever my linked tickets are assigned to.
       ticket('DEV-56', { assignees: [ME] }),
       ticket('DEV-57', { notionStatus: 'In Progress', assignees: [ME] }),
       ticket('DEV-58', { notionStatus: 'In Progress' }),
@@ -264,18 +263,22 @@ test('the drawer groups tickets in the order that answers what to pick up next, 
       ['DEV-52', link('dev-52-a', [{}])],
     ]),
   );
+  const ids = (rows: Array<{ ticket: Ticket }>): string[] => rows.map((row) => row.ticket.id);
+  const split = splitPlan(read, ME.id);
+  assert.deepEqual(ids(split.tasks), ['DEV-52', 'DEV-57']);
+  // Unassigned counts as yours; free to start leads, blocked comes last.
+  assert.deepEqual(ids(split.toStart), ['DEV-56', 'DEV-53', 'DEV-58', 'DEV-51']);
   assert.deepEqual(
-    groupTickets(read).map(({ group, tickets }) => [group, tickets.map((row) => row.ticket.id)]),
+    split.rest.map(({ group, tickets }) => [group, ids(tickets)]),
     [
-      ['needs-you', ['DEV-57']],
-      ['startable', ['DEV-56', 'DEV-55']],
+      ['startable', ['DEV-55']],
       ['stackable', ['DEV-54']],
-      ['in-progress', ['DEV-53', 'DEV-58']],
-      ['in-review', ['DEV-52']],
-      ['blocked', ['DEV-51']],
       ['done', ['DEV-50']],
     ],
   );
+
+  // Notion did not say who I am: my assigned ticket is not guessed to be mine.
+  assert.deepEqual(ids(splitPlan(read, undefined).toStart), ['DEV-53', 'DEV-58', 'DEV-51']);
 });
 
 test('a merge not yet live stays in view under merged; deployed and canceled fold away as done', () => {

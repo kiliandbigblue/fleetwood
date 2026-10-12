@@ -230,6 +230,18 @@ export function wantsBody(page: unknown): boolean {
   return name !== 'done' && name !== 'canceled';
 }
 
+/**
+ * Who the token reads Notion as: the person who signed the OAuth connection in.
+ *
+ * `users/me` answers with the connection's bot, and a connection made with
+ * `owner=user` names its owner. An internal integration's owner is the
+ * workspace, which names no one, and that is `undefined`.
+ */
+export function signedInAs(user: unknown): string | undefined {
+  const id = (user as { bot?: { owner?: { user?: { id?: unknown } } } } | undefined)?.bot?.owner?.user?.id;
+  return typeof id === 'string' ? id : undefined;
+}
+
 async function call(token: string, path: string, body?: unknown, retries = RATE_LIMIT_RETRIES): Promise<unknown> {
   const response = await fetch(`${API}${path}`, {
     method: body === undefined ? 'GET' : 'POST',
@@ -287,7 +299,7 @@ export interface PlansOptions {
  * caller keeps the last plans and marks them stale, the way the quota gauges do,
  * and half a milestone would read as tickets having left it.
  */
-export async function fetchPlans(options: PlansOptions): Promise<Plan[] | undefined> {
+export async function fetchPlans(options: PlansOptions): Promise<{ plans: Plan[]; me?: string } | undefined> {
   const command = options.tokenCommand?.trim();
   if (!command) return undefined;
   const printed = await run('/bin/sh', ['-c', command], { timeoutMs: TIMEOUT_MS });
@@ -302,7 +314,9 @@ export async function fetchPlans(options: PlansOptions): Promise<Plan[] | undefi
     );
     const milestones = [...new Set(found.flatMap((pages) => relationIds(pages[0], 'Milestone')))];
 
-    return await mapLimit(milestones, 1, async (milestoneId): Promise<Plan> => {
+    // Not worth the plans: unknown, only unassigned tickets count as yours.
+    const me = signedInAs(await call(token, '/users/me').catch(() => undefined));
+    const plans = await mapLimit(milestones, 1, async (milestoneId): Promise<Plan> => {
       const milestone = await call(token, `/pages/${milestoneId}`);
       const pages = await queryAll(token, {
         filter: { property: 'Milestone', relation: { contains: milestoneId } },
@@ -326,6 +340,7 @@ export async function fetchPlans(options: PlansOptions): Promise<Plan[] | undefi
         tickets,
       };
     });
+    return { plans, me };
   } catch {
     return undefined;
   }
