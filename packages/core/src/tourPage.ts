@@ -34,8 +34,8 @@ ${pageCss(p)}
 <div class="app">
   <nav class="rail" id="rail" aria-label="Sections"></nav>
   <main class="stage" id="stage"></main>
-  <aside class="inspector" id="inspector" aria-label="Inspector"></aside>
-  <div class="grip" id="grip" role="separator" aria-orientation="vertical" aria-controls="inspector" aria-label="Inspector width" tabindex="0" title="Drag to resize · double-click to reset · w to widen"></div>
+  <aside class="drawer" id="drawer" aria-label="Thread"></aside>
+  <div class="grip" id="grip" role="separator" aria-orientation="vertical" aria-controls="drawer" aria-label="Thread drawer width" tabindex="0" title="Drag to resize · double-click to reset · w to widen"></div>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <div class="tip" id="tip" aria-hidden="true"></div>
@@ -93,22 +93,21 @@ kbd { font: 11px var(--chrome); color: var(--dim); border: 1px solid var(--edge)
 button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 
 /* the code takes every pixel the strip leaves; the drawer takes its share only while it is open */
-.app { --strip-w: 56px; --inspector-w: 400px; position: relative; overflow-x: clip; display: grid; grid-template-columns: var(--strip-w) minmax(0, 1fr); height: 100vh; }
-.app.drawer { grid-template-columns: var(--strip-w) minmax(0, 1fr) var(--inspector-w); }
-.app:not(.drawer) .inspector, .app:not(.drawer) .grip { display: none; }
+.app { --strip-w: 56px; --drawer-w: 400px; position: relative; overflow-x: clip; display: grid; grid-template-columns: var(--strip-w) minmax(0, 1fr); height: 100vh; }
+.app.drawer-open { grid-template-columns: var(--strip-w) minmax(0, 1fr) var(--drawer-w); }
+.app:not(.drawer-open) .drawer, .app:not(.drawer-open) .grip { display: none; }
 
 /* ── rail: a strip of §s, and the full list over the code ── */
 .rail { position: relative; z-index: 10; background: var(--panel); border-right: 1px solid var(--edge); min-height: 0; min-width: 0; }
 .strip { display: flex; flex-direction: column; align-items: center; height: 100%; padding: var(--s3) 0; gap: var(--s2); }
 .strip ol { list-style: none; margin: 0; padding: 0 var(--s1); display: grid; gap: 2px; overflow-y: auto; flex: 1; align-content: start; width: 100%; scrollbar-width: none; }
 .strip ol::-webkit-scrollbar { display: none; }
-.strip li { display: flex; align-items: center; justify-content: center; gap: 3px; height: 30px; border-radius: var(--radius); cursor: pointer; color: var(--dim); font-variant-numeric: tabular-nums; font-size: 11.5px; transition: background .15s, color .15s; }
-.strip li:hover { background: var(--hover); color: var(--text); }
-.strip li.done { color: var(--ok); }
-.strip li.current { background: var(--accent-soft); color: var(--accent); }
-.strip li svg.i { width: 12px; height: 12px; }
-.strip li.added { color: var(--ok); }
-.strip li.deleted { color: var(--danger); }
+.strip ol button { width: 100%; height: 30px; justify-content: center; gap: 3px; padding: 0; border: 0; color: var(--dim); font-variant-numeric: tabular-nums; font-size: 11.5px; }
+.strip ol button:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+.strip ol button.done, .strip ol button.added { color: var(--ok); }
+.strip ol button.deleted { color: var(--danger); }
+.strip ol button.current { background: var(--accent-soft); color: var(--accent); }
+.strip ol button svg.i { width: 12px; height: 12px; }
 .strip .toggle { padding: 6px; color: var(--soft); }
 .strip .count { font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
 .strip .count b { color: var(--text); font-weight: 600; }
@@ -142,8 +141,8 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 .sections li.done:not(.current) .t { color: var(--dim); }
 .sections li .tag { display: block; color: var(--dim); font-size: 11px; margin-top: 1px; }
 .sections li.uncovered .tag { color: var(--warn); }
-.sections li .n.added { color: var(--ok); }
-.sections li .n.deleted { color: var(--danger); }
+.sections li.added .n { color: var(--ok); }
+.sections li.deleted .n { color: var(--danger); }
 .scope { margin-top: var(--s3); }
 .scope + .scope { margin-top: var(--s2); }
 .legend { border-top: 1px solid var(--edge); padding: var(--s3) var(--s4); color: var(--dim); font-size: 11.5px; display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; }
@@ -221,10 +220,10 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 .code.split .gap { padding-left: 62px; }
 
 .head-actions { display: flex; align-items: center; gap: var(--s3); flex: none; }
-.layout { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--edge); border-radius: var(--radius); }
-.layout button { border: 0; padding: 3px 8px; border-radius: 4px; color: var(--dim); }
-.layout button:hover:not(:disabled) { background: var(--hover); }
-.layout button.on { background: var(--edge); color: var(--text); }
+.segmented { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--edge); border-radius: var(--radius); }
+.segmented button { border: 0; padding: 3px 8px; border-radius: 4px; color: var(--dim); }
+.segmented button:hover:not(:disabled) { background: var(--hover); }
+.segmented button.on { background: var(--edge); color: var(--text); }
 
 .fold { margin-bottom: var(--s6); }
 .fold > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: var(--s2); color: var(--soft); padding: var(--s2) 0; }
@@ -251,19 +250,19 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 .clock { font: 500 13px var(--code); color: var(--accent); font-variant-numeric: tabular-nums; }
 .failure { font: 12.5px/1.6 var(--code); color: var(--danger); background: var(--danger-soft); border-radius: var(--radius); padding: var(--s4); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 var(--s4); }
 
-/* ── inspector ── */
-/* the inspector's left edge drags; the width it is left at is remembered per browser */
-.grip { position: absolute; top: 0; bottom: 0; right: var(--inspector-w); width: 9px; margin-right: -5px; z-index: 4; cursor: col-resize; touch-action: none; }
+/* ── drawer ── */
+/* the drawer's left edge drags; the width it is left at is remembered per browser */
+.grip { position: absolute; top: 0; bottom: 0; right: var(--drawer-w); width: 9px; margin-right: -5px; z-index: 4; cursor: col-resize; touch-action: none; }
 .grip::after { content: ''; position: absolute; top: 0; bottom: 0; left: 4px; width: 1px; background: transparent; transition: background .15s, box-shadow .15s; }
 .grip:hover::after, .grip:focus-visible::after, .grip.dragging::after { background: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft); }
 .grip:focus-visible { outline: none; }
 body.resizing { cursor: col-resize; user-select: none; }
-body.resizing iframe, body.resizing .stage, body.resizing .inspector { pointer-events: none; }
-.inspector { background: var(--panel); border-left: 1px solid var(--edge); display: flex; flex-direction: column; min-height: 0; min-width: 0; animation: drawer-in .22s var(--ease); }
+body.resizing iframe, body.resizing .stage, body.resizing .drawer { pointer-events: none; }
+.drawer { background: var(--panel); border-left: 1px solid var(--edge); display: flex; flex-direction: column; min-height: 0; min-width: 0; animation: drawer-in .22s var(--ease); }
 @keyframes drawer-in { from { opacity: 0; transform: translateX(16px); } }
 .pane h2 .close { margin-left: auto; padding: 2px; color: var(--dim); }
 .pane h2 .close:hover:not(:disabled) { color: var(--text); }
-.inspector-scroll { overflow-y: auto; flex: 1; }
+.drawer-scroll { overflow-y: auto; flex: 1; }
 .pane { padding: var(--s5) var(--s5) var(--s4); border-bottom: 1px solid var(--edge); }
 .pane:last-child { border-bottom: 0; }
 .pane h2 { font: 600 11.5px var(--chrome); color: var(--soft); margin: 0 0 var(--s3); display: flex; align-items: center; justify-content: space-between; gap: var(--s2); letter-spacing: .02em; }
@@ -334,7 +333,7 @@ body.resizing iframe, body.resizing .stage, body.resizing .inspector { pointer-e
 .row.flash { animation: flash 1.4s var(--ease); }
 @keyframes flash { from { background: var(--accent-soft); } }
 
-/* the composer stays at the foot of the inspector however long the thread */
+/* the composer stays at the foot of the drawer however long the thread */
 .composer { position: sticky; bottom: 0; z-index: 1; display: grid; gap: var(--s2); margin: var(--s3) calc(-1 * var(--s5)) calc(-1 * var(--s4)); padding: var(--s3) var(--s5) var(--s4); background: var(--panel); }
 .thread:not(:empty) + .composer { border-top: 1px solid var(--edge); }
 .kinds { display: grid; grid-template-columns: 1fr 1fr; background: var(--bg); border-radius: var(--radius); padding: 3px; gap: 3px; }
@@ -367,21 +366,21 @@ textarea::placeholder { color: var(--soft); opacity: .8; }
   border-radius: var(--radius); padding: var(--s2) var(--s4); box-shadow: 0 8px 24px ${alpha('#000000', 0.35)}; transition: opacity .2s, transform .2s var(--ease); }
 .toast.on { opacity: 1; transform: translate(-50%, 0); }
 
-@media (min-width: 1600px) { .app { --inspector-w: 440px; } }
-@media (max-width: 1280px) { .app { --inspector-w: 340px; } .stage-head, .stage-body { padding-left: var(--s5); padding-right: var(--s5); } }
+@media (min-width: 1600px) { .app { --drawer-w: 440px; } }
+@media (max-width: 1280px) { .app { --drawer-w: 340px; } .stage-head, .stage-body { padding-left: var(--s5); padding-right: var(--s5); } }
 @media (max-width: 960px) {
-  .app, .app.drawer { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr auto; height: auto; min-height: 100vh; }
+  .app, .app.drawer-open { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr auto; height: auto; min-height: 100vh; }
   .stage-head { position: static; flex-wrap: wrap; }
   .row { grid-template-columns: 34px 34px 16px minmax(0, 1fr) auto; }
   .gap { padding-left: 68px; }
-  .layout:not(.scope) { display: none; }
+  .diff-layout { display: none; }
   .rail { border-right: 0; border-bottom: 1px solid var(--edge); }
   .strip { flex-direction: row; padding: var(--s2) var(--s3); }
   .strip ol { display: flex; overflow-x: auto; padding: 0; }
   .strip li { flex: none; min-width: 40px; }
   .rail-panel { bottom: auto; max-height: 80vh; width: min(360px, 100vw); }
   .legend { display: none; }
-  .inspector { border-left: 0; border-top: 1px solid var(--edge); }
+  .drawer { border-left: 0; border-top: 1px solid var(--edge); }
   .grip { display: none; }
   .stage { overflow: visible; }
 }
@@ -409,7 +408,7 @@ var ctxOpen = {};         // "section:path:start" -> context ref unfolded
 var ctxAll = {};          // section -> every context ref listed, not just the first few
 var leansOpen = {};       // section -> its context refs unfolded under the summary
 var railOpen = false;     // the full § list is open over the code
-var drawer = false;       // the thread drawer is open beside the code
+var drawerOpen = false;   // the thread drawer is open beside the code
 var stale = false;
 var lastThreadKey = '';
 var layout = 'inline';    // 'inline' or 'split', remembered per browser
@@ -690,9 +689,14 @@ function regenerate() {
 function section() { return data.sections[current]; }
 function owner(path, row) { return data.files[path].owners[row]; }
 function threadFor(path, row) {
-  return data.comments.filter(function (c) {
-    return c.section === current && (path ? c.path === path && c.row === row : !c.path);
-  });
+  return path ? lineComments(path, row) : data.comments.filter(function (c) { return c.section === current && !c.path; });
+}
+/**
+ * The comments on a line this view shows: in the sections, only the current
+ * one's. A line's dot, a click on it and ] all go by these, so a dot always opens a thread.
+ */
+function lineComments(path, row) {
+  return data.comments.filter(function (c) { return c.path === path && c.row === row && (view !== 'sections' || c.section === current); });
 }
 function rowLabel(path, row) {
   var r = data.files[path].rows[row];
@@ -701,11 +705,8 @@ function rowLabel(path, row) {
 
 /* ── rail ── */
 function renderRail() {
-  var rail = document.getElementById('rail');
-  rail.classList.toggle('open', railOpen);
-  var panel = h('div', { class: 'rail-panel', id: 'rail-panel', inert: !railOpen });
-  rail.replaceChildren(stripEl(), panel);
-  panel.append(h('div', { class: 'rail-head' },
+  var steps = VIEWS[view].steps();
+  var panel = h('div', { class: 'rail-panel', id: 'rail-panel' }, h('div', { class: 'rail-head' },
     h('div', { class: 'repo', text: data.repo || data.title }),
     h('div', { class: 'base' }, icon('branch'), h('span', {}, data.unstaged ? 'unstaged, against ' : 'against '), h('span', { class: 'ref', text: data.against || '' })),
     segmented('What to review', 'scope', !!data.unstaged, [
@@ -717,35 +718,74 @@ function renderRail() {
       { value: 'plain', label: 'Plain diff', title: 'Plain diff (v)' },
       { value: 'sections', label: 'Sections', title: 'Sections (v)' },
     ], setView) : null));
-  VIEWS[view].rail(panel);
+  VIEWS[view].rail(panel, steps);
+  document.getElementById('rail').replaceChildren(stripEl(steps), panel);
+  syncRail();
 }
 
-/** The strip that stays: a § or a file per step, its state at a glance, its title on hover. */
-function stripEl() {
-  var items = view === 'sections' ? data.sections.map(function (s, i) {
-    var isDone = data.checked.indexOf(i) >= 0;
-    return h('li', { class: (i === current ? 'current' : isDone ? 'done' : ''), 'data-tip': '§' + (i + 1) + '  ' + s.title,
-      'aria-current': i === current ? 'step' : null, onclick: function () { go(i); } },
-      icon(isDone ? 'done' : i === current ? 'now' : 'todo'), String(i + 1));
-  }) : data.plain.map(function (sf) {
-    var f = data.files[sf.path];
-    return h('li', { class: f.status, 'data-tip': sf.path, onclick: function () { showFile(sf.path); } },
-      { added: 'A', deleted: 'D', renamed: 'R' }[f.status] || 'M');
+/**
+ * What a view walks through: a § per section, or a file per changed file.
+ * The strip and the full list both draw these, so they never disagree.
+ */
+function sectionSteps() {
+  return data.sections.map(function (s, i) {
+    var state = i === current ? 'current' : data.checked.indexOf(i) >= 0 ? 'done' : 'todo';
+    return {
+      state: state, mark: { current: 'now', done: 'done', todo: 'todo' }[state], short: String(i + 1), n: '§' + (i + 1),
+      title: s.title, tip: '§' + (i + 1) + '  ' + s.title, warn: !!s.uncovered,
+      tag: s.uncovered ? 'not placed by the recap' : s.mechanical ? 'mechanical' : null,
+      pick: function () { go(i); },
+    };
   });
-  var count = view === 'sections'
-    ? h('span', { class: 'count', title: data.checked.length + ' of ' + data.sections.length + ' reviewed' }, h('b', { text: String(data.checked.length) }), '/' + data.sections.length)
-    : null;
-  return h('div', { class: 'strip' },
-    h('button', { class: 'ghost toggle', title: 'Sections, scope and keys (l)', 'aria-label': 'Open the list', 'aria-expanded': railOpen ? 'true' : 'false', 'aria-controls': 'rail-panel',
-      onclick: function () { setRail(!railOpen); } }, icon('list')),
-    count,
-    h('ol', { 'aria-label': view === 'sections' ? 'Sections' : 'Files' }, items));
 }
 
+function fileSteps() {
+  return data.plain.map(function (sf) {
+    var status = data.files[sf.path].status;
+    var parts = sf.path.split('/');
+    var letter = { added: 'A', deleted: 'D', renamed: 'R' }[status] || 'M';
+    return {
+      state: status, mark: null, short: letter, n: letter,
+      title: parts.pop(), tip: sf.path, warn: false, tag: parts.join('/') || null,
+      pick: function () { showFile(sf.path); },
+    };
+  });
+}
+
+/** The strip that stays: a step each, its state at a glance, its title on hover or focus. */
+function stripEl(steps) {
+  var tally = VIEWS[view].tally();
+  return h('div', { class: 'strip' },
+    h('button', { class: 'ghost toggle', title: 'Sections, scope and keys (l)', 'aria-label': 'The full list', 'aria-controls': 'rail-panel',
+      onclick: function () { setRail(!railOpen); } }, icon('list')),
+    tally ? h('span', { class: 'count', title: tally[0] + ' of ' + tally[1] + ' reviewed' }, h('b', { text: String(tally[0]) }), '/' + tally[1]) : null,
+    h('ol', { 'aria-label': VIEWS[view].label }, steps.map(function (st) {
+      return h('li', {}, h('button', { class: st.state, 'data-tip': st.tip, 'aria-label': st.tip, 'aria-current': st.state === 'current' ? 'step' : null, onclick: st.pick },
+        st.mark ? icon(st.mark) : null, st.short));
+    })));
+}
+
+/** The full list's steps; picking one closes the list. */
+function stepList(steps) {
+  return h('ol', { class: 'sections' }, steps.map(function (st) {
+    return h('li', { class: st.state + (st.warn ? ' uncovered' : ''), 'aria-current': st.state === 'current' ? 'step' : null,
+      onclick: function () { setRail(false); st.pick(); } },
+      h('span', { class: 'mark' }, st.mark ? icon(st.mark) : null),
+      h('span', { class: 'n', text: st.n }),
+      h('span', {}, h('span', { class: 't', text: st.title }), st.tag ? h('span', { class: 'tag', text: st.tag }) : null));
+  }));
+}
+
+/** Open or close the full list. A toggle, not a redraw, so it slides. */
 function setRail(open) {
-  if (open === railOpen) return;
   railOpen = open;
-  renderRail();
+  syncRail();
+}
+function syncRail() {
+  var rail = document.getElementById('rail');
+  rail.classList.toggle('open', railOpen);
+  document.getElementById('rail-panel').inert = !railOpen;
+  rail.querySelector('.strip .toggle').setAttribute('aria-expanded', String(railOpen));
 }
 
 function showFile(path) {
@@ -757,41 +797,34 @@ function showFile(path) {
 (function () {
   var tip = document.getElementById('tip');
   var rail = document.getElementById('rail');
-  rail.addEventListener('mouseover', function (e) {
-    var li = e.target.closest('.strip li');
-    if (!li) return tip.classList.remove('on');
-    var r = li.getBoundingClientRect();
-    tip.textContent = li.dataset.tip;
+  function show(e) {
+    var b = e.target.closest('.strip [data-tip]');
+    if (!b) return hide();
+    var r = b.getBoundingClientRect();
+    tip.textContent = b.dataset.tip;
     tip.style.left = (r.right + 8) + 'px';
     tip.style.top = (r.top + r.height / 2) + 'px';
     tip.classList.add('on');
-  });
-  rail.addEventListener('mouseleave', function () { tip.classList.remove('on'); });
-  // A click outside the open list closes it.
-  document.addEventListener('pointerdown', function (e) { if (railOpen && !rail.contains(e.target)) setRail(false); });
+  }
+  function hide() { tip.classList.remove('on'); }
+  rail.addEventListener('mouseover', show);
+  rail.addEventListener('focusin', show);
+  rail.addEventListener('mouseleave', hide);
+  rail.addEventListener('focusout', hide);
 })();
 
-/** The sections' rail: progress, the § list, and the keys. */
-function sectionsRail(rail) {
-  var done = data.checked.length, total = data.sections.length;
-  rail.append(h('div', { class: 'progress' },
-    h('div', { class: 'segments', 'aria-hidden': 'true' }, data.sections.map(function (_, i) {
-      return h('span', { class: data.checked.indexOf(i) >= 0 ? 'done' : i === current ? 'current' : '' });
-    })),
-    h('div', { class: 'progress-label' }, h('b', { text: String(done) }), ' of ' + total + ' sections reviewed')));
-  rail.append(h('ol', { class: 'sections' }, data.sections.map(function (s, i) {
-    var isDone = data.checked.indexOf(i) >= 0;
-    var tag = s.uncovered ? 'not placed by the recap' : s.mechanical ? 'mechanical' : null;
-    return h('li', {
-      class: [i === current ? 'current' : '', isDone ? 'done' : '', s.uncovered ? 'uncovered' : ''].join(' '),
-      onclick: function () { go(i); },
-      'aria-current': i === current ? 'step' : null,
-    },
-      h('span', { class: 'mark' }, icon(isDone ? 'done' : i === current ? 'now' : 'todo')),
-      h('span', { class: 'n', text: '§' + (i + 1) }),
-      h('span', {}, h('span', { class: 't', text: s.title }), tag ? h('span', { class: 'tag', text: tag }) : null));
-  })));
-  rail.append(h('div', { class: 'legend' },
+// A click outside the open list closes it.
+document.addEventListener('pointerdown', function (e) {
+  if (railOpen && !document.getElementById('rail').contains(e.target)) setRail(false);
+});
+
+/** The sections' list: progress, the §s, and the keys. */
+function sectionsRail(panel, steps) {
+  panel.append(h('div', { class: 'progress' },
+    h('div', { class: 'segments', 'aria-hidden': 'true' }, steps.map(function (st) { return h('span', { class: st.state }); })),
+    h('div', { class: 'progress-label' }, h('b', { text: String(data.checked.length) }), ' of ' + steps.length + ' sections reviewed')));
+  panel.append(stepList(steps));
+  panel.append(h('div', { class: 'legend' },
     h('span', {}, h('kbd', { text: 'j' }), ' ', h('kbd', { text: 'k' })), h('span', { text: 'line' }),
     h('span', {}, h('kbd', { text: 'n' }), ' ', h('kbd', { text: 'p' })), h('span', { text: 'section' }),
     h('span', {}, h('kbd', { text: '[' }), ' ', h('kbd', { text: ']' })), h('span', { text: 'line with a thread' }),
@@ -803,22 +836,12 @@ function sectionsRail(rail) {
     h('span', {}, h('kbd', { text: 'l' })), h('span', { text: 'this list' })));
 }
 
-/** The plain diff's rail: the changed files, each a jump to its diff. */
-function plainRail(rail) {
-  var n = data.plain.length;
-  rail.append(h('div', { class: 'progress' },
+/** The plain diff's list: the changed files, each a jump to its diff. */
+function plainRail(panel, steps) {
+  var n = steps.length;
+  panel.append(h('div', { class: 'progress' },
     h('div', { class: 'progress-label' }, h('b', { text: String(n) }), ' file' + (n > 1 ? 's' : '') + ' changed')));
-  rail.append(h('ol', { class: 'sections' }, data.plain.map(function (sf) {
-    var path = sf.path;
-    var f = data.files[path];
-    var parts = path.split('/');
-    var name = parts.pop();
-    var letter = { added: 'A', deleted: 'D', renamed: 'R' }[f.status] || 'M';
-    return h('li', { onclick: function () { setRail(false); showFile(path); } },
-      h('span', { class: 'mark' }),
-      h('span', { class: 'n ' + f.status, text: letter }),
-      h('span', {}, h('span', { class: 't', text: name }), parts.length ? h('span', { class: 'tag', text: parts.join('/') }) : null));
-  })));
+  panel.append(stepList(steps));
 }
 
 function setScope(unstaged) {
@@ -863,6 +886,7 @@ function ledeEl(s) {
   var said = threadFor(null).length;
   var refs = null;
   if (s.refs.length) {
+    // A long list, unfolded, would push the code below the fold.
     var shown = ctxAll[current] || s.refs.length <= CTX_SHOWN + 1 ? s.refs : s.refs.slice(0, CTX_SHOWN);
     refs = h('details', { class: 'leans', open: !!leansOpen[current], ontoggle: function (e) { leansOpen[current] = e.target.open; } },
       h('summary', {}, icon('chevron'), 'Context it leans on', h('span', { class: 'count', text: String(s.refs.length) })),
@@ -873,13 +897,13 @@ function ledeEl(s) {
   return h('div', { class: 'lede' },
     s.summary ? h('p', { class: 'summary', text: s.summary }) : h('p', { class: 'muted', text: 'No summary for this section.' }),
     refs || said ? h('div', { class: 'lede-tools' }, refs,
-      said ? h('button', { class: 'ghost', onclick: function () { cursor = null; render(); setDrawer(true); } }, icon('question'),
+      said ? h('button', { class: 'ghost', onclick: function () { goTo({ section: current }); } }, icon('question'),
         said + ' on this section') : null) : null);
 }
 
 /** Concerns waiting to go to the author: one button to the queue in the drawer. */
 function queuedEl() {
-  var n = data.comments.filter(function (c) { return c.kind === 'concern' && !c.sent; }).length;
+  var n = pendingConcerns().length;
   if (!n) return null;
   return h('button', { class: 'queued', title: 'Concerns to send (t)', onclick: function () { setDrawer(true); } }, icon('concern'), n + ' to send');
 }
@@ -917,7 +941,7 @@ function recapFailure() {
 
 /** A row of buttons with one on; pick gets the value of another one clicked. */
 function segmented(label, cls, value, options, pick) {
-  return h('div', { class: 'layout' + (cls ? ' ' + cls : ''), role: 'radiogroup', 'aria-label': label }, options.map(function (o) {
+  return h('div', { class: 'segmented' + (cls ? ' ' + cls : ''), role: 'radiogroup', 'aria-label': label }, options.map(function (o) {
     var on = o.value === value;
     return h('button', {
       class: on ? 'on' : '', role: 'radio', 'aria-checked': on ? 'true' : 'false', title: o.title,
@@ -927,7 +951,7 @@ function segmented(label, cls, value, options, pick) {
 }
 
 function layoutEl() {
-  return segmented('Diff layout', '', layout, [
+  return segmented('Diff layout', 'diff-layout', layout, [
     { value: 'inline', label: 'Inline', title: 'Inline (s)', icon: 'inline' },
     { value: 'split', label: 'Split', title: 'Side by side (s)', icon: 'split' },
   ], setLayout);
@@ -987,7 +1011,7 @@ function fileEl(sf, at) {
     else cells = [h('span', { class: 'no', text: r.old }), h('span', { class: 'sign' }), src,
       h('span', { class: 'no', text: r.new }), h('span', { class: 'sign' }), h('span', { class: 'src' }, paint(r.text, lang))];
     if (split) cls += side ? ' half' : ' both';
-    return h('div', { class: cls, 'data-path': sf.path, 'data-row': i, onclick: function () { setCursor(sf.path, i, false); if (threadFor(sf.path, i).length) setDrawer(true); } },
+    return h('div', { class: cls, 'data-path': sf.path, 'data-row': i, onclick: function () { setCursor(sf.path, i, false); if (lineComments(sf.path, i).length) setDrawer(true); } },
       dotFor(sf.path, i),
       cells,
       split && !side ? null : foreign ? h('span', { class: 'own', text: '§' + (own + 1) }) : h('span'));
@@ -1033,18 +1057,21 @@ function fileEl(sf, at) {
     rows.length && !hidden ? box : null);
 }
 
-/* ── inspector ── */
+/* ── drawer ── */
 function threadKey(on) { return on ? on.path + ':' + on.row : 'section:' + current; }
 function cursorOn() { return cursor && data.files[cursor.path] ? cursor : null; }
 
-function renderInspector() { VIEWS[view].inspector(document.getElementById('inspector')); }
+function renderDrawer() {
+  var el = document.getElementById('drawer');
+  if (VIEWS[view].drawer) VIEWS[view].drawer(el); else el.replaceChildren();
+}
 
-function sectionInspector(insp) {
+function sectionDrawer(insp) {
   var on = cursorOn();
   var key = threadKey(on);
-  var prev = insp.querySelector('.inspector-scroll');
+  var prev = insp.querySelector('.drawer-scroll');
   var keepTop = prev && key === lastThreadKey ? prev.scrollTop : 0;
-  var scroll = h('div', { class: 'inspector-scroll' });
+  var scroll = h('div', { class: 'drawer-scroll' });
 
   scroll.append(threadPane());
   insp.replaceChildren(scroll, queueEl());
@@ -1073,7 +1100,7 @@ function threadPane() {
  */
 function refreshThread() {
   var list = document.getElementById('thread');
-  if (!list) return renderInspector();
+  if (!list) return renderDrawer();
   list.classList.remove('swap');
   list.replaceChildren();
   fillThread(list);
@@ -1165,7 +1192,7 @@ function raise(c) {
   raising[key] = c.id;
   drafts[key] = c.body;
   saveDrafts();
-  renderInspector();
+  renderDrawer();
   focusComposer();
 }
 
@@ -1290,7 +1317,7 @@ function composerEl(on) {
     }
     req.then(function () { return load(); }).finally(function () {
       sending = false;
-      if (raised) renderInspector(); else send.disabled = false;
+      if (raised) renderDrawer(); else send.disabled = false;
       focusComposer();
     });
   }
@@ -1302,7 +1329,7 @@ function composerEl(on) {
   function pick(k) {
     kinds[key] = k;
     if (k === 'question') delete raising[key];
-    renderInspector();
+    renderDrawer();
     var radio = document.querySelector('.kinds [aria-checked="true"]');
     if (radio) radio.focus();
   }
@@ -1328,15 +1355,17 @@ function composerEl(on) {
 }
 
 function focusComposer() {
-  if (!drawer) setDrawer(true);
+  if (!drawerOpen) setDrawer(true);
   var a = document.getElementById('composer');
   if (!a) return;
   a.focus();
   a.setSelectionRange(a.value.length, a.value.length);
 }
 
+function pendingConcerns() { return data.comments.filter(function (c) { return c.kind === 'concern' && !c.sent; }); }
+
 function queueEl() {
-  var pending = data.comments.filter(function (c) { return c.kind === 'concern' && !c.sent; });
+  var pending = pendingConcerns();
   var box = h('div', { class: 'queue', id: 'queue' },
     h('div', { class: 'queue-bar' },
       h('span', { class: 'count' }, pending.length ? h('b', { text: String(pending.length) }) : null,
@@ -1355,15 +1384,17 @@ function queueEl() {
 
 /* ── behaviour ── */
 /**
- * The two ways to read the change. Each draws the rail below its head, the
- * stage and the inspector, and says what a poll redraws: the sections redraw
+ * The two ways to read the change. Each says what it walks (its steps), draws
+ * the list below the rail's head, the stage and the drawer (the plain diff has
+ * none), and says what a poll redraws: the sections redraw
  * the code and the thread, never the composer, so an answer arriving does not
  * move the caret, the selection or an open fold; the plain diff stands still.
  */
 var VIEWS = {
-  plain: { rail: plainRail, stage: plainStage, inspector: function (insp) { insp.replaceChildren(); }, poll: function () {} },
+  plain: { label: 'Files', steps: fileSteps, tally: function () { return null; }, rail: plainRail, stage: plainStage, drawer: null, poll: function () {} },
   sections: {
-    rail: sectionsRail, stage: sectionStage, inspector: sectionInspector,
+    label: 'Sections', steps: sectionSteps, tally: function () { return [data.checked.length, data.sections.length]; },
+    rail: sectionsRail, stage: sectionStage, drawer: sectionDrawer,
     poll: function () { if (document.getElementById('thread')) { renderStage(); refreshThread(); } else render(); },
   },
 };
@@ -1372,19 +1403,20 @@ function render() {
   if (!data) return;
   renderRail();
   renderStage();
-  renderInspector();
+  renderDrawer();
   syncDrawer();
 }
 
 /** Open or close the thread drawer. The code reflows to the new width, so the cursor line is kept in view. */
 function setDrawer(open) {
-  drawer = open;
+  if (open && !VIEWS[view].drawer) return;
+  drawerOpen = open;
   syncDrawer();
   var el = document.querySelector('#stage .row.cursor');
   if (el) el.scrollIntoView({ block: 'nearest' });
 }
-// Only the sections have threads: the plain diff never opens the drawer.
-function syncDrawer() { app.classList.toggle('drawer', drawer && view === 'sections'); }
+// A view without a drawer (the plain diff) never shows one.
+function syncDrawer() { app.classList.toggle('drawer-open', drawerOpen && !!VIEWS[view].drawer); }
 
 /** Rows in reading order: side by side puts a removed run's lines before the added ones, though they sit level. */
 function visibleRows() {
@@ -1396,35 +1428,39 @@ function visibleRows() {
   return out;
 }
 
-/* ── inspector width ── */
+/* ── drawer width ── */
 // Null means the breakpoint's default; a drag or w pins a width, kept per browser.
 var app = document.querySelector('.app');
 var grip = document.getElementById('grip');
-var inspectorW = null;
-var WIDE = 0.55;          // w opens the inspector to this share of the window
-try { inspectorW = Number(localStorage.getItem('fw-review-inspector')) || null; } catch (e) {}
+var drawerW = null;
+var WIDE = 0.55;          // w opens the drawer to this share of the window
+try { drawerW = Number(localStorage.getItem('fw-review-inspector')) || null; } catch (e) {}
 // The code keeps room to read, the drawer room for its own head.
-function clampW(w) { return Math.round(Math.max(280, Math.min(w, innerWidth - 56 - 480))); }
-function currentW() { return document.getElementById('inspector').getBoundingClientRect().width; }
-function setInspectorW(w, keep) {
-  inspectorW = w == null ? null : clampW(w);
-  if (inspectorW == null) app.style.removeProperty('--inspector-w');
-  else app.style.setProperty('--inspector-w', inspectorW + 'px');
+var CODE_MIN = 480;
+function clampW(w) {
+  var strip = parseFloat(getComputedStyle(app).getPropertyValue('--strip-w')) || 0;
+  return Math.round(Math.max(280, Math.min(w, innerWidth - strip - CODE_MIN)));
+}
+function currentW() { return document.getElementById('drawer').getBoundingClientRect().width; }
+function setDrawerW(w, keep) {
+  drawerW = w == null ? null : clampW(w);
+  if (drawerW == null) app.style.removeProperty('--drawer-w');
+  else app.style.setProperty('--drawer-w', drawerW + 'px');
   grip.setAttribute('aria-valuenow', String(Math.round(currentW())));
   grip.setAttribute('aria-valuemax', String(clampW(Infinity)));
   if (keep === false) return;
   try {
-    if (inspectorW == null) localStorage.removeItem('fw-review-inspector');
-    else localStorage.setItem('fw-review-inspector', String(inspectorW));
+    if (drawerW == null) localStorage.removeItem('fw-review-inspector');
+    else localStorage.setItem('fw-review-inspector', String(drawerW));
   } catch (e) {}
 }
 function toggleWide() {
   var wide = clampW(innerWidth * WIDE);
-  setInspectorW(currentW() >= wide - 8 ? null : wide);
+  setDrawerW(currentW() >= wide - 8 ? null : wide);
 }
-setInspectorW(inspectorW, false);
+setDrawerW(drawerW, false);
 grip.setAttribute('aria-valuemin', '280');
-addEventListener('resize', function () { if (inspectorW != null) setInspectorW(inspectorW, false); });
+addEventListener('resize', function () { if (drawerW != null) setDrawerW(drawerW, false); });
 grip.addEventListener('pointerdown', function (e) {
   if (e.button !== 0) return;
   e.preventDefault();
@@ -1432,25 +1468,25 @@ grip.addEventListener('pointerdown', function (e) {
   grip.classList.add('dragging');
   document.body.classList.add('resizing');
   var startX = e.clientX, startW = currentW();
-  function move(ev) { setInspectorW(startW + startX - ev.clientX, false); }
+  function move(ev) { setDrawerW(startW + startX - ev.clientX, false); }
   function up() {
     grip.removeEventListener('pointermove', move);
     grip.removeEventListener('pointerup', up);
     grip.removeEventListener('pointercancel', up);
     grip.classList.remove('dragging');
     document.body.classList.remove('resizing');
-    setInspectorW(inspectorW);
+    setDrawerW(drawerW);
   }
   grip.addEventListener('pointermove', move);
   grip.addEventListener('pointerup', up);
   grip.addEventListener('pointercancel', up);
 });
-grip.addEventListener('dblclick', function () { setInspectorW(null); });
+grip.addEventListener('dblclick', function () { setDrawerW(null); });
 grip.addEventListener('keydown', function (e) {
   var step = e.shiftKey ? 80 : 20;
-  if (e.key === 'ArrowLeft') setInspectorW(currentW() + step);
-  else if (e.key === 'ArrowRight') setInspectorW(currentW() - step);
-  else if (e.key === 'Home') setInspectorW(null);
+  if (e.key === 'ArrowLeft') setDrawerW(currentW() + step);
+  else if (e.key === 'ArrowRight') setDrawerW(currentW() - step);
+  else if (e.key === 'Home') setDrawerW(null);
   else return;
   e.preventDefault();
   e.stopPropagation();
@@ -1467,7 +1503,7 @@ function setLayout(next) {
 
 /** A line's gutter mark: a draft, a question being read, a failed answer, a concern, or a thread. */
 function dotFor(path, row) {
-  var thread = data.comments.filter(function (c) { return c.path === path && c.row === row; });
+  var thread = lineComments(path, row);
   var cls = thread.some(function (c) { return c.failed; }) ? ' failed'
     : thread.some(function (c) { return c.asking; }) ? ' pending'
     : thread.some(function (c) { return c.kind === 'concern'; }) ? ' concern'
@@ -1508,7 +1544,7 @@ function setCursor(path, row, scroll) {
   // context refs and drop the focus the reader left there.
   var pane = document.getElementById('thread-pane');
   if (pane) pane.replaceWith(threadPane());
-  else renderInspector();
+  else renderDrawer();
 }
 
 function moveCursor(step) {
@@ -1538,7 +1574,7 @@ function setView(next) {
 
 function go(i) {
   if (view !== 'sections' || i < 0 || i >= data.sections.length) return;
-  current = i; cursor = null; railOpen = false;
+  current = i; cursor = null;
   history.replaceState(null, '', '#' + (i + 1));
   render();
   document.getElementById('stage').scrollTop = 0;
@@ -1578,15 +1614,15 @@ document.addEventListener('keydown', function (e) {
   else if (e.key === 'x') toggleChecked();
   else if (e.key === 's') setLayout(layout === 'split' ? 'inline' : 'split');
   else if (e.key === 'v') setView(view === 'plain' ? 'sections' : 'plain');
-  else if (e.key === 't') setDrawer(!drawer);
-  else if (e.key === 'w') { if (drawer) toggleWide(); else setDrawer(true); }
+  else if (e.key === 't') setDrawer(!drawerOpen);
+  else if (e.key === 'w') { if (drawerOpen) toggleWide(); else setDrawer(true); }
   else if (e.key === 'l') setRail(!railOpen);
   else if (e.key === 'c') focusComposer();
-  else if (e.key === 'C') { kinds[threadKey(cursorOn())] = 'concern'; renderInspector(); focusComposer(); }
+  else if (e.key === 'C') { kinds[threadKey(cursorOn())] = 'concern'; renderDrawer(); focusComposer(); }
   else if (e.key === ']') nextThread(1);
   else if (e.key === '[') nextThread(-1);
   else if (e.key === 'g' && landed) { var c = landed; landed = null; goTo(c); }
-  else if (e.key === 'Escape') { if (railOpen) setRail(false); else if (drawer) setDrawer(false); else { cursor = null; render(); } }
+  else if (e.key === 'Escape') { if (railOpen) setRail(false); else if (drawerOpen) setDrawer(false); else { cursor = null; render(); } }
   else return;
   e.preventDefault();
 });
