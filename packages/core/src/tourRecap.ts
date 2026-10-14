@@ -95,9 +95,14 @@ can read it top to bottom without jumping between files.
 Rules:
 - Neutral. Say what the code does and how the parts connect. Never judge it, never
   guess why it was written, never point at risks or things to check.
-- Order the sections outside-in: contracts first (protos, schemas, migrations,
-  types), then wiring (cmd/, registration, config, routes), then the core logic,
-  so the reader meets a thing before it is used.
+- Order the sections like a stack of PRs, bottom-up: start with the smallest
+  piece that stands on its own (a type, a schema, a migration, a pure helper),
+  and build each next section only on what earlier sections added. Wiring
+  (cmd/, registration, routes, config) usually comes last: it plugs in what
+  the stack built. A reader never meets a new name before the section that
+  adds it. Order by what the change adds, not by the code it edits.
+- Each summary says what the section builds on and which later section uses
+  it, when that isn't obvious.
 - Put tests in the section of the code they test, not in their own section.
 - Put generated or mechanical changes (generated code, mocks, lockfiles,
   renames, formatting-only edits) in one last section with "mechanical": true,
