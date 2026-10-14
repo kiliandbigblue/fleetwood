@@ -8,11 +8,11 @@ const alpha = (hex: string, a: number): string =>
 /**
  * The review page: one HTML document, its script and style inline.
  *
- * Three panes. The section rail on the left says where you are and what is
- * left; the centre is the section's code and nothing else; the inspector on
- * the right holds everything *about* the code — the summary, the unchanged
- * code it leans on, and the thread of the line under the cursor, which it
- * follows as you move.
+ * Code first. A slim § strip on the left says where you are and what is left,
+ * and opens onto the full list (l); the centre is the section — its summary
+ * and the unchanged code it leans on, then its code at the full width; the
+ * thread drawer on the right opens only when there is a conversation to have
+ * (c, a line with a thread, t) and follows the cursor while it is open.
  *
  * It reads everything from `./data` and writes through the routes beside it
  * (see `tour.ts`), so there is no build step and nothing to serve but this.
@@ -38,6 +38,7 @@ ${pageCss(p)}
   <div class="grip" id="grip" role="separator" aria-orientation="vertical" aria-controls="inspector" aria-label="Inspector width" tabindex="0" title="Drag to resize · double-click to reset · w to widen"></div>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="tip" id="tip" aria-hidden="true"></div>
 <script>
 ${PAGE_SCRIPT}
 </script>
@@ -91,10 +92,32 @@ button.send:disabled { background: transparent; border-color: var(--edge); color
 kbd { font: 11px var(--chrome); color: var(--dim); border: 1px solid var(--edge); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; min-width: 18px; text-align: center; display: inline-block; }
 button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 
-.app { --inspector-w: 380px; position: relative; display: grid; grid-template-columns: 252px minmax(0, 1fr) var(--inspector-w); height: 100vh; }
+/* the code takes every pixel the strip leaves; the drawer takes its share only while it is open */
+.app { --strip-w: 56px; --inspector-w: 400px; position: relative; overflow-x: clip; display: grid; grid-template-columns: var(--strip-w) minmax(0, 1fr); height: 100vh; }
+.app.drawer { grid-template-columns: var(--strip-w) minmax(0, 1fr) var(--inspector-w); }
+.app:not(.drawer) .inspector, .app:not(.drawer) .grip { display: none; }
 
-/* ── rail ── */
-.rail { background: var(--panel); border-right: 1px solid var(--edge); display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+/* ── rail: a strip of §s, and the full list over the code ── */
+.rail { position: relative; z-index: 10; background: var(--panel); border-right: 1px solid var(--edge); min-height: 0; min-width: 0; }
+.strip { display: flex; flex-direction: column; align-items: center; height: 100%; padding: var(--s3) 0; gap: var(--s2); }
+.strip ol { list-style: none; margin: 0; padding: 0 var(--s1); display: grid; gap: 2px; overflow-y: auto; flex: 1; align-content: start; width: 100%; scrollbar-width: none; }
+.strip ol::-webkit-scrollbar { display: none; }
+.strip li { display: flex; align-items: center; justify-content: center; gap: 3px; height: 30px; border-radius: var(--radius); cursor: pointer; color: var(--dim); font-variant-numeric: tabular-nums; font-size: 11.5px; transition: background .15s, color .15s; }
+.strip li:hover { background: var(--hover); color: var(--text); }
+.strip li.done { color: var(--ok); }
+.strip li.current { background: var(--accent-soft); color: var(--accent); }
+.strip li svg.i { width: 12px; height: 12px; }
+.strip li.added { color: var(--ok); }
+.strip li.deleted { color: var(--danger); }
+.strip .toggle { padding: 6px; color: var(--soft); }
+.strip .count { font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.strip .count b { color: var(--text); font-weight: 600; }
+.tip { position: fixed; z-index: 20; max-width: 340px; padding: 5px var(--s2); border-radius: var(--radius); background: var(--edge); color: var(--text); font: 12px/1.4 var(--chrome);
+  box-shadow: 0 6px 18px ${alpha('#000000', 0.35)}; pointer-events: none; opacity: 0; transform: translate(-4px, -50%); transition: opacity .12s, transform .12s var(--ease); }
+.tip.on { opacity: 1; transform: translate(0, -50%); }
+.rail-panel { position: absolute; top: 0; bottom: 0; left: 0; width: 320px; background: var(--panel); border-right: 1px solid var(--edge); display: flex; flex-direction: column;
+  box-shadow: 12px 0 32px ${alpha('#000000', 0.4)}; visibility: hidden; opacity: 0; transform: translateX(-12px); transition: opacity .16s, transform .22s var(--ease), visibility 0s .22s; }
+.rail.open .rail-panel { visibility: visible; opacity: 1; transform: none; transition: opacity .16s, transform .22s var(--ease); }
 .rail-head { padding: var(--s5) var(--s4) var(--s4); }
 .repo { font: 600 14px/1.3 var(--code); color: var(--text); overflow-wrap: anywhere; }
 .base { color: var(--dim); margin-top: 2px; display: flex; align-items: center; gap: 6px; }
@@ -133,6 +156,21 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 .stage-head h1 .n { color: var(--accent); font-weight: 500; font-variant-numeric: tabular-nums; }
 .stage-head h1 .kind { font: 400 12px var(--chrome); color: var(--dim); white-space: nowrap; }
 .stage-body { padding: var(--s5) var(--s6) 160px; }
+/* what the section does, read once before its code */
+.lede { display: grid; gap: var(--s3); justify-items: start; margin: 0 0 var(--s6); }
+.lede .summary { max-width: 75ch; }
+.lede-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4); }
+.leans { width: 100%; }
+.leans > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: var(--s2); color: var(--soft); padding: 3px 6px; margin-left: -6px; border-radius: var(--radius); }
+.leans > summary:hover { background: var(--hover); color: var(--text); }
+.leans > summary::-webkit-details-marker { display: none; }
+.leans > summary svg { transition: transform .2s var(--ease); }
+.leans[open] > summary svg { transform: rotate(90deg); }
+.leans > summary .count { color: var(--dim); }
+.leans .ctx-list { margin-top: var(--s2); max-width: 1100px; }
+.lede-tools button { color: var(--soft); }
+.queued { color: var(--warn); border-color: ${alpha(p.warn, 0.4)}; }
+.queued:hover:not(:disabled) { color: var(--warn); border-color: var(--warn); }
 .banner { display: flex; align-items: center; justify-content: space-between; gap: var(--s4); margin: var(--s4) var(--s6) 0; padding: var(--s3) var(--s4);
   border-radius: var(--radius); background: var(--warn-soft); color: var(--warn); }
 .banner button { color: var(--warn); border-color: ${alpha(p.warn, 0.5)}; flex: none; }
@@ -221,7 +259,10 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 .grip:focus-visible { outline: none; }
 body.resizing { cursor: col-resize; user-select: none; }
 body.resizing iframe, body.resizing .stage, body.resizing .inspector { pointer-events: none; }
-.inspector { background: var(--panel); border-left: 1px solid var(--edge); display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.inspector { background: var(--panel); border-left: 1px solid var(--edge); display: flex; flex-direction: column; min-height: 0; min-width: 0; animation: drawer-in .22s var(--ease); }
+@keyframes drawer-in { from { opacity: 0; transform: translateX(16px); } }
+.pane h2 .close { margin-left: auto; padding: 2px; color: var(--dim); }
+.pane h2 .close:hover:not(:disabled) { color: var(--text); }
 .inspector-scroll { overflow-y: auto; flex: 1; }
 .pane { padding: var(--s5) var(--s5) var(--s4); border-bottom: 1px solid var(--edge); }
 .pane:last-child { border-bottom: 0; }
@@ -327,16 +368,18 @@ textarea::placeholder { color: var(--soft); opacity: .8; }
 .toast.on { opacity: 1; transform: translate(-50%, 0); }
 
 @media (min-width: 1600px) { .app { --inspector-w: 440px; } }
-@media (max-width: 1280px) { .app { --inspector-w: 320px; grid-template-columns: 224px minmax(0, 1fr) var(--inspector-w); } .stage-head, .stage-body { padding-left: var(--s5); padding-right: var(--s5); } }
+@media (max-width: 1280px) { .app { --inspector-w: 340px; } .stage-head, .stage-body { padding-left: var(--s5); padding-right: var(--s5); } }
 @media (max-width: 960px) {
-  .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr auto; height: auto; min-height: 100vh; }
+  .app, .app.drawer { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr auto; height: auto; min-height: 100vh; }
   .stage-head { position: static; flex-wrap: wrap; }
   .row { grid-template-columns: 34px 34px 16px minmax(0, 1fr) auto; }
   .gap { padding-left: 68px; }
-  .layout { display: none; }
+  .layout:not(.scope) { display: none; }
   .rail { border-right: 0; border-bottom: 1px solid var(--edge); }
-  .sections { display: flex; overflow-x: auto; }
-  .sections li { min-width: 200px; }
+  .strip { flex-direction: row; padding: var(--s2) var(--s3); }
+  .strip ol { display: flex; overflow-x: auto; padding: 0; }
+  .strip li { flex: none; min-width: 40px; }
+  .rail-panel { bottom: auto; max-height: 80vh; width: min(360px, 100vw); }
   .legend { display: none; }
   .inspector { border-left: 0; border-top: 1px solid var(--edge); }
   .grip { display: none; }
@@ -364,6 +407,9 @@ var opened = {};          // "path:a:b" -> gap expanded
 var diffOpen = {};        // path -> diff shown in a mechanical section, where it starts hidden
 var ctxOpen = {};         // "section:path:start" -> context ref unfolded
 var ctxAll = {};          // section -> every context ref listed, not just the first few
+var leansOpen = {};       // section -> its context refs unfolded under the summary
+var railOpen = false;     // the full § list is open over the code
+var drawer = false;       // the thread drawer is open beside the code
 var stale = false;
 var lastThreadKey = '';
 var layout = 'inline';    // 'inline' or 'split', remembered per browser
@@ -416,7 +462,9 @@ var ICONS = {
   refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>',
   inline: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 12h8M8 15h5"/>',
   split: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/>',
-  copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h9"/>'
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h9"/>',
+  close: '<path d="M6 6l12 12M18 6 6 18"/>',
+  list: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>'
 };
 function icon(name) {
   var s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -627,6 +675,7 @@ function goTo(c) {
   if (c.section !== current) go(c.section);
   if (c.path) setCursor(c.path, c.row, true);
   else { cursor = null; render(); }
+  setDrawer(true);
 }
 
 function checkStale() {
@@ -653,8 +702,10 @@ function rowLabel(path, row) {
 /* ── rail ── */
 function renderRail() {
   var rail = document.getElementById('rail');
-  rail.replaceChildren();
-  rail.append(h('div', { class: 'rail-head' },
+  rail.classList.toggle('open', railOpen);
+  var panel = h('div', { class: 'rail-panel', id: 'rail-panel', inert: !railOpen });
+  rail.replaceChildren(stripEl(), panel);
+  panel.append(h('div', { class: 'rail-head' },
     h('div', { class: 'repo', text: data.repo || data.title }),
     h('div', { class: 'base' }, icon('branch'), h('span', {}, data.unstaged ? 'unstaged, against ' : 'against '), h('span', { class: 'ref', text: data.against || '' })),
     segmented('What to review', 'scope', !!data.unstaged, [
@@ -666,8 +717,59 @@ function renderRail() {
       { value: 'plain', label: 'Plain diff', title: 'Plain diff (v)' },
       { value: 'sections', label: 'Sections', title: 'Sections (v)' },
     ], setView) : null));
-  VIEWS[view].rail(rail);
+  VIEWS[view].rail(panel);
 }
+
+/** The strip that stays: a § or a file per step, its state at a glance, its title on hover. */
+function stripEl() {
+  var items = view === 'sections' ? data.sections.map(function (s, i) {
+    var isDone = data.checked.indexOf(i) >= 0;
+    return h('li', { class: (i === current ? 'current' : isDone ? 'done' : ''), 'data-tip': '§' + (i + 1) + '  ' + s.title,
+      'aria-current': i === current ? 'step' : null, onclick: function () { go(i); } },
+      icon(isDone ? 'done' : i === current ? 'now' : 'todo'), String(i + 1));
+  }) : data.plain.map(function (sf) {
+    var f = data.files[sf.path];
+    return h('li', { class: f.status, 'data-tip': sf.path, onclick: function () { showFile(sf.path); } },
+      { added: 'A', deleted: 'D', renamed: 'R' }[f.status] || 'M');
+  });
+  var count = view === 'sections'
+    ? h('span', { class: 'count', title: data.checked.length + ' of ' + data.sections.length + ' reviewed' }, h('b', { text: String(data.checked.length) }), '/' + data.sections.length)
+    : null;
+  return h('div', { class: 'strip' },
+    h('button', { class: 'ghost toggle', title: 'Sections, scope and keys (l)', 'aria-label': 'Open the list', 'aria-expanded': railOpen ? 'true' : 'false', 'aria-controls': 'rail-panel',
+      onclick: function () { setRail(!railOpen); } }, icon('list')),
+    count,
+    h('ol', { 'aria-label': view === 'sections' ? 'Sections' : 'Files' }, items));
+}
+
+function setRail(open) {
+  if (open === railOpen) return;
+  railOpen = open;
+  renderRail();
+}
+
+function showFile(path) {
+  var el = document.querySelector('#stage [data-file="' + CSS.escape(path) + '"]');
+  if (el) el.scrollIntoView({ block: 'start' });
+}
+
+// One tooltip for the strip, fixed so the strip's scroll does not clip it.
+(function () {
+  var tip = document.getElementById('tip');
+  var rail = document.getElementById('rail');
+  rail.addEventListener('mouseover', function (e) {
+    var li = e.target.closest('.strip li');
+    if (!li) return tip.classList.remove('on');
+    var r = li.getBoundingClientRect();
+    tip.textContent = li.dataset.tip;
+    tip.style.left = (r.right + 8) + 'px';
+    tip.style.top = (r.top + r.height / 2) + 'px';
+    tip.classList.add('on');
+  });
+  rail.addEventListener('mouseleave', function () { tip.classList.remove('on'); });
+  // A click outside the open list closes it.
+  document.addEventListener('pointerdown', function (e) { if (railOpen && !rail.contains(e.target)) setRail(false); });
+})();
 
 /** The sections' rail: progress, the § list, and the keys. */
 function sectionsRail(rail) {
@@ -697,7 +799,8 @@ function sectionsRail(rail) {
     h('span', {}, h('kbd', { text: 'x' })), h('span', { text: 'mark reviewed, go on' }),
     h('span', {}, h('kbd', { text: 's' })), h('span', { text: 'inline or side by side' }),
     h('span', {}, h('kbd', { text: 'v' })), h('span', { text: 'plain diff or sections' }),
-    h('span', {}, h('kbd', { text: 'w' })), h('span', { text: 'widen the inspector' })));
+    h('span', {}, h('kbd', { text: 't' }), ' ', h('kbd', { text: 'w' })), h('span', { text: 'thread drawer, widen it' }),
+    h('span', {}, h('kbd', { text: 'l' })), h('span', { text: 'this list' })));
 }
 
 /** The plain diff's rail: the changed files, each a jump to its diff. */
@@ -711,10 +814,7 @@ function plainRail(rail) {
     var parts = path.split('/');
     var name = parts.pop();
     var letter = { added: 'A', deleted: 'D', renamed: 'R' }[f.status] || 'M';
-    return h('li', { onclick: function () {
-      var el = document.querySelector('#stage [data-file="' + CSS.escape(path) + '"]');
-      if (el) el.scrollIntoView({ block: 'start' });
-    } },
+    return h('li', { onclick: function () { setRail(false); showFile(path); } },
       h('span', { class: 'mark' }),
       h('span', { class: 'n ' + f.status, text: letter }),
       h('span', {}, h('span', { class: 't', text: name }), parts.length ? h('span', { class: 'tag', text: parts.join('/') }) : null));
@@ -744,6 +844,7 @@ function sectionStage(stage) {
     h('h1', {}, h('span', { class: 'n', text: '§' + (current + 1) }), h('span', { text: s.title }),
       s.mechanical ? h('span', { class: 'kind', text: 'mechanical' }) : null),
     h('div', { class: 'head-actions' },
+      queuedEl(),
       layoutEl(),
       h('button', { class: isDone ? 'done' : 'primary', onclick: toggleChecked },
         icon(isDone ? 'check' : 'done'), isDone ? 'Reviewed' : 'Mark reviewed', h('kbd', { text: 'x' })))));
@@ -752,7 +853,35 @@ function sectionStage(stage) {
       h('span', { text: 'The worktree has moved since this review was pinned. What you see is the earlier state.' }),
       h('button', { onclick: regenerate }, icon('refresh'), 'Review the new state')));
   }
-  stage.append(filesEl(s.files, current));
+  var body = filesEl(s.files, current);
+  body.prepend(ledeEl(s));
+  stage.append(body);
+}
+
+/** What the section does and the code it leans on: read once, above its code. */
+function ledeEl(s) {
+  var said = threadFor(null).length;
+  var refs = null;
+  if (s.refs.length) {
+    var shown = ctxAll[current] || s.refs.length <= CTX_SHOWN + 1 ? s.refs : s.refs.slice(0, CTX_SHOWN);
+    refs = h('details', { class: 'leans', open: !!leansOpen[current], ontoggle: function (e) { leansOpen[current] = e.target.open; } },
+      h('summary', {}, icon('chevron'), 'Context it leans on', h('span', { class: 'count', text: String(s.refs.length) })),
+      h('div', { class: 'ctx-list' }, shown.map(ctxEl)),
+      shown.length < s.refs.length ? h('button', { class: 'ghost ctx-more', onclick: function () { ctxAll[current] = true; renderStage(); } },
+        icon('expand'), (s.refs.length - shown.length) + ' more') : null);
+  }
+  return h('div', { class: 'lede' },
+    s.summary ? h('p', { class: 'summary', text: s.summary }) : h('p', { class: 'muted', text: 'No summary for this section.' }),
+    refs || said ? h('div', { class: 'lede-tools' }, refs,
+      said ? h('button', { class: 'ghost', onclick: function () { cursor = null; render(); setDrawer(true); } }, icon('question'),
+        said + ' on this section') : null) : null);
+}
+
+/** Concerns waiting to go to the author: one button to the queue in the drawer. */
+function queuedEl() {
+  var n = data.comments.filter(function (c) { return c.kind === 'concern' && !c.sent; }).length;
+  if (!n) return null;
+  return h('button', { class: 'queued', title: 'Concerns to send (t)', onclick: function () { setDrawer(true); } }, icon('concern'), n + ' to send');
 }
 
 /** Every file, each change with the code around it: to read before the sections come, or instead of them. */
@@ -858,7 +987,7 @@ function fileEl(sf, at) {
     else cells = [h('span', { class: 'no', text: r.old }), h('span', { class: 'sign' }), src,
       h('span', { class: 'no', text: r.new }), h('span', { class: 'sign' }), h('span', { class: 'src' }, paint(r.text, lang))];
     if (split) cls += side ? ' half' : ' both';
-    return h('div', { class: cls, 'data-path': sf.path, 'data-row': i, onclick: function () { setCursor(sf.path, i, false); } },
+    return h('div', { class: cls, 'data-path': sf.path, 'data-row': i, onclick: function () { setCursor(sf.path, i, false); if (threadFor(sf.path, i).length) setDrawer(true); } },
       dotFor(sf.path, i),
       cells,
       split && !side ? null : foreign ? h('span', { class: 'own', text: '§' + (own + 1) }) : h('span'));
@@ -910,34 +1039,12 @@ function cursorOn() { return cursor && data.files[cursor.path] ? cursor : null; 
 
 function renderInspector() { VIEWS[view].inspector(document.getElementById('inspector')); }
 
-/** The plain diff has nothing to say about a line: it says where that is said. */
-function plainInspector(insp) {
-  var why = data.sections ? 'Questions and concerns are asked in the sections. v to switch.'
-    : data.status === 'building' ? 'Comments open with the sections, in a minute or two. Their summaries, the code they lean on and your threads will show here.'
-    : 'The section summary, the code it leans on and your comments will show here.';
-  insp.replaceChildren(h('div', { class: 'inspector-scroll' }, h('div', { class: 'pane' },
-    h('h2', { text: 'Inspector' }), h('p', { class: 'muted', text: why }))));
-}
-
 function sectionInspector(insp) {
-  var s = section();
   var on = cursorOn();
   var key = threadKey(on);
   var prev = insp.querySelector('.inspector-scroll');
   var keepTop = prev && key === lastThreadKey ? prev.scrollTop : 0;
   var scroll = h('div', { class: 'inspector-scroll' });
-
-  scroll.append(h('div', { class: 'pane' }, h('h2', { text: 'What this section does' }),
-    s.summary ? h('p', { class: 'summary', text: s.summary }) : h('p', { class: 'muted', text: 'No summary for this section.' })));
-
-  if (s.refs.length) {
-    // A long list would push the thread, which follows the cursor, out of sight.
-    var shown = ctxAll[current] || s.refs.length <= CTX_SHOWN + 1 ? s.refs : s.refs.slice(0, CTX_SHOWN);
-    scroll.append(h('div', { class: 'pane' }, h('h2', {}, 'Context it leans on', h('span', { class: 'count', text: String(s.refs.length) })),
-      h('div', { class: 'ctx-list' }, shown.map(ctxEl)),
-      shown.length < s.refs.length ? h('button', { class: 'ghost ctx-more', onclick: function () { ctxAll[current] = true; renderInspector(); } },
-        icon('expand'), (s.refs.length - shown.length) + ' more') : null));
-  }
 
   scroll.append(threadPane());
   insp.replaceChildren(scroll, queueEl());
@@ -953,7 +1060,8 @@ function threadPane() {
   lastThreadKey = key;
   var quote = on ? data.files[on.path].rows[on.row] : null;
   return h('div', { class: 'pane', id: 'thread-pane' },
-    h('h2', {}, on ? 'On this line' : 'On this section', on ? h('span', { class: 'where', text: rowLabel(on.path, on.row) }) : null),
+    h('h2', {}, on ? 'On this line' : 'On this section', on ? h('span', { class: 'where', text: rowLabel(on.path, on.row) }) : null,
+      h('button', { class: 'ghost close', title: 'Close (Esc)', 'aria-label': 'Close the thread', onclick: function () { setDrawer(false); } }, icon('close'))),
     quote ? h('div', { class: 'line-quote', text: quote.text.trim() || ' ' }) : null,
     list,
     composerEl(on));
@@ -1220,6 +1328,7 @@ function composerEl(on) {
 }
 
 function focusComposer() {
+  if (!drawer) setDrawer(true);
   var a = document.getElementById('composer');
   if (!a) return;
   a.focus();
@@ -1252,7 +1361,7 @@ function queueEl() {
  * move the caret, the selection or an open fold; the plain diff stands still.
  */
 var VIEWS = {
-  plain: { rail: plainRail, stage: plainStage, inspector: plainInspector, poll: function () {} },
+  plain: { rail: plainRail, stage: plainStage, inspector: function (insp) { insp.replaceChildren(); }, poll: function () {} },
   sections: {
     rail: sectionsRail, stage: sectionStage, inspector: sectionInspector,
     poll: function () { if (document.getElementById('thread')) { renderStage(); refreshThread(); } else render(); },
@@ -1264,7 +1373,18 @@ function render() {
   renderRail();
   renderStage();
   renderInspector();
+  syncDrawer();
 }
+
+/** Open or close the thread drawer. The code reflows to the new width, so the cursor line is kept in view. */
+function setDrawer(open) {
+  drawer = open;
+  syncDrawer();
+  var el = document.querySelector('#stage .row.cursor');
+  if (el) el.scrollIntoView({ block: 'nearest' });
+}
+// Only the sections have threads: the plain diff never opens the drawer.
+function syncDrawer() { app.classList.toggle('drawer', drawer && view === 'sections'); }
 
 /** Rows in reading order: side by side puts a removed run's lines before the added ones, though they sit level. */
 function visibleRows() {
@@ -1283,8 +1403,8 @@ var grip = document.getElementById('grip');
 var inspectorW = null;
 var WIDE = 0.55;          // w opens the inspector to this share of the window
 try { inspectorW = Number(localStorage.getItem('fw-review-inspector')) || null; } catch (e) {}
-// The stage keeps room to read code, the inspector room for its own head.
-function clampW(w) { return Math.round(Math.max(280, Math.min(w, innerWidth - 252 - 420))); }
+// The code keeps room to read, the drawer room for its own head.
+function clampW(w) { return Math.round(Math.max(280, Math.min(w, innerWidth - 56 - 480))); }
 function currentW() { return document.getElementById('inspector').getBoundingClientRect().width; }
 function setInspectorW(w, keep) {
   inspectorW = w == null ? null : clampW(w);
@@ -1369,7 +1489,7 @@ function nextThread(step) {
   var rows = visibleRows();
   var at = cursor ? rows.findIndex(function (el) { return el.dataset.path === cursor.path && Number(el.dataset.row) === cursor.row; }) : -1;
   for (var i = at < 0 && step < 0 ? rows.length - 1 : at + step; i >= 0 && i < rows.length; i += step) {
-    if (rows[i].querySelector('.dot:not(.draft)')) return setCursor(rows[i].dataset.path, Number(rows[i].dataset.row), true);
+    if (rows[i].querySelector('.dot:not(.draft)')) { setCursor(rows[i].dataset.path, Number(rows[i].dataset.row), true); return setDrawer(true); }
   }
   toast(step > 0 ? 'No thread below in this section' : 'No thread above in this section');
 }
@@ -1418,7 +1538,7 @@ function setView(next) {
 
 function go(i) {
   if (view !== 'sections' || i < 0 || i >= data.sections.length) return;
-  current = i; cursor = null;
+  current = i; cursor = null; railOpen = false;
   history.replaceState(null, '', '#' + (i + 1));
   render();
   document.getElementById('stage').scrollTop = 0;
@@ -1458,13 +1578,15 @@ document.addEventListener('keydown', function (e) {
   else if (e.key === 'x') toggleChecked();
   else if (e.key === 's') setLayout(layout === 'split' ? 'inline' : 'split');
   else if (e.key === 'v') setView(view === 'plain' ? 'sections' : 'plain');
-  else if (e.key === 'w') toggleWide();
+  else if (e.key === 't') setDrawer(!drawer);
+  else if (e.key === 'w') { if (drawer) toggleWide(); else setDrawer(true); }
+  else if (e.key === 'l') setRail(!railOpen);
   else if (e.key === 'c') focusComposer();
   else if (e.key === 'C') { kinds[threadKey(cursorOn())] = 'concern'; renderInspector(); focusComposer(); }
   else if (e.key === ']') nextThread(1);
   else if (e.key === '[') nextThread(-1);
   else if (e.key === 'g' && landed) { var c = landed; landed = null; goTo(c); }
-  else if (e.key === 'Escape') { cursor = null; render(); }
+  else if (e.key === 'Escape') { if (railOpen) setRail(false); else if (drawer) setDrawer(false); else { cursor = null; render(); } }
   else return;
   e.preventDefault();
 });
