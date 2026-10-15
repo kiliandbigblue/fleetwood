@@ -148,6 +148,7 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 .tree .node.current { background: var(--accent-soft); }
 .tree .node .name { overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
 .tree .node .chev, .tree .node .fi, .tree .node .dir { display: inline-flex; flex: none; }
+.tree .node .chev { width: 16px; height: 16px; justify-content: center; }
 .tree .node .chev { color: var(--soft); transition: transform .15s var(--ease); }
 .tree .node[aria-expanded="true"] .chev { transform: rotate(90deg); }
 .tree .node .dir { color: var(--soft); }
@@ -266,6 +267,7 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 .gap { display: flex; align-items: stretch; gap: 0; width: 100%; border: 0; border-radius: 0; padding: 0; background: var(--hunk-row);
   color: var(--dim); font: 12px/20px var(--chrome); text-align: left; }
 .gap .gx { flex: none; width: 88px; display: flex; align-items: center; justify-content: center; background: var(--hunk-num); }
+.gap .hd:empty { padding: 1px 0; }
 .gap .hd { padding: 4px 10px 4px 18px; white-space: pre-wrap; overflow-wrap: anywhere; }
 button.gap:hover:not(:disabled) { color: var(--text); background: var(--hunk-row); }
 button.gap:hover .gx { background: #1f6feb; color: #ffffff; }
@@ -541,6 +543,7 @@ var ICONS = {
   foldup: '<path d="M12 15V5M8 9l4-4 4 4"/><path d="M5 19h2M11 19h2M17 19h2"/>',
   folddown: '<path d="M12 9v10M8 15l4 4 4-4"/><path d="M5 5h2M11 5h2M17 5h2"/>',
   unfold: '<path d="M12 3v6M9 6l3-3 3 3M12 21v-6M9 18l3 3 3-3"/><path d="M5 12h2M11 12h2M17 12h2"/>',
+  fold: '<path d="M12 3v6M9 6l3 3 3-3M12 21v-6M9 18l3-3 3 3"/><path d="M5 12h2M11 12h2M17 12h2"/>',
   search: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>',
   talk: '<path d="M4 5h16v11H9l-5 4Z"/>'
 };
@@ -682,10 +685,9 @@ function wordDiff(path) {
     var d0 = i; while (i < rows.length && rows[i].kind === '-') i++;
     var a0 = i; while (i < rows.length && rows[i].kind === '+') i++;
     var dels = a0 - d0, adds = i - a0;
-    // Paired line by line only when the block was replaced one for one;
-    // otherwise index pairing marks lines that have nothing to do with each other.
-    if (dels !== adds) continue;
-    for (var k = 0; k < dels; k++) {
+    // Paired line by line as GitHub pairs them, even when the counts differ;
+    // the shared-text test below keeps lines that have nothing in common unmarked.
+    for (var k = 0; k < Math.min(dels, adds); k++) {
       var x = rows[d0 + k].text, y = rows[a0 + k].text;
       var p = 0; while (p < x.length && p < y.length && x[p] === y[p]) p++;
       var s = 0; while (s < x.length - p && s < y.length - p && x[x.length - 1 - s] === y[y.length - 1 - s]) s++;
@@ -1248,12 +1250,14 @@ function fileEl(sf, at) {
       h('span', { class: 'path' }, renamed ? file.oldPath + ' → ' : '', dir, h('b', { text: name })),
       h('button', { class: 'ghost', title: 'Copy path', 'aria-label': 'Copy ' + sf.path,
         onclick: function () { navigator.clipboard.writeText(sf.path).then(function () { toast('Copied ' + sf.path); }, function () {}); } }, icon('copy')),
+      rows.length && !shut && !hidden ? h('button', { class: 'ghost', title: whole ? 'Only this section' : 'Whole file', 'aria-label': whole ? 'Only this section' : 'Whole file',
+        onclick: function () { unfolded[sf.path] = !whole; renderStage(); } }, icon(whole ? 'fold' : 'unfold')) : null,
       file.status !== 'modified' ? h('span', { class: 'status ' + file.status, text: file.status }) : null,
       sf.note ? h('span', { class: 'note', text: sf.note }) : null,
       h('span', { class: 'spacer' }),
       hidden ? h('button', { class: 'ghost', onclick: function () { diffOpen[sf.path] = true; renderStage(); } }, icon('expand'),
         'Show diff · ' + rows.filter(function (r) { return r.kind !== ' '; }).length + ' changed lines')
-      : rows.length && !shut ? h('button', { class: 'ghost', onclick: function () { unfolded[sf.path] = !whole; renderStage(); } }, whole ? 'Only this section' : 'Whole file') : null,
+      : null,
       adds + dels ? statsEl(adds, dels) : null,
       h('label', { class: 'viewed' + (viewed[vkey] ? ' on' : '') },
         h('input', { type: 'checkbox', checked: !!viewed[vkey], onchange: function (e) { setViewed(sf.path, e.target.checked); } }), 'Viewed')),
