@@ -60,9 +60,9 @@ function pageCss(p: Palette): string {
   --text: ${p.text}; --danger: ${p.danger}; --warn: ${p.warn}; --ok: ${p.ok}; --accent: ${p.accent};
   --branch: ${p.branch};
   /* GitHub dark's diff tints; the number cell and word marks sit on the line's tint */
-  --add-row: ${alpha('#2ea043', 0.15)}; --add-num: ${alpha('#3fb950', 0.18)}; --add-word: ${alpha('#2ea043', 0.3)};
-  --del-row: ${alpha('#f85149', 0.1)}; --del-num: ${alpha('#f85149', 0.22)}; --del-word: ${alpha('#f85149', 0.33)};
-  --hunk-row: ${alpha('#388bfd', 0.1)}; --hunk-num: ${alpha('#388bfd', 0.4)};
+  --add-row: ${alpha('#3fb950', 0.15)}; --add-num: ${alpha('#3fb950', 0.25)}; --add-word: ${alpha('#2ea043', 0.4)};
+  --del-row: ${alpha('#f85149', 0.15)}; --del-num: ${alpha('#f85149', 0.25)}; --del-word: ${alpha('#f85149', 0.4)};
+  --hunk-row: ${alpha('#388bfd', 0.1)}; --hunk-num: #0c2d6b;
   --cursor: ${alpha('#bb8009', 0.15)}; --hover: ${alpha(p.text, 0.035)};
   --accent-soft: ${alpha(p.accent, 0.16)}; --warn-soft: ${alpha(p.warn, 0.14)};
   --ok-soft: ${alpha(p.ok, 0.16)}; --danger-soft: ${alpha(p.danger, 0.12)};
@@ -125,7 +125,39 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 .rail-panel { position: absolute; top: 0; bottom: 0; left: 0; width: 320px; background: var(--panel); border-right: 1px solid var(--edge); display: flex; flex-direction: column;
   box-shadow: 12px 0 32px ${alpha('#000000', 0.4)}; visibility: hidden; opacity: 0; transform: translateX(-12px); transition: opacity .16s, transform .22s var(--ease), visibility 0s .22s; }
 .rail.open .rail-panel { visibility: visible; opacity: 1; transform: none; transition: opacity .16s, transform .22s var(--ease); }
-.rail-head { padding: var(--s5) var(--s4) var(--s4); }
+/* pinned: the list docks beside the code instead of the strip, as GitHub's file tree does */
+@media (min-width: 961px) {
+  .app.pinned { --strip-w: 300px; }
+  .app.pinned .strip { display: none; }
+  .app.pinned .rail, .app.pinned .rail-panel { background: var(--bg); }
+  .app.pinned .rail-panel { position: static; height: 100%; width: auto; border-right: 0; box-shadow: none; transition: none; }
+}
+.rail-head { position: relative; padding: var(--s5) var(--s6) var(--s4) var(--s4); }
+.rail-head .pin { position: absolute; top: var(--s4); right: var(--s3); color: var(--soft); }
+.rail-head .pin[aria-pressed="true"] { color: var(--accent); }
+.tree-filter { position: relative; margin: var(--s3) var(--s3) var(--s1); }
+.tree-filter svg.i { position: absolute; left: 9px; top: 50%; margin-top: -8px; width: 16px; height: 16px; color: var(--soft); }
+.tree-filter input { width: 100%; height: 32px; font: 14px var(--prose); color: var(--text); background: var(--bg); border: 1px solid var(--edge); border-radius: var(--radius); padding: 0 8px 0 32px; }
+.tree-filter input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+.tree { list-style: none; margin: 0; padding: var(--s1) var(--s2) var(--s4); overflow-y: auto; flex: 1; font: 14px/20px var(--prose); -webkit-font-smoothing: auto; }
+.tree svg.i { width: 16px; height: 16px; }
+.tree ul { list-style: none; margin: 0; padding: 0; }
+.tree .node { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px var(--s2) 6px calc(var(--s2) + var(--depth) * 8px); border: 0; border-radius: var(--radius);
+  color: var(--text); text-align: left; white-space: nowrap; }
+.tree .node:hover:not(:disabled) { background: var(--hover); border-color: transparent; }
+.tree .node.current { background: var(--accent-soft); }
+.tree .node .name { overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+.tree .node .chev, .tree .node .fi, .tree .node .dir { display: inline-flex; flex: none; }
+.tree .node .chev { color: var(--soft); transition: transform .15s var(--ease); }
+.tree .node[aria-expanded="true"] .chev { transform: rotate(90deg); }
+.tree .node .dir { color: var(--soft); }
+.tree .node .dir svg.i { fill: currentColor; stroke: none; }
+.tree .node .fi { color: var(--soft); }
+.tree .node.added .fi { color: var(--ok); }
+.tree .node.deleted .fi { color: var(--danger); }
+.tree .node.renamed .fi { color: var(--warn); }
+.tree .node .talk { display: inline-flex; align-items: center; gap: 3px; color: var(--soft); font-size: 12px; }
+.tree .none { color: var(--soft); padding: var(--s2) var(--s3); }
 .repo { font: 600 14px/1.3 var(--code); color: var(--text); overflow-wrap: anywhere; }
 .base { color: var(--dim); margin-top: 2px; display: flex; align-items: center; gap: 6px; }
 .base .ref { color: var(--branch); }
@@ -165,7 +197,7 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 .stage-body { padding: var(--s5) var(--s6) 160px; }
 /* what the section does, read once before its code */
 .lede { display: grid; gap: var(--s3); justify-items: start; margin: 0 0 var(--s6); }
-.lede .summary { max-width: 75ch; }
+.lede .summary { max-width: 110ch; font-size: 16px; line-height: 1.6; }
 .lede-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4); }
 .leans { width: 100%; }
 .leans > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: var(--s2); color: var(--soft); padding: 3px 6px; margin-left: -6px; border-radius: var(--radius); }
@@ -184,7 +216,8 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 
 /* GitHub's diff: its file card, mono stack, 12px/20px and 50px gutters */
 .file { margin-bottom: var(--s5); border: 1px solid var(--edge); border-radius: var(--radius); overflow: clip; }
-.file-head { position: sticky; top: var(--head-h, 0); z-index: 2; display: flex; align-items: center; gap: var(--s2); padding: 6px var(--s2) 6px var(--s2); background: var(--panel); min-height: 44px; }
+.file-head { position: sticky; top: var(--head-h, 0); z-index: 2; display: flex; align-items: center; gap: var(--s2); padding: 4px var(--s2); background: var(--panel); min-height: 40px; }
+.file-head svg.i { width: 16px; height: 16px; }
 .file-head:not(:last-child) { border-bottom: 1px solid var(--edge); }
 .file-head .fold-toggle svg { transition: transform .15s var(--ease); }
 .file-head .fold-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
@@ -211,11 +244,11 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 .file-head .spacer { flex: 1; }
 .file-head button { font-size: 11.5px; color: var(--dim); }
 
-.code { font: 12px/20px var(--chrome); }
-.row { display: grid; grid-template-columns: 50px 50px 22px minmax(0, 1fr) auto; position: relative; cursor: default; }
+.code { font: 12px/20px var(--chrome); -webkit-font-smoothing: auto; }
+.row { display: grid; grid-template-columns: 44px 44px 18px minmax(0, 1fr) auto; position: relative; cursor: default; }
 .row:hover { background: var(--hover); }
-.row .no { color: var(--dim); text-align: right; padding: 0 10px; user-select: none; font-variant-numeric: tabular-nums; }
-.row .sign { user-select: none; padding-left: 8px; color: var(--text); }
+.row .no { color: var(--dim); text-align: center; padding: 0 8px; user-select: none; font-variant-numeric: tabular-nums; }
+.row .sign { user-select: none; padding-left: 6px; color: var(--text); }
 .row .src { white-space: pre-wrap; overflow-wrap: anywhere; padding-right: 10px; tab-size: 4; }
 .row .own { color: var(--dim); font-size: 10.5px; padding: 0 var(--s3); user-select: none; align-self: center; }
 .row.add { background: var(--add-row); }
@@ -232,19 +265,18 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 .row.del .w { background: var(--del-word); border-radius: 2px; }
 .gap { display: flex; align-items: stretch; gap: 0; width: 100%; border: 0; border-radius: 0; padding: 0; background: var(--hunk-row);
   color: var(--dim); font: 12px/20px var(--chrome); text-align: left; }
-.gap .gx { flex: none; width: 100px; display: flex; align-items: center; justify-content: center; background: var(--hunk-num); }
-.gap .hd { padding: 5px 0 5px 22px; }
+.gap .gx { flex: none; width: 88px; display: flex; align-items: center; justify-content: center; background: var(--hunk-num); }
+.gap .hd { padding: 4px 10px 4px 18px; white-space: pre-wrap; overflow-wrap: anywhere; }
 button.gap:hover:not(:disabled) { color: var(--text); background: var(--hunk-row); }
 button.gap:hover .gx { background: #1f6feb; color: #ffffff; }
 
 /* side by side: the old file on the left, the new one on the right */
-.code.split .row.both { grid-template-columns: 50px 22px minmax(0, 1fr) 50px 22px minmax(0, 1fr); }
-.code.split .row.both::after { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--edge); }
-.pair > :last-child { border-left: 1px solid var(--edge); }
+.code.split .row.both { grid-template-columns: 44px 18px minmax(0, 1fr) 44px 18px minmax(0, 1fr); }
 .pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-.code.split .row.half { grid-template-columns: 50px 22px minmax(0, 1fr) auto; }
+.code.split .row.half { grid-template-columns: 44px 18px minmax(0, 1fr) auto; }
 .pair .empty { background: var(--panel); }
-.code.split .gap .gx { width: 50px; }
+.code.split .gap .gx { width: 44px; }
+.gap .gx svg.i { width: 16px; height: 16px; }
 
 .head-actions { display: flex; align-items: center; gap: var(--s3); flex: none; }
 .segmented { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--edge); border-radius: var(--radius); }
@@ -439,6 +471,11 @@ var ctxOpen = {};         // "section:path:start" -> context ref unfolded
 var ctxAll = {};          // section -> every context ref listed, not just the first few
 var leansOpen = {};       // section -> its context refs unfolded under the summary
 var railOpen = false;     // the full § list is open over the code
+var pinned = false;       // the list docked beside the code, kept open; per browser
+try { pinned = localStorage.getItem('fw-review-pinned') === '1'; } catch (e) {}
+var treeShut = {};        // folder -> folded in the file tree
+var treeFilter = '';      // what the file tree is filtered on
+var treeAt = null;        // the file last picked in the tree
 var drawerOpen = false;   // the thread drawer is open beside the code
 var stale = false;
 var lastThreadKey = '';
@@ -494,7 +531,18 @@ var ICONS = {
   split: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/>',
   copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h9"/>',
   close: '<path d="M6 6l12 12M18 6 6 18"/>',
-  list: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>'
+  list: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
+  pin: '<path d="M12 16v5M8 3h8l-1 6 3 3v2H6v-2l3-3Z"/>',
+  folder: '<path d="M2.5 6A1.5 1.5 0 0 1 4 4.5h5.2l2 2.5H20A1.5 1.5 0 0 1 21.5 8.5v10A1.5 1.5 0 0 1 20 20H4a1.5 1.5 0 0 1-1.5-1.5Z"/>',
+  filediff: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 7v6M9 10h6M9 16.5h6"/>',
+  fileadded: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 8.5v7M8.5 12h7"/>',
+  fileremoved: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8.5 12h7"/>',
+  filemoved: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 12h8M13 9l3 3-3 3"/>',
+  foldup: '<path d="M12 15V5M8 9l4-4 4 4"/><path d="M5 19h2M11 19h2M17 19h2"/>',
+  folddown: '<path d="M12 9v10M8 15l4 4 4-4"/><path d="M5 5h2M11 5h2M17 5h2"/>',
+  unfold: '<path d="M12 3v6M9 6l3-3 3 3M12 21v-6M9 18l3 3 3-3"/><path d="M5 12h2M11 12h2M17 12h2"/>',
+  search: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>',
+  talk: '<path d="M4 5h16v11H9l-5 4Z"/>'
 };
 function icon(name) {
   var s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -737,6 +785,8 @@ function rowLabel(path, row) {
 function renderRail() {
   var steps = VIEWS[view].steps();
   var panel = h('div', { class: 'rail-panel', id: 'rail-panel' }, h('div', { class: 'rail-head' },
+    h('button', { class: 'ghost pin', title: pinned ? 'Let the list close (L)' : 'Keep the list open (L)', 'aria-label': 'Keep the list open',
+      'aria-pressed': String(pinned), onclick: togglePin }, icon('pin')),
     h('div', { class: 'repo', text: data.repo || data.title }),
     h('div', { class: 'base' }, icon('branch'), h('span', {}, data.unstaged ? 'unstaged, against ' : 'against '), h('span', { class: 'ref', text: data.against || '' })),
     segmented('What to review', 'scope', !!data.unstaged, [
@@ -811,10 +861,18 @@ function setRail(open) {
   railOpen = open;
   syncRail();
 }
+function togglePin() {
+  pinned = !pinned;
+  railOpen = false;
+  try { localStorage.setItem('fw-review-pinned', pinned ? '1' : '0'); } catch (e) {}
+  renderRail();
+}
 function syncRail() {
   var rail = document.getElementById('rail');
-  rail.classList.toggle('open', railOpen);
-  document.getElementById('rail-panel').inert = !railOpen;
+  var docked = pinned && !narrow.matches;
+  document.querySelector('.app').classList.toggle('pinned', docked);
+  rail.classList.toggle('open', railOpen || docked);
+  document.getElementById('rail-panel').inert = !(railOpen || docked);
   rail.querySelector('.strip .toggle').setAttribute('aria-expanded', String(railOpen));
 }
 
@@ -863,15 +921,62 @@ function sectionsRail(panel, steps) {
     h('span', {}, h('kbd', { text: 's' })), h('span', { text: 'inline or side by side' }),
     h('span', {}, h('kbd', { text: 'v' })), h('span', { text: 'plain diff or sections' }),
     h('span', {}, h('kbd', { text: 't' }), ' ', h('kbd', { text: 'w' })), h('span', { text: 'thread drawer, widen it' }),
-    h('span', {}, h('kbd', { text: 'l' })), h('span', { text: 'this list' })));
+    h('span', {}, h('kbd', { text: 'l' }), ' ', h('kbd', { text: 'L' })), h('span', { text: 'this list, keep it open' })));
 }
 
-/** The plain diff's list: the changed files, each a jump to its diff. */
+/** The plain diff's list: the changed files as GitHub's tree, each a jump to its diff. */
 function plainRail(panel, steps) {
   var n = steps.length;
+  var list = h('ul', { class: 'tree', role: 'tree', 'aria-label': 'Changed files' });
+  function fill() { list.replaceChildren.apply(list, treeRows()); }
   panel.append(h('div', { class: 'progress' },
     h('div', { class: 'progress-label' }, h('b', { text: String(n) }), ' file' + (n > 1 ? 's' : '') + ' changed')));
-  panel.append(stepList(steps));
+  panel.append(h('label', { class: 'tree-filter' }, icon('search'),
+    h('input', { type: 'search', placeholder: 'Filter files…', 'aria-label': 'Filter files', value: treeFilter,
+      oninput: function (e) { treeFilter = e.target.value; fill(); } })));
+  panel.append(list);
+  fill();
+}
+
+/**
+ * The changed files as folders and files, folders first, a folder with one
+ * folder and no files merged into it ("orders/components"), as GitHub draws it.
+ */
+function treeRows() {
+  var q = treeFilter.trim().toLowerCase();
+  var root = { dirs: {}, files: [] };
+  data.plain.forEach(function (sf) {
+    if (q && sf.path.toLowerCase().indexOf(q) < 0) return;
+    var parts = sf.path.split('/'), node = root;
+    for (var i = 0; i < parts.length - 1; i++) node = node.dirs[parts[i]] || (node.dirs[parts[i]] = { dirs: {}, files: [] });
+    node.files.push(sf.path);
+  });
+  function rows(node, prefix, depth) {
+    var out = [];
+    Object.keys(node.dirs).sort().forEach(function (name) {
+      var d = node.dirs[name], label = name;
+      while (!d.files.length && Object.keys(d.dirs).length === 1) { var only = Object.keys(d.dirs)[0]; label += '/' + only; d = d.dirs[only]; }
+      var key = prefix + label;
+      // A filter shows every match, whatever was folded.
+      var shut = !q && treeShut[key];
+      out.push(h('li', { role: 'treeitem', 'aria-expanded': String(!shut) },
+        h('button', { class: 'ghost node', style: '--depth:' + depth, 'aria-expanded': String(!shut), onclick: function () { treeShut[key] = !shut; renderRail(); } },
+          h('span', { class: 'chev' }, icon('chevron')), h('span', { class: 'dir' }, icon('folder')), h('span', { class: 'name', text: label })),
+        shut ? null : h('ul', { role: 'group' }, rows(d, key + '/', depth + 1))));
+    });
+    node.files.sort().forEach(function (path) {
+      var status = data.files[path].status;
+      var talk = data.comments.filter(function (c) { return c.path === path; }).length;
+      out.push(h('li', { role: 'treeitem' },
+        h('button', { class: 'ghost node ' + status + (treeAt === path ? ' current' : ''), style: '--depth:' + depth, title: path,
+          onclick: function () { treeAt = path; setRail(false); renderRail(); showFile(path); } },
+          h('span', { class: 'chev' }), h('span', { class: 'fi' }, icon({ added: 'fileadded', deleted: 'fileremoved', renamed: 'filemoved' }[status] || 'filediff')), h('span', { class: 'name', text: path.split('/').pop() }),
+          talk ? h('span', { class: 'talk', title: talk + ' comment' + (talk > 1 ? 's' : '') }, icon('talk'), String(talk)) : null)));
+    });
+    return out;
+  }
+  var out = rows(root, '', 0);
+  return out.length ? out : [h('li', { class: 'none', text: 'No file matches' })];
 }
 
 function setScope(unstaged) {
@@ -882,14 +987,19 @@ function setScope(unstaged) {
 }
 
 /* ── stage ── */
+// File heads stick under the stage head, whatever height it wraps to as the window or the list changes.
+var headSize = new ResizeObserver(function (es) {
+  var head = es[0].target;
+  document.getElementById('stage').style.setProperty('--head-h', getComputedStyle(head).position === 'sticky' ? head.offsetHeight + 'px' : '0px');
+});
 function renderStage() {
   var stage = document.getElementById('stage');
   var top = stage.scrollTop;
   stage.replaceChildren();
   VIEWS[view].stage(stage);
-  // File heads stick under the stage head, whatever height it wrapped to.
+  headSize.disconnect();
   var head = stage.querySelector('.stage-head');
-  stage.style.setProperty('--head-h', head && getComputedStyle(head).position === 'sticky' ? head.offsetHeight + 'px' : '0px');
+  if (head) headSize.observe(head);
   stage.scrollTop = top;
 }
 
@@ -1055,14 +1165,19 @@ function fileEl(sf, at) {
   var split = layout === 'split' && !narrow.matches && (file.status === 'modified' || file.status === 'renamed');
   var box = h('div', { class: split ? 'code split' : 'code' });
   var last = -1;
-  /** GitHub's @@ -old,count +new,count @@ for rows a..b. */
+  /**
+   * GitHub's @@ -old,count +new,count @@ for rows a..b, then git's default
+   * function context: the last old-side line above that starts at column 0
+   * with a letter, _ or $ ("func (s *X) build(…)"), cut at 80 as git cuts it.
+   */
   function hunk(a, b) {
-    var o = 0, oc = 0, n = 0, nc = 0;
+    var o = 0, oc = 0, n = 0, nc = 0, fn = '';
     for (var i = a; i <= b; i++) {
       if (rows[i].old != null) { o = o || rows[i].old; oc++; }
       if (rows[i].new != null) { n = n || rows[i].new; nc++; }
     }
-    return '@@ -' + o + ',' + oc + ' +' + n + ',' + nc + ' @@';
+    for (var j = a - 1; j >= 0 && !fn; j--) if (rows[j].old != null && /^[A-Za-z_$]/.test(rows[j].text)) fn = ' ' + rows[j].text.trimEnd().slice(0, 80);
+    return '@@ -' + o + ',' + oc + ' +' + n + ',' + nc + ' @@' + fn;
   }
   /** Hidden rows from..to, folded into the header of window w (none past the last one). */
   function gap(from, to, w) {
@@ -1070,7 +1185,8 @@ function fileEl(sf, at) {
     if (opened[key]) { span(from, to); return; }
     var hidden = (to - from + 1) + ' unchanged line' + (to > from ? 's' : '');
     box.append(h('button', { class: 'gap', title: 'Show ' + hidden, 'aria-label': 'Show ' + hidden, onclick: function () { opened[key] = true; renderStage(); } },
-      h('span', { class: 'gx' }, icon('expand')), h('span', { class: 'hd', text: w ? hunk(w[0], w[1]) : '' })));
+      // GitHub's arrows: up at the top of the file, down past the last hunk, both ways between two.
+      h('span', { class: 'gx' }, icon(!w ? 'folddown' : from === 0 ? 'foldup' : 'unfold')), h('span', { class: 'hd', text: w ? hunk(w[0], w[1]) : '' })));
   }
   /** Row i; side draws only its old or new half, for side by side. */
   function rowEl(i, side) {
@@ -1705,7 +1821,8 @@ document.addEventListener('keydown', function (e) {
   else if (e.key === 'v') setView(view === 'plain' ? 'sections' : 'plain');
   else if (e.key === 't') setDrawer(!drawerOpen);
   else if (e.key === 'w') { if (drawerOpen) toggleWide(); else setDrawer(true); }
-  else if (e.key === 'l') setRail(!railOpen);
+  else if (e.key === 'l') { if (pinned && !narrow.matches) togglePin(); else setRail(!railOpen); }
+  else if (e.key === 'L') togglePin();
   else if (e.key === 'c') focusComposer();
   else if (e.key === 'C') { kinds[threadKey(cursorOn())] = 'concern'; renderDrawer(); focusComposer(); }
   else if (e.key === ']') nextThread(1);
