@@ -820,10 +820,11 @@ is instant and lands on the first section not yet checked off. When the worktree
 moves, the page says so and offers a fresh review of the new state; nothing is
 carried across, because a checkoff on code that changed means nothing.
 
-**The recap only presents.** The agent says what the code does and how the parts
-connect, never why it was written or what might be wrong with it — a guessed
-intent is an opinion, and it would be read before the code. Sections run
-outside-in (contracts, then wiring, then logic), tests fold under the section
+**The recap only presents.** The agent says what the code does, how the parts
+connect and what each part is for in the change, never the author's motives or
+what might be wrong with it — a guessed intent is an opinion, and it would be
+read before the code. Sections run by signal (contracts first, then the core
+of the change, then what supports it: wiring, call sites), tests fold under the section
 they test, and generated or mechanical changes go in one collapsed section at
 the end. Unchanged code a section leans on — the caller, the type — comes along
 as folded context.
