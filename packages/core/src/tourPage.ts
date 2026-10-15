@@ -1,5 +1,11 @@
 import type { Palette } from './theme.ts';
 
+/** GitHub Dark default (Primer): the review reads like a pull request on github.com, whatever the panel's theme. */
+const GITHUB_DARK: Palette = {
+  bg: '#0d1117', panel: '#151b23', edge: '#3d444d', dim: '#9198a1', soft: '#9198a1', text: '#f0f6fc',
+  danger: '#f85149', warn: '#d29922', ok: '#3fb950', accent: '#4493f8', branch: '#ab7df8',
+};
+
 const alpha = (hex: string, a: number): string =>
   `${hex}${Math.round(a * 255)
     .toString(16)
@@ -19,7 +25,7 @@ const alpha = (hex: string, a: number): string =>
  * The script is plain ES with no template literals, so it sits in this one
  * without escaping.
  */
-export function tourPage(p: Palette): string {
+export function tourPage(): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -27,7 +33,7 @@ export function tourPage(p: Palette): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Review</title>
 <style>
-${pageCss(p)}
+${pageCss(GITHUB_DARK)}
 </style>
 </head>
 <body>
@@ -53,9 +59,11 @@ function pageCss(p: Palette): string {
   --bg: ${p.bg}; --panel: ${p.panel}; --edge: ${p.edge}; --dim: ${p.dim}; --soft: ${p.soft};
   --text: ${p.text}; --danger: ${p.danger}; --warn: ${p.warn}; --ok: ${p.ok}; --accent: ${p.accent};
   --branch: ${p.branch};
-  --add-row: ${alpha(p.ok, 0.08)}; --add-word: ${alpha(p.ok, 0.26)};
-  --del-row: ${alpha(p.danger, 0.08)}; --del-word: ${alpha(p.danger, 0.26)};
-  --cursor: ${alpha(p.accent, 0.12)}; --hover: ${alpha(p.text, 0.035)};
+  /* GitHub dark's diff tints; the number cell and word marks sit on the line's tint */
+  --add-row: ${alpha('#2ea043', 0.15)}; --add-num: ${alpha('#3fb950', 0.18)}; --add-word: ${alpha('#2ea043', 0.3)};
+  --del-row: ${alpha('#f85149', 0.1)}; --del-num: ${alpha('#f85149', 0.22)}; --del-word: ${alpha('#f85149', 0.33)};
+  --hunk-row: ${alpha('#388bfd', 0.1)}; --hunk-num: ${alpha('#388bfd', 0.4)};
+  --cursor: ${alpha('#bb8009', 0.15)}; --hover: ${alpha(p.text, 0.035)};
   --accent-soft: ${alpha(p.accent, 0.16)}; --warn-soft: ${alpha(p.warn, 0.14)};
   --ok-soft: ${alpha(p.ok, 0.16)}; --danger-soft: ${alpha(p.danger, 0.12)};
   --code: 'FiraCode Nerd Font', 'Fira Code', ui-monospace, monospace;
@@ -174,10 +182,28 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
   border-radius: var(--radius); background: var(--warn-soft); color: var(--warn); }
 .banner button { color: var(--warn); border-color: ${alpha(p.warn, 0.5)}; flex: none; }
 
-.file { margin-bottom: var(--s6); }
-.file-head { display: flex; align-items: center; gap: var(--s3); padding: 0 0 var(--s2); }
-.file-head .path { font: 12.5px var(--code); color: var(--soft); overflow-wrap: anywhere; }
-.file-head .path b { color: var(--text); font-weight: 500; }
+/* GitHub's diff: its file card, mono stack, 12px/20px and 50px gutters */
+.file { margin-bottom: var(--s5); border: 1px solid var(--edge); border-radius: var(--radius); overflow: clip; }
+.file-head { position: sticky; top: var(--head-h, 0); z-index: 2; display: flex; align-items: center; gap: var(--s2); padding: 6px var(--s2) 6px var(--s2); background: var(--panel); min-height: 44px; }
+.file-head:not(:last-child) { border-bottom: 1px solid var(--edge); }
+.file-head .fold-toggle svg { transition: transform .15s var(--ease); }
+.file-head .fold-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+.stats { display: inline-flex; align-items: center; gap: 4px; font: 600 12px var(--chrome); }
+.stats .plus { color: var(--ok); }
+.stats .minus { color: var(--danger); }
+.stats .boxes { display: inline-flex; gap: 1px; margin-left: 2px; }
+.stats .boxes i { width: 8px; height: 8px; border-radius: 2px; background: var(--edge); }
+.stats .boxes i.a { background: var(--ok); }
+.stats .boxes i.d { background: var(--danger); }
+.viewed { display: inline-flex; align-items: center; gap: 6px; font: 500 12px var(--prose); color: var(--text); background: #212830; border: 1px solid var(--edge);
+  border-radius: var(--radius); padding: 3px 8px; cursor: pointer; user-select: none; }
+.viewed:hover { background: #262c36; }
+.viewed.on { background: var(--accent-soft); border-color: rgba(56, 139, 253, 0.4); }
+.viewed input { margin: 0; accent-color: var(--accent); }
+.viewed-count { font: 12px var(--prose); color: var(--soft); white-space: nowrap; }
+.viewed-count b { color: var(--text); font-weight: 600; }
+.file-head .path { font: 12px var(--chrome); color: var(--text); overflow-wrap: anywhere; }
+.file-head .path b { font-weight: 400; }
 .file-head .status { font-size: 11px; color: var(--dim); }
 .file-head .status.added { color: var(--ok); }
 .file-head .status.deleted { color: var(--danger); }
@@ -185,19 +211,17 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 .file-head .spacer { flex: 1; }
 .file-head button { font-size: 11.5px; color: var(--dim); }
 
-.code { font: 12.5px/1.65 var(--code); font-variant-ligatures: contextual; border-top: 1px solid var(--edge); border-bottom: 1px solid var(--edge); }
-.row { display: grid; grid-template-columns: 44px 44px 18px minmax(0, 1fr) auto; position: relative; cursor: default; }
+.code { font: 12px/20px var(--chrome); }
+.row { display: grid; grid-template-columns: 50px 50px 22px minmax(0, 1fr) auto; position: relative; cursor: default; }
 .row:hover { background: var(--hover); }
-.row .no { color: var(--dim); text-align: right; padding-right: 10px; user-select: none; font-size: 11.5px; font-variant-numeric: tabular-nums; opacity: .75; }
-.row .sign { user-select: none; text-align: center; color: var(--dim); }
-.row .src { white-space: pre-wrap; overflow-wrap: anywhere; padding-right: var(--s4); tab-size: 4; padding-left: 6ch; text-indent: -6ch; }
+.row .no { color: var(--dim); text-align: right; padding: 0 10px; user-select: none; font-variant-numeric: tabular-nums; }
+.row .sign { user-select: none; padding-left: 8px; color: var(--text); }
+.row .src { white-space: pre-wrap; overflow-wrap: anywhere; padding-right: 10px; tab-size: 4; }
 .row .own { color: var(--dim); font-size: 10.5px; padding: 0 var(--s3); user-select: none; align-self: center; }
 .row.add { background: var(--add-row); }
-.row.add .sign { color: var(--ok); box-shadow: inset 2px 0 0 var(--ok); }
-.row.add .no { color: var(--ok); }
+.row.add .no { background: var(--add-num); color: var(--text); }
 .row.del { background: var(--del-row); }
-.row.del .sign { color: var(--danger); box-shadow: inset 2px 0 0 var(--danger); }
-.row.del .no { color: var(--danger); }
+.row.del .no { background: var(--del-num); color: var(--text); }
 .row.other { opacity: .38; }
 .row.other:hover { opacity: .7; }
 .row.cursor { background: var(--cursor); }
@@ -206,18 +230,21 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 .row .dot.concern { background: var(--warn); }
 .row.add .w { background: var(--add-word); border-radius: 2px; }
 .row.del .w { background: var(--del-word); border-radius: 2px; }
-.gap { display: flex; align-items: center; gap: var(--s2); width: 100%; border: 0; border-radius: 0; padding: 3px 0 3px 88px; background: ${alpha(p.panel, 0.6)};
-  color: var(--dim); font: 11px var(--chrome); justify-content: flex-start; }
-.gap:hover:not(:disabled) { color: var(--accent); background: var(--panel); }
+.gap { display: flex; align-items: stretch; gap: 0; width: 100%; border: 0; border-radius: 0; padding: 0; background: var(--hunk-row);
+  color: var(--dim); font: 12px/20px var(--chrome); text-align: left; }
+.gap .gx { flex: none; width: 100px; display: flex; align-items: center; justify-content: center; background: var(--hunk-num); }
+.gap .hd { padding: 5px 0 5px 22px; }
+button.gap:hover:not(:disabled) { color: var(--text); background: var(--hunk-row); }
+button.gap:hover .gx { background: #1f6feb; color: #ffffff; }
 
 /* side by side: the old file on the left, the new one on the right */
-.code.split .row.both { grid-template-columns: 44px 18px minmax(0, 1fr) 44px 18px minmax(0, 1fr); }
+.code.split .row.both { grid-template-columns: 50px 22px minmax(0, 1fr) 50px 22px minmax(0, 1fr); }
 .code.split .row.both::after { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--edge); }
 .pair > :last-child { border-left: 1px solid var(--edge); }
 .pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-.code.split .row.half { grid-template-columns: 44px 18px minmax(0, 1fr) auto; }
-.pair .empty { background: repeating-linear-gradient(135deg, transparent 0 6px, ${alpha(p.edge, 0.55)} 6px 7px); }
-.code.split .gap { padding-left: 62px; }
+.code.split .row.half { grid-template-columns: 50px 22px minmax(0, 1fr) auto; }
+.pair .empty { background: var(--panel); }
+.code.split .gap .gx { width: 50px; }
 
 .head-actions { display: flex; align-items: center; gap: var(--s3); flex: none; }
 .segmented { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--edge); border-radius: var(--radius); }
@@ -233,14 +260,15 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 .fold > summary .count { color: var(--dim); }
 .fold > .file:first-of-type { margin-top: var(--s3); }
 
-/* syntax, from the panel's roles */
-.k { color: var(--branch); }
-.s { color: var(--warn); }
-.m { color: var(--warn); }
-.f { color: var(--accent); }
-.y { color: var(--ok); }
-.c { color: var(--dim); font-style: italic; }
-.p { color: var(--soft); }
+/* syntax, GitHub dark's */
+.code, .snippet { color: var(--text); }
+.k { color: #ff7b72; }
+.s { color: #a5d6ff; }
+.m { color: #79c0ff; }
+.f { color: #d2a8ff; }
+.y { color: #ffa657; }
+.c { color: #8b949e; }
+.p { color: var(--text); }
 
 /* building / error */
 .wait { padding: var(--s6); max-width: 760px; }
@@ -287,7 +315,7 @@ body.resizing iframe, body.resizing .stage, body.resizing .drawer { pointer-even
 .ctx > summary:hover .copy, .ctx .copy:focus-visible { opacity: 1; }
 .ctx .copy:hover:not(:disabled) { color: var(--text); }
 /* too narrow to wrap code readably: it scrolls in its own box, numbers pinned, capped so the thread below stays in reach */
-.snippet { font: 12px/1.6 var(--code); background: var(--bg); border-radius: var(--radius); padding: var(--s2) 0; margin: var(--s1) 0 var(--s2); max-height: max(24em, 45vh); overflow: auto; }
+.snippet { font: 12px/20px var(--chrome); background: var(--bg); border-radius: var(--radius); padding: var(--s2) 0; margin: var(--s1) 0 var(--s2); max-height: max(24em, 45vh); overflow: auto; }
 .snippet div { display: grid; grid-template-columns: 6ch max-content; }
 .snippet .src { white-space: pre; padding-right: var(--s3); }
 .snippet .no { position: sticky; left: 0; background: var(--bg); color: var(--dim); text-align: right; padding-right: 1ch; user-select: none; font-variant-numeric: tabular-nums; }
@@ -371,8 +399,8 @@ textarea::placeholder { color: var(--soft); opacity: .8; }
 @media (max-width: 960px) {
   .app, .app.drawer-open { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr auto; height: auto; min-height: 100vh; }
   .stage-head { position: static; flex-wrap: wrap; }
-  .row { grid-template-columns: 34px 34px 16px minmax(0, 1fr) auto; }
-  .gap { padding-left: 68px; }
+  .row { grid-template-columns: 40px 40px 22px minmax(0, 1fr) auto; }
+  .gap .gx { width: 80px; }
   .diff-layout { display: none; }
   .rail { border-right: 0; border-bottom: 1px solid var(--edge); }
   .strip { flex-direction: row; padding: var(--s2) var(--s3); }
@@ -402,6 +430,9 @@ var clockOffset = 0;      // server clock minus ours
 var pollTimer;
 var announced = {};       // "id@askedAt" -> its landing was already said
 var unfolded = {};        // path -> whole file shown
+var viewed = {};          // viewKey -> marked viewed, which folds it as GitHub does; per browser
+try { viewed = JSON.parse(localStorage.getItem('fw-review-viewed:' + base) || '{}') || {}; } catch (e) {}
+var folded = {};          // viewKey -> folded or unfolded by hand, over what viewed says
 var opened = {};          // "path:a:b" -> gap expanded
 var diffOpen = {};        // path -> diff shown in a mechanical section, where it starts hidden
 var ctxOpen = {};         // "section:path:start" -> context ref unfolded
@@ -625,8 +656,7 @@ function wordDiff(path) {
 function load(first) {
   return api('GET', 'data').then(function (d) {
     wordCache = {};
-    // Tabs as four spaces, once: the hanging indent on wrapped lines moves tab
-    // stops, and the word marks have to index the same text that is drawn.
+    // Tabs as four spaces, once: the word marks have to index the same text that is drawn.
     for (var path in d.files || {}) d.files[path].rows.forEach(function (r) { r.text = r.text.replace(/\t/g, '    '); });
     (d.sections || []).forEach(function (s) { s.refs.forEach(function (r) { r.lines = r.lines.map(function (l) { return l.replace(/\t/g, '    '); }); }); });
     var before = data;
@@ -857,6 +887,9 @@ function renderStage() {
   var top = stage.scrollTop;
   stage.replaceChildren();
   VIEWS[view].stage(stage);
+  // File heads stick under the stage head, whatever height it wrapped to.
+  var head = stage.querySelector('.stage-head');
+  stage.style.setProperty('--head-h', head && getComputedStyle(head).position === 'sticky' ? head.offsetHeight + 'px' : '0px');
   stage.scrollTop = top;
 }
 
@@ -868,6 +901,7 @@ function sectionStage(stage) {
       s.mechanical ? h('span', { class: 'kind', text: 'mechanical' }) : null),
     h('div', { class: 'head-actions' },
       queuedEl(),
+      viewedCount(s.files),
       layoutEl(),
       h('button', { class: isDone ? 'done' : 'primary', onclick: toggleChecked },
         icon(isDone ? 'check' : 'done'), isDone ? 'Reviewed' : 'Mark reviewed', h('kbd', { text: 'x' })))));
@@ -912,7 +946,7 @@ function queuedEl() {
 function plainStage(stage) {
   stage.append(h('header', { class: 'stage-head' },
     h('h1', {}, h('span', { text: 'Plain diff' }), recapClock()),
-    h('div', { class: 'head-actions' }, layoutEl())));
+    h('div', { class: 'head-actions' }, viewedCount(data.plain), layoutEl())));
   stage.append(recapFailure() || '', filesEl(data.plain, null));
 }
 
@@ -974,6 +1008,36 @@ function filesEl(files, at) {
   return body;
 }
 
+/** A file's place in the viewed marks: per section, as the same file shows other code in another. */
+function viewKey(path) { return (view === 'plain' ? 'plain' : current) + ':' + path; }
+
+function setViewed(path, on) {
+  var k = viewKey(path);
+  if (on) viewed[k] = true; else delete viewed[k];
+  delete folded[k];
+  try { localStorage.setItem('fw-review-viewed:' + base, JSON.stringify(viewed)); } catch (e) {}
+  renderStage();
+  // Folding a file read halfway down leaves you below it: bring its head back, as GitHub does.
+  var el = document.querySelector('#stage [data-file="' + CSS.escape(path) + '"]');
+  if (el && on) el.scrollIntoView({ block: 'nearest' });
+}
+
+function viewedCount(files) {
+  var n = files.filter(function (f) { return viewed[viewKey(f.path)]; }).length;
+  return h('span', { class: 'viewed-count' }, h('b', { text: n + ' / ' + files.length }), ' viewed');
+}
+
+/** GitHub's +a -d and its five squares, green for the share added. */
+function statsEl(adds, dels) {
+  var total = adds + dels, n = Math.min(5, total), g = total ? Math.round(adds / total * n) : 0;
+  var boxes = [];
+  for (var i = 0; i < 5; i++) boxes.push(h('i', { class: i < g ? 'a' : i < n ? 'd' : null }));
+  return h('span', { class: 'stats', title: adds + ' addition' + (adds === 1 ? '' : 's') + ', ' + dels + ' deletion' + (dels === 1 ? '' : 's') },
+    adds ? h('span', { class: 'plus', text: '+' + adds }) : null,
+    dels ? h('span', { class: 'minus', text: '-' + dels }) : null,
+    h('span', { class: 'boxes', 'aria-hidden': 'true' }, boxes));
+}
+
 function fileEl(sf, at) {
   var file = data.files[sf.path];
   var rows = file.rows;
@@ -981,17 +1045,32 @@ function fileEl(sf, at) {
   var whole = unfolded[sf.path];
   // Generated code can run to thousands of rows: drawn only when asked, or the page hangs.
   var hidden = at != null && data.sections[at].mechanical && !diffOpen[sf.path] && !whole;
+  var vkey = viewKey(sf.path);
+  var shut = vkey in folded ? folded[vkey] : !!viewed[vkey];
+  var adds = 0, dels = 0;
+  sf.windows.forEach(function (w) { for (var i = w[0]; i <= w[1]; i++) { if (rows[i].kind === '+') adds++; else if (rows[i].kind === '-') dels++; } });
   var marks = rows.length && !hidden ? wordDiff(sf.path) : {};
   var windows = whole ? [[0, rows.length - 1]] : sf.windows;
   // An added or deleted file has only one side; split would leave half the page blank.
   var split = layout === 'split' && !narrow.matches && (file.status === 'modified' || file.status === 'renamed');
   var box = h('div', { class: split ? 'code split' : 'code' });
   var last = -1;
-  function gap(from, to) {
+  /** GitHub's @@ -old,count +new,count @@ for rows a..b. */
+  function hunk(a, b) {
+    var o = 0, oc = 0, n = 0, nc = 0;
+    for (var i = a; i <= b; i++) {
+      if (rows[i].old != null) { o = o || rows[i].old; oc++; }
+      if (rows[i].new != null) { n = n || rows[i].new; nc++; }
+    }
+    return '@@ -' + o + ',' + oc + ' +' + n + ',' + nc + ' @@';
+  }
+  /** Hidden rows from..to, folded into the header of window w (none past the last one). */
+  function gap(from, to, w) {
     var key = sf.path + ':' + from + ':' + to;
     if (opened[key]) { span(from, to); return; }
-    box.append(h('button', { class: 'gap', onclick: function () { opened[key] = true; renderStage(); } },
-      icon('expand'), (to - from + 1) + ' unchanged line' + (to > from ? 's' : '')));
+    var hidden = (to - from + 1) + ' unchanged line' + (to > from ? 's' : '');
+    box.append(h('button', { class: 'gap', title: 'Show ' + hidden, 'aria-label': 'Show ' + hidden, onclick: function () { opened[key] = true; renderStage(); } },
+      h('span', { class: 'gx' }, icon('expand')), h('span', { class: 'hd', text: w ? hunk(w[0], w[1]) : '' })));
   }
   /** Row i; side draws only its old or new half, for side by side. */
   function rowEl(i, side) {
@@ -1032,9 +1111,10 @@ function fileEl(sf, at) {
       }
     }
   }
-  if (!hidden) {
+  if (!hidden && !shut) {
     windows.forEach(function (w) {
-      if (w[0] > last + 1) gap(last + 1, w[0] - 1);
+      if (w[0] > last + 1) gap(last + 1, w[0] - 1, w);
+      else if (!whole) box.append(h('div', { class: 'gap' }, h('span', { class: 'gx' }), h('span', { class: 'hd', text: hunk(w[0], w[1]) })));
       span(w[0], w[1]);
       last = w[1];
     });
@@ -1047,14 +1127,21 @@ function fileEl(sf, at) {
   var renamed = file.oldPath && file.oldPath !== sf.path;
   return h('section', { class: 'file', 'data-file': sf.path },
     h('div', { class: 'file-head' },
+      h('button', { class: 'ghost fold-toggle', 'aria-expanded': String(!shut), 'aria-label': (shut ? 'Unfold ' : 'Fold ') + sf.path,
+        onclick: function () { folded[vkey] = !shut; renderStage(); } }, icon('chevron')),
       h('span', { class: 'path' }, renamed ? file.oldPath + ' → ' : '', dir, h('b', { text: name })),
+      h('button', { class: 'ghost', title: 'Copy path', 'aria-label': 'Copy ' + sf.path,
+        onclick: function () { navigator.clipboard.writeText(sf.path).then(function () { toast('Copied ' + sf.path); }, function () {}); } }, icon('copy')),
       file.status !== 'modified' ? h('span', { class: 'status ' + file.status, text: file.status }) : null,
       sf.note ? h('span', { class: 'note', text: sf.note }) : null,
       h('span', { class: 'spacer' }),
       hidden ? h('button', { class: 'ghost', onclick: function () { diffOpen[sf.path] = true; renderStage(); } }, icon('expand'),
         'Show diff · ' + rows.filter(function (r) { return r.kind !== ' '; }).length + ' changed lines')
-      : rows.length ? h('button', { class: 'ghost', onclick: function () { unfolded[sf.path] = !whole; renderStage(); } }, whole ? 'Only this section' : 'Whole file') : null),
-    rows.length && !hidden ? box : null);
+      : rows.length && !shut ? h('button', { class: 'ghost', onclick: function () { unfolded[sf.path] = !whole; renderStage(); } }, whole ? 'Only this section' : 'Whole file') : null,
+      adds + dels ? statsEl(adds, dels) : null,
+      h('label', { class: 'viewed' + (viewed[vkey] ? ' on' : '') },
+        h('input', { type: 'checkbox', checked: !!viewed[vkey], onchange: function (e) { setViewed(sf.path, e.target.checked); } }), 'Viewed')),
+    rows.length && !hidden && !shut ? box : null);
 }
 
 /* ── drawer ── */
@@ -1267,7 +1354,9 @@ function citeEl(label, file, line) {
 /** Show a cited line. In this section the thread stays put and the line flashes; elsewhere the cursor goes there. */
 function jump(at) {
   if (at.section !== current) { go(at.section); setCursor(at.path, at.row, true); return; }
-  if (!document.querySelector('#stage .row[data-path="' + CSS.escape(at.path) + '"][data-row="' + at.row + '"]')) { unfolded[at.path] = true; renderStage(); }
+  function found() { return document.querySelector('#stage .row[data-path="' + CSS.escape(at.path) + '"][data-row="' + at.row + '"]'); }
+  if (!found()) { folded[viewKey(at.path)] = false; renderStage(); }
+  if (!found()) { unfolded[at.path] = true; renderStage(); }
   document.querySelectorAll('#stage .row[data-path="' + CSS.escape(at.path) + '"][data-row="' + at.row + '"]').forEach(function (el, i) {
     if (i === 0) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
     el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');

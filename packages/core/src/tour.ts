@@ -7,7 +7,6 @@ import type { AddressInfo } from 'node:net';
 import { basename, join } from 'node:path';
 import { run } from './exec.ts';
 import { FW_HOME } from './paths.ts';
-import type { Palette } from './theme.ts';
 import type { FleetSession } from './fleet.ts';
 import { agentDiff, indexTree, mergeBase, snapshotTree, wholeDiff } from './tourDiff.ts';
 import type { FileDiff } from './tourDiff.ts';
@@ -376,7 +375,7 @@ function json(res: ServerResponse, value: unknown, status = 200): void {
   res.end(JSON.stringify(value));
 }
 
-async function route(req: IncomingMessage, res: ServerResponse, palette: () => Promise<Palette>): Promise<void> {
+async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://local');
   const [, t, key, action, id] = url.pathname.split('/');
   const tour = t === 't' && key ? tours.get(key) : undefined;
@@ -385,7 +384,7 @@ async function route(req: IncomingMessage, res: ServerResponse, palette: () => P
 
   if (req.method === 'GET' && !action) {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-    res.end(tourPage(await palette()));
+    res.end(tourPage());
     return;
   }
   if (req.method === 'GET' && action === 'data') return json(res, await pageData(tour, state));
@@ -463,10 +462,10 @@ let server: Promise<string> | undefined;
  * and living as long as the process. Reviews are told apart by their key in the
  * path, and are only reachable while this process knows them.
  */
-function tourServer(palette: () => Promise<Palette>): Promise<string> {
+function tourServer(): Promise<string> {
   server ??= new Promise((resolve, reject) => {
     const s = createServer((req, res) => {
-      route(req, res, palette).catch((error: Error) => {
+      route(req, res).catch((error: Error) => {
         if (!res.headersSent) json(res, { error: error.message }, 500);
       });
     });
@@ -482,9 +481,9 @@ function tourServer(palette: () => Promise<Palette>): Promise<string> {
  * The page opens straight away and shows the recap building; a snapshot that
  * was already recapped opens on the recap, with its checkoffs and comments.
  */
-export async function openTour(options: TourOptions & { palette: () => Promise<Palette> }): Promise<string> {
+export async function openTour(options: TourOptions): Promise<string> {
   const tour = await prepare(options);
-  return `${await tourServer(options.palette)}/t/${tour.key}`;
+  return `${await tourServer()}/t/${tour.key}`;
 }
 
 export interface ReviewPane {

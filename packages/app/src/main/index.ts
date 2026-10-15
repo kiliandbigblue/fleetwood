@@ -22,7 +22,6 @@ import {
   task as taskApi,
   taskHistory as taskHistoryApi,
   taskPrs as taskPrsApi,
-  paletteFor,
   concernPrompt,
   reviewPane,
   themeSync,
@@ -670,8 +669,6 @@ async function handle(request: Request): Promise<Response> {
         cwd: request.cwd,
         base: request.base,
         unstaged: request.unstaged,
-        // Read when the page loads, so it follows the panel's theme.
-        palette: async () => paletteFor((await configModule.loadConfig()).theme),
         // Looked up at the click, not now: the task's agent may be started, or
         // replaced, while the review is open.
         send: async (concerns) => {

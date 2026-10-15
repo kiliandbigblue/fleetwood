@@ -309,8 +309,6 @@ export interface OpenReviewOptions {
   base?: string;
   /** Only the work not staged yet, so the agent's latest edits. */
   unstaged?: boolean;
-  /** What the page is painted with, read when it loads. Rosé Pine without one. */
-  palette?: () => Promise<Palette>;
   /** Hand the review's concerns to the agent. Without one they go to the clipboard. */
   send?: (concerns: Concern[]) => Promise<SendOutcome>;
 }
@@ -341,7 +339,6 @@ export async function openReview(options: OpenReviewOptions): Promise<ActionResu
       cwd: options.cwd,
       base,
       unstaged: options.unstaged,
-      palette: options.palette ?? (async () => paletteFor(undefined)),
       send:
         options.send ??
         (async (concerns) => ({
