@@ -110,13 +110,12 @@ test('the overview is section 0, and the sections after it own their lines', () 
   ];
   const checked = checkRecap(
     {
-      // An area may name a renamed file by its old path; one that names nothing is dropped.
-      overview: { summary: 'Adds one.', areas: [{ title: 'a', summary: '', paths: ['a.go', 'old.go', 'nope.go'] }] },
+      overview: { summary: 'Adds one.', sketches: [{ caption: 'the call', text: ' main\n+  one' }] },
       sections: [{ title: 'a', summary: '', changes: [{ path: 'a.go', side: 'new', start: 1, end: 1 }] }],
     },
     files,
   );
-  assert.deepEqual(checked.sections[0]?.areas?.[0]?.paths, ['a.go', 'b.go']);
+  assert.equal(checked.sections[0]?.overview?.sketches[0]?.caption, 'the call');
   assert.deepEqual(checked.owners['a.go'], [1]);
   // What the recap left out comes after the overview and the recap's sections.
   assert.equal(checked.sections[2]?.uncovered, true);

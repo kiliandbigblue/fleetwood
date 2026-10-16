@@ -31,17 +31,20 @@ export interface RecapSection {
   refs?: RecapRef[];
 }
 
-/** One part of the code the change touches, as the overview names it. */
-export interface RecapArea {
-  title: string;
-  summary: string;
-  paths: string[];
+/**
+ * The shape of the change, as /show-me draws it: a call tree, a file tree or
+ * pseudocode, every line led by ' ', '+' or '-', as a diff's are.
+ */
+export interface RecapSketch {
+  caption: string;
+  text: string;
 }
 
-/** The change at a glance, as a pull request's description gives it. */
+/** The change at a glance: one sentence and its shape drawn. */
 export interface RecapOverview {
   summary: string;
-  areas: RecapArea[];
+  /** Absent from recaps kept before the overview drew its shape. */
+  sketches?: RecapSketch[];
 }
 
 /** What the agent returns. */
@@ -57,19 +60,16 @@ export const RECAP_SCHEMA = {
   properties: {
     overview: {
       type: 'object',
-      required: ['summary', 'areas'],
+      required: ['summary', 'sketches'],
       properties: {
         summary: { type: 'string' },
-        areas: {
+        sketches: {
           type: 'array',
+          minItems: 1,
           items: {
             type: 'object',
-            required: ['title', 'summary', 'paths'],
-            properties: {
-              title: { type: 'string' },
-              summary: { type: 'string' },
-              paths: { type: 'array', items: { type: 'string' } },
-            },
+            required: ['caption', 'text'],
+            properties: { caption: { type: 'string' }, text: { type: 'string' } },
           },
         },
       },
@@ -126,13 +126,22 @@ export function recapPrompt(diff: string, base: string): string {
 Your job is to give the change at a glance, then cut it into sections that follow
 its logic, so the reviewer can read it top to bottom without jumping between files.
 
-The overview comes first, read before any code, as a pull request's description:
-- "summary": what the change does as a whole and how its parts fit together,
-  one or two short paragraphs, plain text.
-- "areas": the parts of the code it touches (a package, a service, a layer, the
-  tests), in the order of the sections. For each: a few-word title, one or two
-  sentences on what changes there, and the changed files it covers ("paths").
-  Mechanical files go in one last area of their own.
+The overview comes first, read before any code. Show the change, do not tell it:
+- "summary": what the change does, one sentence, plain text.
+- "sketches": one or two small drawings of its shape, each with a one-line
+  "caption" saying what it shows. "text" is plain monospace text: a call tree,
+  a shallow file tree, a data flow (a -> b -> c) or pseudocode, whichever makes
+  the point. Lead every line with " " (unchanged), "+" (added) or "-"
+  (removed), as in a diff; a sketch of what is, not what changes, leads every
+  line with " ". Keep only enough unchanged lines to place the change. Real
+  names from the code, no prose in it, at most 15 lines. For example, a
+  call-tree change:
+ handleCreate
+-  fetchProducts
++  fetchOrderData
++    lotsByProduct
+   toWorkOrder
++    resolveForcedLot
 
 Rules for the sections:
 - Neutral. Say what the code does, how the parts connect and what each part is
@@ -175,7 +184,7 @@ export interface TourSection {
   summary: string;
   mechanical: boolean;
   /** Set only on the overview: §0, before the first section, with no code of its own. */
-  areas?: RecapArea[];
+  overview?: { sketches: RecapSketch[] };
   /** Set on the section that collects what the agent left out. */
   uncovered?: boolean;
   files: TourSectionFile[];
@@ -221,17 +230,13 @@ export function checkRecap(recap: Recap, files: FileDiff[]): CheckedRecap {
   for (const f of files) owners[f.path] = f.rows.map(() => -1);
 
   const errors: string[] = [];
-  // The overview, when there is one, is section 0. Areas are prose: a path that
-  // names nothing in the diff is dropped, not an error as in a section.
+  // The overview, when there is one, is section 0.
   const sections: TourSection[] = recap.overview
     ? [{
         title: 'Overview',
         summary: recap.overview.summary,
         mechanical: false,
-        areas: recap.overview.areas.map((area) => ({
-          ...area,
-          paths: area.paths.flatMap((p) => resolve(p)?.path ?? []),
-        })),
+        overview: { sketches: recap.overview.sketches ?? [] },
         files: [],
         refs: [],
       }]

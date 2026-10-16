@@ -201,13 +201,16 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 .lede { display: grid; gap: var(--s3); justify-items: start; margin: 0 0 var(--s6); }
 .lede .summary { max-width: 110ch; font-size: 16px; line-height: 1.6; }
 .overview-total { display: flex; align-items: center; gap: var(--s3); color: var(--soft); margin: 0 0 var(--s4); }
-.areas { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s4); max-width: 110ch; }
-.area { border: 1px solid var(--edge); border-radius: var(--radius); padding: var(--s4); }
-.area h2 { margin: 0 0 var(--s2); font: 600 14px/1.4 var(--prose); }
-.area-files { list-style: none; margin: var(--s3) 0 0; padding: 0; display: grid; gap: 2px; }
-.area-files button { display: flex; align-items: center; gap: var(--s3); width: 100%; text-align: left; padding: 3px 6px; margin-left: -6px; }
-.area-files .path { font: 12px var(--code); color: var(--text); overflow-wrap: anywhere; flex: 1; min-width: 0; }
-.area-files .own { color: var(--accent); font-variant-numeric: tabular-nums; }
+.sketches { display: grid; gap: var(--s5); max-width: 110ch; margin: 0 0 var(--s6); }
+.sketch .caption { margin: 0 0 var(--s2); color: var(--soft); }
+.sketch pre { margin: 0; padding: var(--s3) 0; border: 1px solid var(--edge); border-radius: var(--radius); overflow-x: auto;
+  font: 12px/20px var(--code); color: var(--text); }
+.sketch pre > span { display: block; padding: 0 var(--s4); white-space: pre; }
+.sketch pre > .add { background: var(--add-row); }
+.sketch pre > .del { background: var(--del-row); }
+.overview-tree { max-width: 110ch; padding: 0; overflow: visible; }
+.overview-tree .node-meta { display: inline-flex; align-items: center; gap: var(--s3); font-size: 12px; }
+.overview-tree .own { color: var(--accent); font-variant-numeric: tabular-nums; }
 .lede-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4); }
 .leans { width: 100%; }
 .leans > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: var(--s2); color: var(--soft); padding: 3px 6px; margin-left: -6px; border-radius: var(--radius); }
@@ -656,7 +659,7 @@ function load(first) {
     if (first) view = d.sections ? opensOn : 'plain';
     var arrived = d.sections && before && !before.sections;
     if ((first || arrived) && d.sections) {
-      numFrom = d.sections[0] && d.sections[0].areas ? 0 : 1;
+      numFrom = d.sections[0] && d.sections[0].overview ? 0 : 1;
       // A §n in the address wins, so a reload stays put; else the first not yet reviewed.
       var asked = Number((location.hash.match(/^#(\d+)$/) || [])[1]) - numFrom;
       var open = d.sections.findIndex(function (_, i) { return d.checked.indexOf(i) < 0; });
@@ -757,7 +760,7 @@ function sectionSteps() {
     return {
       state: state, mark: { current: 'now', done: 'done', todo: 'todo' }[state], short: String(num(i)), n: sec(i),
       title: s.title, tip: sec(i) + '  ' + s.title, warn: !!s.uncovered,
-      tag: s.uncovered ? 'not placed by the recap' : s.mechanical ? 'mechanical' : s.areas ? 'the change at a glance' : null,
+      tag: s.uncovered ? 'not placed by the recap' : s.mechanical ? 'mechanical' : s.overview ? 'the change at a glance' : null,
       pick: function () { go(i); },
     };
   });
@@ -872,7 +875,7 @@ function sectionsRail(panel, steps) {
 function plainRail(panel, steps) {
   var n = steps.length;
   var list = h('ul', { class: 'tree', role: 'tree', 'aria-label': 'Changed files' });
-  function fill() { list.replaceChildren.apply(list, treeRows()); }
+  function fill() { list.replaceChildren.apply(list, treeRows(treeFilter, renderRail, plainNode)); }
   panel.append(h('div', { class: 'progress' },
     h('div', { class: 'progress-label' }, h('b', { text: String(n) }), ' file' + (n > 1 ? 's' : '') + ' changed')));
   panel.append(h('label', { class: 'tree-filter' }, icon('search'),
@@ -882,12 +885,24 @@ function plainRail(panel, steps) {
   fill();
 }
 
+/** A file in the plain diff's tree: a jump to its diff, with its comments. */
+function plainNode(path) {
+  var talk = data.comments.filter(function (c) { return c.path === path; }).length;
+  return {
+    current: treeAt === path,
+    title: path,
+    open: function () { treeAt = path; setRail(false); renderRail(); showFile(path); },
+    extra: talk ? h('span', { class: 'talk', title: talk + ' comment' + (talk > 1 ? 's' : '') }, icon('talk'), String(talk)) : null,
+  };
+}
+
 /**
  * The changed files as folders and files, folders first, a folder with one
  * folder and no files merged into it ("orders/components"), as GitHub draws it.
+ * nodeOf(path) says what a file does when picked and what shows beside its name.
  */
-function treeRows() {
-  var q = treeFilter.trim().toLowerCase();
+function treeRows(filter, refold, nodeOf) {
+  var q = filter.trim().toLowerCase();
   var root = { dirs: {}, files: [] };
   data.plain.forEach(function (sf) {
     if (q && sf.path.toLowerCase().indexOf(q) < 0) return;
@@ -904,18 +919,18 @@ function treeRows() {
       // A filter shows every match, whatever was folded.
       var shut = !q && treeShut[key];
       out.push(h('li', { role: 'treeitem', 'aria-expanded': String(!shut) },
-        h('button', { class: 'ghost node', style: '--depth:' + depth, 'aria-expanded': String(!shut), onclick: function () { treeShut[key] = !shut; renderRail(); } },
+        h('button', { class: 'ghost node', style: '--depth:' + depth, 'aria-expanded': String(!shut), onclick: function () { treeShut[key] = !shut; refold(); } },
           h('span', { class: 'chev' }, icon('chevron')), h('span', { class: 'dir' }, icon('folder')), h('span', { class: 'name', text: label })),
         shut ? null : h('ul', { role: 'group' }, rows(d, key + '/', depth + 1))));
     });
     node.files.sort().forEach(function (path) {
       var status = data.files[path].status;
-      var talk = data.comments.filter(function (c) { return c.path === path; }).length;
+      var n = nodeOf(path);
       out.push(h('li', { role: 'treeitem' },
-        h('button', { class: 'ghost node ' + status + (treeAt === path ? ' current' : ''), style: '--depth:' + depth, title: path,
-          onclick: function () { treeAt = path; setRail(false); renderRail(); showFile(path); } },
+        h('button', { class: 'ghost node ' + status + (n.current ? ' current' : ''), style: '--depth:' + depth, title: n.title,
+          disabled: !n.open, onclick: n.open },
           h('span', { class: 'chev' }), h('span', { class: 'fi' }, icon({ added: 'fileadded', deleted: 'fileremoved', renamed: 'filemoved' }[status] || 'filediff')), h('span', { class: 'name', text: path.split('/').pop() }),
-          talk ? h('span', { class: 'talk', title: talk + ' comment' + (talk > 1 ? 's' : '') }, icon('talk'), String(talk)) : null)));
+          n.extra)));
     });
     return out;
   }
@@ -955,8 +970,8 @@ function sectionStage(stage) {
       s.mechanical ? h('span', { class: 'kind', text: 'mechanical' }) : null),
     h('div', { class: 'head-actions' },
       queuedEl(),
-      s.areas ? null : viewedCount(s.files),
-      s.areas ? null : layoutEl(),
+      s.overview ? null : viewedCount(s.files),
+      s.overview ? null : layoutEl(),
       h('button', { class: isDone ? 'done' : 'primary', onclick: toggleChecked },
         icon(isDone ? 'check' : 'done'), isDone ? 'Reviewed' : 'Mark reviewed', h('kbd', { text: 'x' })))));
   if (stale) {
@@ -964,38 +979,46 @@ function sectionStage(stage) {
       h('span', { text: 'The worktree has moved since this review was pinned. What you see is the earlier state.' }),
       h('button', { onclick: regenerate }, icon('refresh'), 'Review the new state')));
   }
-  var body = s.areas ? overviewEl(s) : filesEl(s.files, current);
+  var body = s.overview ? overviewEl(s) : filesEl(s.files, current);
   body.prepend(ledeEl(s));
   stage.append(body);
 }
 
 /**
- * §0, under its summary: the parts of the code the change touches, as a pull
- * request's description lists them, each file a jump to the section that shows it.
+ * §0, under its one sentence: the change's shape drawn, then the files it
+ * touches as GitHub's tree, each a jump to the section that shows it.
  */
 function overviewEl(s) {
   var t = [0, 0];
   for (var path in data.files) { var f = tally(data.files[path].rows); t[0] += f[0]; t[1] += f[1]; }
   var n = data.plain.length;
   return h('div', { class: 'stage-body' },
+    s.overview.sketches.length ? h('div', { class: 'sketches' }, s.overview.sketches.map(sketchEl)) : null,
     h('div', { class: 'overview-total' }, n + ' file' + (n === 1 ? '' : 's') + ' changed', statsEl(t[0], t[1])),
-    h('ol', { class: 'areas' }, s.areas.map(function (a) {
-      return h('li', { class: 'area' },
-        h('h2', { text: a.title }),
-        h('p', { class: 'summary', text: a.summary }),
-        a.paths.length ? h('ul', { class: 'area-files' }, a.paths.map(areaFileEl)) : null);
+    h('ul', { class: 'tree overview-tree', role: 'tree', 'aria-label': 'Changed files' }, treeRows('', renderStage, overviewNode)));
+}
+
+/** A drawing of the change's shape, each line led by ' ', '+' or '-' as a diff's are. */
+function sketchEl(k) {
+  return h('figure', { class: 'sketch' },
+    h('figcaption', { class: 'caption', text: k.caption }),
+    h('pre', {}, k.text.replace(/\s+$/, '').split('\n').map(function (l) {
+      return h('span', { class: ({ '+': 'add', '-': 'del' })[l[0]] || null, text: l || ' ' });
     })));
 }
 
-/** A file of an area, a jump to the section that owns its change; a rowless file's is the one that lists it. */
-function areaFileEl(path) {
+/** A file in the overview's tree: its +a -d and a jump to the section that owns its change; a rowless file's is the one that lists it. */
+function overviewNode(path) {
   var file = data.files[path];
   var t = tally(file.rows);
   var at = file.owners.find(function (o) { return o >= 0; });
   if (at == null) at = data.sections.findIndex(function (x) { return x.files.some(function (f) { return f.path === path; }); });
   var to = data.sections[at];
-  return h('li', {}, h('button', { class: 'ghost', disabled: !to, title: to ? 'Go to ' + sec(at) + '  ' + to.title : null, onclick: function () { go(at); } },
-    h('span', { class: 'path', text: path }), statsEl(t[0], t[1]), to ? h('span', { class: 'own', text: sec(at) }) : null));
+  return {
+    title: to ? path + '  ·  ' + sec(at) + '  ' + to.title : path,
+    open: to ? function () { go(at); } : null,
+    extra: h('span', { class: 'node-meta' }, statsEl(t[0], t[1]), to ? h('span', { class: 'own', text: sec(at) }) : null),
+  };
 }
 
 /** What the section does and the code it leans on: read once, above its code. */
