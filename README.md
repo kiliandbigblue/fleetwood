@@ -777,7 +777,10 @@ cmd/worker", then "the consumer" — and the page shows one section at a time, e
 changed line inside the function around it. Reading a diff file by file means
 holding the whole change in your head while jumping between files, and one
 interruption throws it all away; a section is small enough to read in one go, and
-checking it off is where you pick up again.
+checking it off is where you pick up again. Before the first section, §0 gives
+the change at a glance, as a pull request's description would: what it does as a
+whole, then each part of the code it touches with its files, each a jump to the
+section that shows it.
 
 What it reviews is the worktree as it stands, committed branch work and
 uncommitted edits together, against the merge base with its base, so commits

@@ -31,15 +31,49 @@ export interface RecapSection {
   refs?: RecapRef[];
 }
 
+/** One part of the code the change touches, as the overview names it. */
+export interface RecapArea {
+  title: string;
+  summary: string;
+  paths: string[];
+}
+
+/** The change at a glance, as a pull request's description gives it. */
+export interface RecapOverview {
+  summary: string;
+  areas: RecapArea[];
+}
+
 /** What the agent returns. */
 export interface Recap {
+  /** Absent from recaps kept before the overview existed. */
+  overview?: RecapOverview;
   sections: RecapSection[];
 }
 
 export const RECAP_SCHEMA = {
   type: 'object',
-  required: ['sections'],
+  required: ['overview', 'sections'],
   properties: {
+    overview: {
+      type: 'object',
+      required: ['summary', 'areas'],
+      properties: {
+        summary: { type: 'string' },
+        areas: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['title', 'summary', 'paths'],
+            properties: {
+              title: { type: 'string' },
+              summary: { type: 'string' },
+              paths: { type: 'array', items: { type: 'string' } },
+            },
+          },
+        },
+      },
+    },
     sections: {
       type: 'array',
       items: {
@@ -89,10 +123,18 @@ export const RECAP_SCHEMA = {
 
 export function recapPrompt(diff: string, base: string): string {
   return `You are preparing a code change for a human reviewer. You do not review it.
-Your job is to cut the change into sections that follow its logic, so the reviewer
-can read it top to bottom without jumping between files.
+Your job is to give the change at a glance, then cut it into sections that follow
+its logic, so the reviewer can read it top to bottom without jumping between files.
 
-Rules:
+The overview comes first, read before any code, as a pull request's description:
+- "summary": what the change does as a whole and how its parts fit together,
+  one or two short paragraphs, plain text.
+- "areas": the parts of the code it touches (a package, a service, a layer, the
+  tests), in the order of the sections. For each: a few-word title, one or two
+  sentences on what changes there, and the changed files it covers ("paths").
+  Mechanical files go in one last area of their own.
+
+Rules for the sections:
 - Neutral. Say what the code does, how the parts connect and what each part is
   for in the change. Never judge it, never guess the author's motives, never
   point at risks or things to check.
@@ -132,6 +174,8 @@ export interface TourSection {
   title: string;
   summary: string;
   mechanical: boolean;
+  /** Set only on the overview: §0, before the first section, with no code of its own. */
+  areas?: RecapArea[];
   /** Set on the section that collects what the agent left out. */
   uncovered?: boolean;
   files: TourSectionFile[];
@@ -172,24 +216,40 @@ function touchesChange(file: FileDiff | undefined, ref: RecapRef): boolean {
  */
 export function checkRecap(recap: Recap, files: FileDiff[]): CheckedRecap {
   const byPath = new Map(files.map((f) => [f.path, f]));
+  const resolve = (path: string): FileDiff | undefined => byPath.get(path) ?? files.find((f) => f.oldPath === path);
   const owners: Record<string, number[]> = {};
   for (const f of files) owners[f.path] = f.rows.map(() => -1);
 
   const errors: string[] = [];
-  const indexOf = (file: FileDiff, side: 'new' | 'old', line: number): number =>
-    file.rows.findIndex((row) => row[side] === line);
+  // The overview, when there is one, is section 0. Areas are prose: a path that
+  // names nothing in the diff is dropped, not an error as in a section.
+  const sections: TourSection[] = recap.overview
+    ? [{
+        title: 'Overview',
+        summary: recap.overview.summary,
+        mechanical: false,
+        areas: recap.overview.areas.map((area) => ({
+          ...area,
+          paths: area.paths.flatMap((p) => resolve(p)?.path ?? []),
+        })),
+        files: [],
+        refs: [],
+      }]
+    : [];
 
-  const sections: TourSection[] = recap.sections.map((section, s) => {
+  recap.sections.forEach((section, at) => {
+    // Its index on the page; `at + 1` is the recap's own § in errors.
+    const s = sections.length;
     const windows = new Map<string, [number, number][]>();
     const notes = new Map<string, string>();
     for (const change of section.changes) {
-      const file = byPath.get(change.path) ?? files.find((f) => f.oldPath === change.path);
+      const file = resolve(change.path);
       if (!file) {
-        errors.push(`§${s + 1}: ${change.path} is not in the diff`);
+        errors.push(`§${at + 1}: ${change.path} is not in the diff`);
         continue;
       }
       if (change.start > change.end) {
-        errors.push(`§${s + 1}: ${change.path} ${change.start}-${change.end} is backwards`);
+        errors.push(`§${at + 1}: ${change.path} ${change.start}-${change.end} is backwards`);
         continue;
       }
       if (change.note) notes.set(file.path, change.note);
@@ -204,7 +264,7 @@ export function checkRecap(recap: Recap, files: FileDiff[]): CheckedRecap {
         if (row.kind !== ' ' && own[i] === -1) own[i] = s;
       });
       if (first < 0) {
-        if (file.rows.length > 0) errors.push(`§${s + 1}: ${change.path} has no ${change.side} lines ${change.start}-${change.end}`);
+        if (file.rows.length > 0) errors.push(`§${at + 1}: ${change.path} has no ${change.side} lines ${change.start}-${change.end}`);
         windows.set(file.path, windows.get(file.path) ?? []);
         continue;
       }
@@ -216,7 +276,7 @@ export function checkRecap(recap: Recap, files: FileDiff[]): CheckedRecap {
       list.push([Math.max(0, Math.min(first, from)), Math.max(last, to)]);
       windows.set(file.path, list);
     }
-    return {
+    sections.push({
       title: section.title,
       summary: section.summary,
       mechanical: section.mechanical === true,
@@ -226,7 +286,7 @@ export function checkRecap(recap: Recap, files: FileDiff[]): CheckedRecap {
         ...(notes.has(path) ? { note: notes.get(path) } : {}),
       })),
       refs: (section.refs ?? []).filter((ref) => ref.start <= ref.end && !touchesChange(byPath.get(ref.path), ref)),
-    };
+    });
   });
   if (errors.length) throw new Error(`the recap does not match the diff:\n${errors.join('\n')}`);
 

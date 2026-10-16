@@ -11,7 +11,7 @@ import type { FleetSession } from './fleet.ts';
 import { agentDiff, indexTree, mergeBase, snapshotTree, wholeDiff } from './tourDiff.ts';
 import type { FileDiff } from './tourDiff.ts';
 import { RECAP_SCHEMA, checkRecap, plainDiff, recapPrompt } from './tourRecap.ts';
-import type { Recap } from './tourRecap.ts';
+import type { CheckedRecap, Recap } from './tourRecap.ts';
 import { tourPage } from './tourPage.ts';
 
 export const TOURS_DIR = join(FW_HOME, 'tours');
@@ -94,6 +94,8 @@ export interface TourOptions {
 interface Open extends TourOptions {
   key: string;
   files: FileDiff[];
+  /** The recap's cut, once it is ready: the files are fixed per key, so it never changes. */
+  checked?: CheckedRecap;
 }
 
 const tours = new Map<string, Open>();
@@ -189,7 +191,7 @@ async function build(tour: Open, state: TourState): Promise<void> {
     );
     const recap = result.structured_output as Recap | undefined;
     if (!recap?.sections) throw new Error('claude returned no recap');
-    checkRecap(recap, tour.files);
+    tour.checked = checkRecap(recap, tour.files);
     state.recap = recap;
     state.session = result.session_id;
     state.status = 'ready';
@@ -238,6 +240,12 @@ async function prepare(options: TourOptions): Promise<Open> {
   return tour;
 }
 
+/** The sections as the page indexes them, cut once per tour. */
+function checkedOf(tour: Open, state: TourState): CheckedRecap | undefined {
+  if (state.status !== 'ready' || !state.recap) return undefined;
+  return (tour.checked ??= checkRecap(state.recap, tour.files));
+}
+
 async function ask(tour: Open, state: TourState, comment: TourComment): Promise<void> {
   comment.asking = true;
   comment.askedAt = Date.now();
@@ -250,11 +258,11 @@ async function ask(tour: Open, state: TourState, comment: TourComment): Promise<
       i < at && c.kind === 'question' && c.answer && !c.failed &&
       c.section === comment.section && c.path === comment.path && c.row === comment.row,
   );
-  const section = state.recap?.sections[comment.section];
+  const section = checkedOf(tour, state)?.sections[comment.section]?.title;
   const file = tour.files.find((f) => f.path === comment.path);
   const row = comment.row !== undefined ? file?.rows[comment.row] : undefined;
   const where = row && comment.path ? `${comment.path}:${row.new ?? row.old}${row.kind === '-' ? ' (removed line)' : ''}` : undefined;
-  const prompt = `The reviewer has a question while reading the section "${section?.title ?? '?'}".
+  const prompt = `The reviewer has a question while reading the section "${section ?? '?'}".
 ${where ? `It is about ${where}:\n${row?.text}\n` : ''}${earlier.length ? `\nEarlier in this thread:\n${earlier.map((c) => `Q: ${c.body}\nA: ${c.answer}`).join('\n\n')}\n` : ''}
 Question: ${comment.body}
 
@@ -284,7 +292,7 @@ async function refLines(tour: Open, state: TourState, path: string, start: numbe
  * The files and the plain diff never wait for the recap: they are read while it builds.
  */
 async function pageData(tour: Open, state: TourState): Promise<unknown> {
-  const checked = state.status === 'ready' && state.recap ? checkRecap(state.recap, tour.files) : undefined;
+  const checked = checkedOf(tour, state);
   const files = Object.fromEntries(
     tour.files.map((f) => [f.path, { rows: f.rows, owners: checked?.owners[f.path] ?? [], status: f.status, oldPath: f.oldPath }]),
   );
@@ -346,9 +354,9 @@ async function sendConcerns(tour: Open, state: TourState): Promise<SendOutcome> 
   const concerns = pending.map((c): Concern => {
     const file = tour.files.find((f) => f.path === c.path);
     const row = c.row !== undefined ? file?.rows[c.row] : undefined;
-    const title = state.recap?.sections[c.section]?.title;
+    const title = checkedOf(tour, state)?.sections[c.section]?.title;
     return {
-      path: c.path ?? `section "${title ?? c.section + 1}"`,
+      path: c.path ?? `section "${title ?? "?"}"`,
       line: row?.new ?? row?.old ?? 0,
       side: row?.kind === '-' ? 'old' : 'new',
       code: row?.text ?? '',

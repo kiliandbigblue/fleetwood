@@ -103,6 +103,26 @@ test('checkRecap places every changed line once, and collects what was left out'
   assert.deepEqual(checked.owners['old.txt'], [2]);
 });
 
+test('the overview is section 0, and the sections after it own their lines', () => {
+  const files = [
+    { path: 'a.go', status: 'modified' as const, binary: false, rows: [{ kind: '+' as const, new: 1, text: 'one()' }] },
+    { path: 'b.go', oldPath: 'old.go', status: 'renamed' as const, binary: false, rows: [{ kind: '+' as const, new: 1, text: 'two()' }] },
+  ];
+  const checked = checkRecap(
+    {
+      // An area may name a renamed file by its old path; one that names nothing is dropped.
+      overview: { summary: 'Adds one.', areas: [{ title: 'a', summary: '', paths: ['a.go', 'old.go', 'nope.go'] }] },
+      sections: [{ title: 'a', summary: '', changes: [{ path: 'a.go', side: 'new', start: 1, end: 1 }] }],
+    },
+    files,
+  );
+  assert.deepEqual(checked.sections[0]?.areas?.[0]?.paths, ['a.go', 'b.go']);
+  assert.deepEqual(checked.owners['a.go'], [1]);
+  // What the recap left out comes after the overview and the recap's sections.
+  assert.equal(checked.sections[2]?.uncovered, true);
+  assert.deepEqual(checked.owners['b.go'], [2]);
+});
+
 test('an unclaimed blank line joins the section beside it instead of Not covered', () => {
   const files = [
     {

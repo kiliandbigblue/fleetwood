@@ -199,6 +199,14 @@ button kbd { border-color: currentColor; opacity: .7; color: inherit; }
 /* what the section does, read once before its code */
 .lede { display: grid; gap: var(--s3); justify-items: start; margin: 0 0 var(--s6); }
 .lede .summary { max-width: 110ch; font-size: 16px; line-height: 1.6; }
+.overview-total { display: flex; align-items: center; gap: var(--s3); color: var(--soft); margin: 0 0 var(--s4); }
+.areas { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s4); max-width: 110ch; }
+.area { border: 1px solid var(--edge); border-radius: var(--radius); padding: var(--s4); }
+.area h2 { margin: 0 0 var(--s2); font: 600 14px/1.4 var(--prose); }
+.area-files { list-style: none; margin: var(--s3) 0 0; padding: 0; display: grid; gap: 2px; }
+.area-files button { display: flex; align-items: center; gap: var(--s3); width: 100%; text-align: left; padding: 3px 6px; margin-left: -6px; }
+.area-files .path { font: 12px var(--code); color: var(--text); overflow-wrap: anywhere; flex: 1; min-width: 0; }
+.area-files .own { color: var(--accent); font-variant-numeric: tabular-nums; }
 .lede-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4); }
 .leans { width: 100%; }
 .leans > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: var(--s2); color: var(--soft); padding: 3px 6px; margin-left: -6px; border-radius: var(--radius); }
@@ -454,6 +462,7 @@ const PAGE_SCRIPT = String.raw`
 var base = location.pathname.replace(/\/$/, '');
 var data = null;
 var current = 0;
+var numFrom = 1;          // the number section 0 goes by: 0 when it is the overview
 var cursor = null;        // { path, row } of the line under the cursor
 var drafts = {};          // thread key -> unsent text, per line so a draft never moves
 var kinds = {};           // thread key -> 'question' or 'concern'
@@ -719,8 +728,9 @@ function load(first) {
     if (first) view = d.sections ? opensOn : 'plain';
     var arrived = d.sections && before && !before.sections;
     if ((first || arrived) && d.sections) {
+      numFrom = d.sections[0] && d.sections[0].areas ? 0 : 1;
       // A §n in the address wins, so a reload stays put; else the first not yet reviewed.
-      var asked = Number((location.hash.match(/^#(\d+)$/) || [])[1]) - 1;
+      var asked = Number((location.hash.match(/^#(\d+)$/) || [])[1]) - numFrom;
       var open = d.sections.findIndex(function (_, i) { return d.checked.indexOf(i) < 0; });
       current = asked >= 0 && asked < d.sections.length ? asked : open < 0 ? 0 : open;
     }
@@ -742,7 +752,7 @@ function announce(before, d) {
   d.comments.forEach(function (c) {
     if (!was[c.id] || c.asking || announced[c.id + '@' + c.askedAt]) return;
     announced[c.id + '@' + c.askedAt] = true;
-    var where = c.path ? rowLabel(c.path, c.row) : '§' + (c.section + 1);
+    var where = c.path ? rowLabel(c.path, c.row) : sec(c.section);
     var on = cursorOn();
     var here = c.section === current && (on ? c.path === on.path && c.row === on.row : !c.path);
     if (here) return toast((c.failed ? 'No answer on ' : 'Answered on ') + where);
@@ -768,6 +778,9 @@ function regenerate() {
 }
 
 function section() { return data.sections[current]; }
+/** A section's number, in its heading and the address alike: the overview is §0, the sections count from §1. */
+function num(i) { return i + numFrom; }
+function sec(i) { return '§' + num(i); }
 function owner(path, row) { return data.files[path].owners[row]; }
 function threadFor(path, row) {
   return path ? lineComments(path, row) : data.comments.filter(function (c) { return c.section === current && !c.path; });
@@ -814,9 +827,9 @@ function sectionSteps() {
   return data.sections.map(function (s, i) {
     var state = i === current ? 'current' : data.checked.indexOf(i) >= 0 ? 'done' : 'todo';
     return {
-      state: state, mark: { current: 'now', done: 'done', todo: 'todo' }[state], short: String(i + 1), n: '§' + (i + 1),
-      title: s.title, tip: '§' + (i + 1) + '  ' + s.title, warn: !!s.uncovered,
-      tag: s.uncovered ? 'not placed by the recap' : s.mechanical ? 'mechanical' : null,
+      state: state, mark: { current: 'now', done: 'done', todo: 'todo' }[state], short: String(num(i)), n: sec(i),
+      title: s.title, tip: sec(i) + '  ' + s.title, warn: !!s.uncovered,
+      tag: s.uncovered ? 'not placed by the recap' : s.mechanical ? 'mechanical' : s.areas ? 'the change at a glance' : null,
       pick: function () { go(i); },
     };
   });
@@ -1010,12 +1023,12 @@ function sectionStage(stage) {
   var s = section();
   var isDone = data.checked.indexOf(current) >= 0;
   stage.append(h('header', { class: 'stage-head' },
-    h('h1', {}, h('span', { class: 'n', text: '§' + (current + 1) }), h('span', { text: s.title }),
+    h('h1', {}, h('span', { class: 'n', text: sec(current) }), h('span', { text: s.title }),
       s.mechanical ? h('span', { class: 'kind', text: 'mechanical' }) : null),
     h('div', { class: 'head-actions' },
       queuedEl(),
-      viewedCount(s.files),
-      layoutEl(),
+      s.areas ? null : viewedCount(s.files),
+      s.areas ? null : layoutEl(),
       h('button', { class: isDone ? 'done' : 'primary', onclick: toggleChecked },
         icon(isDone ? 'check' : 'done'), isDone ? 'Reviewed' : 'Mark reviewed', h('kbd', { text: 'x' })))));
   if (stale) {
@@ -1023,9 +1036,38 @@ function sectionStage(stage) {
       h('span', { text: 'The worktree has moved since this review was pinned. What you see is the earlier state.' }),
       h('button', { onclick: regenerate }, icon('refresh'), 'Review the new state')));
   }
-  var body = filesEl(s.files, current);
+  var body = s.areas ? overviewEl(s) : filesEl(s.files, current);
   body.prepend(ledeEl(s));
   stage.append(body);
+}
+
+/**
+ * §0, under its summary: the parts of the code the change touches, as a pull
+ * request's description lists them, each file a jump to the section that shows it.
+ */
+function overviewEl(s) {
+  var t = [0, 0];
+  for (var path in data.files) { var f = tally(data.files[path].rows); t[0] += f[0]; t[1] += f[1]; }
+  var n = data.plain.length;
+  return h('div', { class: 'stage-body' },
+    h('div', { class: 'overview-total' }, n + ' file' + (n === 1 ? '' : 's') + ' changed', statsEl(t[0], t[1])),
+    h('ol', { class: 'areas' }, s.areas.map(function (a) {
+      return h('li', { class: 'area' },
+        h('h2', { text: a.title }),
+        h('p', { class: 'summary', text: a.summary }),
+        a.paths.length ? h('ul', { class: 'area-files' }, a.paths.map(areaFileEl)) : null);
+    })));
+}
+
+/** A file of an area, a jump to the section that owns its change; a rowless file's is the one that lists it. */
+function areaFileEl(path) {
+  var file = data.files[path];
+  var t = tally(file.rows);
+  var at = file.owners.find(function (o) { return o >= 0; });
+  if (at == null) at = data.sections.findIndex(function (x) { return x.files.some(function (f) { return f.path === path; }); });
+  var to = data.sections[at];
+  return h('li', {}, h('button', { class: 'ghost', disabled: !to, title: to ? 'Go to ' + sec(at) + '  ' + to.title : null, onclick: function () { go(at); } },
+    h('span', { class: 'path', text: path }), statsEl(t[0], t[1]), to ? h('span', { class: 'own', text: sec(at) }) : null));
 }
 
 /** What the section does and the code it leans on: read once, above its code. */
@@ -1140,6 +1182,15 @@ function viewedCount(files) {
   return h('span', { class: 'viewed-count' }, h('b', { text: n + ' / ' + files.length }), ' viewed');
 }
 
+/** [added, removed] rows of a file within its windows; the whole file when none are given. */
+function tally(rows, windows) {
+  var t = [0, 0];
+  (windows || [[0, rows.length - 1]]).forEach(function (w) {
+    for (var i = w[0]; i <= w[1]; i++) { if (rows[i].kind === '+') t[0]++; else if (rows[i].kind === '-') t[1]++; }
+  });
+  return t;
+}
+
 /** GitHub's +a -d and its five squares, green for the share added. */
 function statsEl(adds, dels) {
   var total = adds + dels, n = Math.min(5, total), g = total ? Math.round(adds / total * n) : 0;
@@ -1160,8 +1211,7 @@ function fileEl(sf, at) {
   var hidden = at != null && data.sections[at].mechanical && !diffOpen[sf.path] && !whole;
   var vkey = viewKey(sf.path);
   var shut = vkey in folded ? folded[vkey] : !!viewed[vkey];
-  var adds = 0, dels = 0;
-  sf.windows.forEach(function (w) { for (var i = w[0]; i <= w[1]; i++) { if (rows[i].kind === '+') adds++; else if (rows[i].kind === '-') dels++; } });
+  var t = tally(rows, sf.windows);
   var marks = rows.length && !hidden ? wordDiff(sf.path) : {};
   var windows = whole ? [[0, rows.length - 1]] : sf.windows;
   // An added or deleted file has only one side; split would leave half the page blank.
@@ -1212,7 +1262,7 @@ function fileEl(sf, at) {
     return h('div', { class: cls, 'data-path': sf.path, 'data-row': i, onclick: function () { setCursor(sf.path, i, false); if (lineComments(sf.path, i).length) setDrawer(true); } },
       dotFor(sf.path, i),
       cells,
-      split && !side ? null : foreign ? h('span', { class: 'own', text: '§' + (own + 1) }) : h('span'));
+      split && !side ? null : foreign ? h('span', { class: 'own', text: sec(own) }) : h('span'));
   }
   /** Rows a..b. Side by side, each run of removed lines faces the added run after it, line for line. */
   function span(a, b) {
@@ -1259,7 +1309,7 @@ function fileEl(sf, at) {
       hidden ? h('button', { class: 'ghost', onclick: function () { diffOpen[sf.path] = true; renderStage(); } }, icon('expand'),
         'Show diff · ' + rows.filter(function (r) { return r.kind !== ' '; }).length + ' changed lines')
       : null,
-      adds + dels ? statsEl(adds, dels) : null,
+      t[0] + t[1] ? statsEl(t[0], t[1]) : null,
       h('label', { class: 'viewed' + (viewed[vkey] ? ' on' : '') },
         h('input', { type: 'checkbox', checked: !!viewed[vkey], onchange: function (e) { setViewed(sf.path, e.target.checked); } }), 'Viewed')),
     rows.length && !hidden && !shut ? box : null);
@@ -1583,9 +1633,9 @@ function queueEl() {
       h('button', { class: 'send', disabled: !pending.length, onclick: send }, icon('send'), 'Send to the author')));
   if (pending.length) {
     box.append(h('ol', { 'aria-label': 'Concerns to send' }, pending.map(function (c) {
-      var where = c.path ? rowLabel(c.path, c.row) : '§' + (c.section + 1);
+      var where = c.path ? rowLabel(c.path, c.row) : sec(c.section);
       return h('li', {}, h('button', { onclick: function () { goTo(c); } },
-        h('span', { class: 'loc', text: '§' + (c.section + 1) + ' · ' + where }),
+        h('span', { class: 'loc', text: sec(c.section) + ' · ' + where }),
         h('span', { class: 'txt', text: c.body })));
     })));
   }
@@ -1776,7 +1826,7 @@ function setView(next) {
   view = opensOn = next;
   try { localStorage.setItem('fw-review-view', next); } catch (e) {}
   var own = cursor ? owner(cursor.path, cursor.row) : -1;
-  if (view === 'sections' && own >= 0 && own !== current) { current = own; history.replaceState(null, '', '#' + (own + 1)); }
+  if (view === 'sections' && own >= 0 && own !== current) { current = own; history.replaceState(null, '', '#' + num(own)); }
   render();
   document.getElementById('stage').scrollTop = 0;
   if (cursor) setCursor(cursor.path, cursor.row, true);
@@ -1785,7 +1835,7 @@ function setView(next) {
 function go(i) {
   if (view !== 'sections' || i < 0 || i >= data.sections.length) return;
   current = i; cursor = null;
-  history.replaceState(null, '', '#' + (i + 1));
+  history.replaceState(null, '', '#' + num(i));
   render();
   document.getElementById('stage').scrollTop = 0;
 }
@@ -1798,7 +1848,7 @@ function toggleChecked() {
     if (on) {
       var next = data.sections.findIndex(function (_, i) { return i > current && data.checked.indexOf(i) < 0; });
       if (next < 0) next = data.sections.findIndex(function (_, i) { return data.checked.indexOf(i) < 0; });
-      if (next >= 0) { toast('§' + (current + 1) + ' reviewed'); return go(next); }
+      if (next >= 0) { toast(sec(current) + ' reviewed'); return go(next); }
       toast('Every section reviewed');
     }
     render();
