@@ -167,7 +167,7 @@ export type {
   TicketLink,
   TicketStage,
 } from './plan.ts';
-export { ticketIdOf } from './plan.ts';
+export { ticketIdOf } from './naming.ts';
 export type { CursorUsage } from './cursorUsage.ts';
 export { formatUsd } from './cursorUsage.ts';
 export type { DaemonWorker } from './claudeDaemon.ts';

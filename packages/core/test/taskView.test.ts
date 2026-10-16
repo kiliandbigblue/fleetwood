@@ -8,9 +8,13 @@ import {
   orderReposByStack,
   splitPrs,
   partitionAgents,
+  prLabel,
   prRepoTags,
   prSummary,
   repoSummary,
+  ticketColumn,
+  worktreeLabel,
+  worktreeRepoTags,
 } from '../src/taskView.ts';
 import type { FleetAgent } from '../src/fleet.ts';
 import type { Task, TaskRepo } from '../src/task.ts';
@@ -517,4 +521,46 @@ test('a dormant task whose session was hidden stays folded away', () => {
 test('a task with a live session is not dormant, and one never started keeps its place', () => {
   const tasks = [dormant('running', '10-running', '10-running'), dormant('b'), dormant('a')];
   assert.deepEqual(dormantTasks(tasks).shown.map((t) => t.slug), ['b', 'a']);
+});
+
+function worktree(name: string, repo?: string): TaskRepo {
+  return { name, path: `/tasks/t/${name}`, repo, dirty: 0 };
+}
+
+test('the ticket column shows only when the rows work two tickets', () => {
+  const repos = [worktree('atlas-dev-1865-a'), worktree('atlas')];
+  assert.equal(ticketColumn(repos, [pr({ branch: 'feature/DEV-1866-b' })]), true);
+  // One ticket however it is spelt, and a title's id counts as much as a branch's.
+  assert.equal(ticketColumn(repos, [pr({ branch: 'feature/DEV-1865-a' })]), false);
+  assert.equal(ticketColumn(repos, [pr({ branch: 'fix/typo', title: 'DEV-1867 c' })]), true);
+  assert.equal(ticketColumn([], []), false);
+});
+
+test('a worktree row says its ticket and the rest of its name', () => {
+  assert.deepEqual(worktreeLabel(worktree('atlas-dev-1866-merchants-can-force'), 'pick-dev-1844'), {
+    ticket: 'DEV-1866',
+    name: 'merchants-can-force',
+  });
+  // Nothing after the id: the name the row had before, the task's slug off it.
+  assert.deepEqual(worktreeLabel(worktree('atlas-pick-dev-1844'), 'pick-dev-1844'), {
+    ticket: 'DEV-1844',
+    name: 'atlas',
+  });
+  assert.deepEqual(worktreeLabel(worktree('atlas'), 'pick-dev-1844'), { ticket: undefined, name: 'atlas' });
+});
+
+test('a pull request row keeps a title that is a sentence', () => {
+  assert.deepEqual(prLabel(pr({ branch: 'feature/DEV-1866-b', title: 'feature/DEV-1866-b' })), {
+    ticket: 'DEV-1866',
+    name: 'b',
+  });
+  assert.equal(prLabel(pr({ branch: 'feature/DEV-1866-b', title: 'Fix DEV-1866 flow' })).name, 'Fix DEV-1866 flow');
+});
+
+test('worktree repo tags follow the pull request rule, a remote-less one counting as itself', () => {
+  assert.deepEqual(
+    worktreeRepoTags([worktree('atlas-a', 'bigbluedisco/atlas'), worktree('reflow-b', 'bigbluedisco/reflow')]),
+    { 'atlas-a': 'atlas', 'reflow-b': 'reflow' },
+  );
+  assert.deepEqual(worktreeRepoTags([worktree('atlas-a', 'bigbluedisco/atlas'), worktree('atlas-b', 'bigbluedisco/atlas')]), {});
 });

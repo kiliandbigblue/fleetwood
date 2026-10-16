@@ -110,3 +110,52 @@ export function worktreeShortName(dirName: string, taskSlug: string): string {
   if (!dirName.endsWith(suffix) || dirName.length === suffix.length) return dirName;
   return dirName.slice(0, -suffix.length);
 }
+
+/**
+ * The ticket a task works, off its slug or its branch.
+ *
+ * Case-insensitive, and returned upper-case: fw branches carry `dev-1735`
+ * because `slugify` lowers everything, while Notion and every pull request seen
+ * linked so far write `DEV-1735`. Bounded on the left, so a word that merely
+ * ends in `dev` (`kdev-2`) is not read as a ticket.
+ */
+export function ticketIdOf(text: string): string | undefined {
+  return ticketIdsIn(text)[0];
+}
+
+/**
+ * Every ticket id in a run of text, in order, by the same rule as `ticketIdOf` —
+ * so a `Blocked by` line and a branch name can never disagree on what an id is.
+ */
+export function ticketIdsIn(text: string): string[] {
+  return [...text.matchAll(/(?:^|[^a-z0-9])dev-(\d+)/gi)].map((match) => `DEV-${match[1]}`);
+}
+
+/**
+ * A name with everything up to its ticket id taken off: `atlas-dev-1866-merchants-…`
+ * and `feature/DEV-1866-merchants-…` both read `merchants-…`.
+ *
+ * For rows that show the id in a chip of their own, where the repo, the type
+ * prefix and the id were the same words three times before the part that tells
+ * two rows apart. Only a slug-like prefix comes off — nothing with a space in
+ * it — so a human pull request title (`Fix DEV-1866 flow`) is not cut.
+ *
+ * Undefined when there is nothing to take off, or nothing would be left: the
+ * caller's own name for the row is then the right one, and which it is differs
+ * by row.
+ */
+export function withoutTicketPrefix(name: string): string | undefined {
+  const match = /^(?:[a-z0-9/_.-]*[^a-z0-9\s])?dev-\d+[^a-z0-9]*/i.exec(name);
+  if (!match || match[0].length === name.length) return undefined;
+  return name.slice(match[0].length);
+}
+
+/**
+ * The ticket a pull request works: its branch's id, else its title's.
+ *
+ * The branch first because fw writes it; the title for the pull requests opened
+ * by hand on a branch that never carried one.
+ */
+export function prTicketId(pr: { branch?: string; title: string }): string | undefined {
+  return ticketIdOf(pr.branch ?? '') ?? ticketIdOf(pr.title);
+}

@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { FleetAgent } from '@fleetwood/core';
+import type { RowLabel } from '@fleetwood/core/taskView';
 // The leaf module, not the barrel: importing a value from `@fleetwood/core`
 // pulls tmux, `fs` and `child_process` into the renderer bundle — which is the
 // reason the formatter lives apart from the reader in the first place.
 import { describeContext, formatContextTokens } from '@fleetwood/core/contextFormat';
 import { duration, send } from './api.ts';
+import { TicketChip } from './TicketChip.tsx';
 import { AGENT_STATUS_LABEL, agentLabel, grantsLastingPermission, PROVENANCE_MARK } from './fleetSignals.ts';
 
 interface Props {
@@ -17,6 +19,13 @@ interface Props {
    * agent at the task root has nothing to say here.
    */
   where?: string;
+  /**
+   * The worktree said as its ticket and repo instead of its full name, when the
+   * task's rows carry the ticket column — see `ticketColumn`. The full name
+   * stays in the tooltip. An agent at the task root gets an empty one, which
+   * holds the slot so the column still lines up.
+   */
+  whereLabel?: RowLabel;
   onResult: (message: string, ok: boolean) => void;
 }
 
@@ -33,7 +42,7 @@ function killNote(agent: FleetAgent): string {
   return 'close this agent — its pane, scrollback and session stay';
 }
 
-export function AgentRow({ agent, where, onResult }: Props): React.JSX.Element {
+export function AgentRow({ agent, where, whereLabel, onResult }: Props): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [confirmingKill, setConfirmingKill] = useState(false);
 
@@ -79,9 +88,10 @@ export function AgentRow({ agent, where, onResult }: Props): React.JSX.Element {
           {inferred ? `, ${inferred.note}` : ''},
         </span>
         <span className={`tool tool-${agent.tool}`}>{agent.tool}</span>
+        {whereLabel && <TicketChip id={whereLabel.ticket} />}
         {where && (
           <span className="agent-where" title={`working in ${where}`}>
-            {where}
+            {whereLabel?.name || where}
           </span>
         )}
         {agent.nested && (

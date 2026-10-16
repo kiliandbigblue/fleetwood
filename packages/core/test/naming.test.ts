@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hasDriftedOffBranch, worktreeDirName, worktreeShortName } from '../src/naming.ts';
+import {
+  hasDriftedOffBranch,
+  prTicketId,
+  withoutTicketPrefix,
+  worktreeDirName,
+  worktreeShortName,
+} from '../src/naming.ts';
 import { repoSummary } from '../src/taskView.ts';
 import type { TaskRepo } from '../src/task.ts';
 
@@ -122,4 +128,25 @@ test('a name that claims no slug is left whole', () => {
 test('a name that is nothing but its slug keeps the name', () => {
   // Stripping would leave the row with no identifier at all.
   assert.equal(worktreeShortName('-ui-refonte', 'ui-refonte'), '-ui-refonte');
+});
+
+test('a name loses everything up to its ticket id', () => {
+  assert.equal(withoutTicketPrefix('atlas-dev-1866-merchants-can-force'), 'merchants-can-force');
+  assert.equal(withoutTicketPrefix('feature/DEV-1866-merchants-can-force'), 'merchants-can-force');
+  assert.equal(withoutTicketPrefix('DEV-1866: Merchants can force'), 'Merchants can force');
+});
+
+test('a sentence, a name with no id, or only an id is not cut', () => {
+  assert.equal(withoutTicketPrefix('Fix the DEV-1866 flow'), undefined);
+  assert.equal(withoutTicketPrefix('Fix DEV-1866 flow'), undefined);
+  assert.equal(withoutTicketPrefix('Revert DEV-1866: foo'), undefined);
+  assert.equal(withoutTicketPrefix('atlas'), undefined);
+  assert.equal(withoutTicketPrefix('kdev-2-tooling'), undefined);
+  assert.equal(withoutTicketPrefix('atlas-dev-1866'), undefined);
+});
+
+test('a pull request works its branch ticket, else its title one', () => {
+  assert.equal(prTicketId({ branch: 'feature/dev-1865-a', title: 'DEV-1866 b' }), 'DEV-1865');
+  assert.equal(prTicketId({ branch: 'fix/typo', title: 'DEV-1866 b' }), 'DEV-1866');
+  assert.equal(prTicketId({ title: 'no ticket' }), undefined);
 });

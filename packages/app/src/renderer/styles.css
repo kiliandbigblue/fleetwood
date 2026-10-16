@@ -3685,6 +3685,27 @@ button.activity:focus-visible {
 }
 
 /*
+ * A row's ticket id — see `TicketChip`. A fixed width, so an empty slot holds
+ * the column on a row with no id; hued like a plan, from the theme's accent.
+ */
+.ticket-chip {
+  --ticket: oklch(from var(--accent) l c var(--ticket-h));
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  width: 9ch;
+  text-align: center;
+  color: var(--ticket);
+  border: 1px solid color-mix(in oklch, var(--ticket) 45%, transparent);
+  border-radius: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  flex: none;
+}
+.ticket-chip:empty {
+  border-color: transparent;
+}
+
+/*
  * Which repo a pull request is on — worn only when the card holds more than one.
  *
  * Reads as a label rather than a state: a border instead of the filled `.badge`

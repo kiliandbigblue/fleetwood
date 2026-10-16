@@ -10,9 +10,9 @@ import {
   linkTickets,
   readMerged,
   readPlan,
-  ticketIdOf,
   ticketStage,
 } from '../src/plan.ts';
+import { ticketIdOf } from '../src/naming.ts';
 import type { Plan, Ticket, TicketLink } from '../src/plan.ts';
 import type { DeployState } from '../src/deployState.ts';
 import type { TaskPr } from '../src/taskPrs.ts';

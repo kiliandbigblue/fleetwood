@@ -1,7 +1,7 @@
 import { run } from './exec.ts';
 import { mapLimit } from './github.ts';
 import { extractToken } from './limits.ts';
-import { ticketIdsIn } from './plan.ts';
+import { ticketIdsIn } from './naming.ts';
 import type { Blocker, Plan, Ticket } from './plan.ts';
 
 /*

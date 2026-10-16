@@ -1,4 +1,4 @@
-import { hasDriftedOffBranch } from './naming.ts';
+import { hasDriftedOffBranch, prTicketId, ticketIdOf, withoutTicketPrefix, worktreeShortName } from './naming.ts';
 import { isHidden, sortSessions } from './sessionOrder.ts';
 import type { FleetAgent } from './fleet.ts';
 import type { PullRequest } from './github.ts';
@@ -294,9 +294,67 @@ export function prRepoTags(prs: TaskPr[]): Record<string, string> {
   const tags: Record<string, string> = {};
   if (new Set(prs.map((pr) => pr.repo)).size < 2) return tags;
   for (const pr of prs) {
-    tags[`${pr.repo}#${pr.number}`] = pr.repo.split('/').pop() ?? pr.repo;
+    tags[`${pr.repo}#${pr.number}`] = repoShortName(pr.repo);
   }
   return tags;
+}
+
+/** A worktree's repo, short — its directory name when it has no remote. */
+export function worktreeRepo(repo: TaskRepo): string {
+  return repo.repo ? repoShortName(repo.repo) : repo.name;
+}
+
+/** `bigbluedisco/atlas` → `atlas` — see `prRepoTags` for why the owner goes. */
+export function repoShortName(repo: string): string {
+  return repo.split('/').pop() ?? repo;
+}
+
+/**
+ * The repo each of a task's worktrees is on, keyed by directory name, by the
+ * rule `prRepoTags` keeps: empty unless there are two repos to tell apart.
+ *
+ * A worktree with no remote is named for its directory, which on such a legacy
+ * checkout *is* the repo — so it counts as the repo it is, not as a second one.
+ */
+export function worktreeRepoTags(repos: TaskRepo[]): Record<string, string> {
+  const tags = Object.fromEntries(repos.map((repo) => [repo.name, worktreeRepo(repo)]));
+  return new Set(Object.values(tags)).size < 2 ? {} : tags;
+}
+
+/**
+ * What a row says when the task carries the ticket column: the id for the chip,
+ * and the name with the id and everything before it gone, since the chip and
+ * the repo tag now say that part.
+ */
+export interface RowLabel {
+  ticket?: string;
+  name: string;
+}
+
+export function worktreeLabel(repo: TaskRepo, taskSlug: string): RowLabel {
+  return {
+    ticket: ticketIdOf(repo.name),
+    // No id to take off, and the name is the repo and the task's branch — which
+    // is what `worktreeShortName` is already for.
+    name: withoutTicketPrefix(repo.name) ?? worktreeShortName(repo.name, taskSlug),
+  };
+}
+
+export function prLabel(pr: TaskPr): RowLabel {
+  return { ticket: prTicketId(pr), name: withoutTicketPrefix(pr.title) ?? pr.title };
+}
+
+/**
+ * Whether a task's rows carry the ticket column: only when they work at least
+ * two tickets, since on a task working one the chip restates the heading on
+ * every row.
+ *
+ * One question over worktrees and pull requests together, so the lists cannot
+ * disagree about whether the column is there.
+ */
+export function ticketColumn(repos: TaskRepo[], prs: TaskPr[]): boolean {
+  const ids = [...repos.map((repo) => ticketIdOf(repo.name)), ...prs.map(prTicketId)];
+  return new Set(ids.filter((id) => id !== undefined)).size > 1;
 }
 
 /**

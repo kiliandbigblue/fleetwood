@@ -24,7 +24,8 @@ import { needsDeploy } from '@fleetwood/core/deployState';
 import { isHidden, sessionLabel, sortSessions } from '@fleetwood/core/sessionOrder';
 import { isFleetSession } from '@fleetwood/core/fleetList';
 import { dormantTasks } from '@fleetwood/core/taskView';
-import { groupFleet, hasLiveAgent, linkTickets, OTHER_GROUP, readMerged, readPlan, ticketIdOf } from '@fleetwood/core/plan';
+import { groupFleet, hasLiveAgent, linkTickets, OTHER_GROUP, readMerged, readPlan } from '@fleetwood/core/plan';
+import { prTicketId, ticketIdOf } from '@fleetwood/core/naming';
 import { resolveFocus } from './focus.ts';
 import {
   answerFocusedPrompt,
@@ -553,7 +554,7 @@ export function App(): React.JSX.Element {
    */
   const prByTicket = new Map<string, string>();
   for (const pr of snapshot?.prs?.mine ?? []) {
-    const id = ticketIdOf(pr.branch ?? '') ?? ticketIdOf(pr.title);
+    const id = prTicketId(pr);
     if (id && !prByTicket.has(id)) prByTicket.set(id, `${pr.repo}#${pr.number}`);
   }
   const ticketBySlug = new Map(

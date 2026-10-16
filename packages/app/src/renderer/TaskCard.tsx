@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { FleetSession, PlanTicket, StackRow, Task, TaskPr, TaskRepo, TaskStatus, TicketStage } from '@fleetwood/core';
+import type { RowLabel } from '@fleetwood/core/taskView';
 // The leaf module: the barrel re-exports tmux and process scanning, which fail the
 // renderer bundle on `node:child_process`.
 import {
@@ -8,11 +9,16 @@ import {
   isMerged,
   orderReposByStack,
   partitionAgents,
+  prLabel,
   prRepoTags,
   prSummary,
   repoSummary,
   splitPrs,
+  ticketColumn,
   VIA_LABEL,
+  worktreeLabel,
+  worktreeRepo,
+  worktreeRepoTags,
 } from '@fleetwood/core/taskView';
 import { STATUS_LABEL, taskStatus } from '@fleetwood/core/taskStatus';
 import { hasDriftedOffBranch, worktreeShortName } from '@fleetwood/core/naming';
@@ -26,6 +32,7 @@ import { TicketId } from './Plan.tsx';
 import type { MenuItem } from './CardMenu.tsx';
 import { Slug } from './Slug.tsx';
 import { TaskNotes } from './TaskNotes.tsx';
+import { TicketChip } from './TicketChip.tsx';
 import { send } from './api.ts';
 import { blockedPane, byUrgency, leadNote, liveSeverity, needsYouLabel, prHeadline } from './fleetSignals.ts';
 
@@ -136,6 +143,8 @@ export function RepoRow({
   session,
   editor,
   base,
+  label,
+  repoTag,
   onResult,
 }: {
   repo: TaskRepo;
@@ -154,6 +163,10 @@ export function RepoRow({
    * below off the commit graph, and uses the trunk when there is none.
    */
   base?: string;
+  /** The row's ticket and short name, when the task carries the ticket column — see `ticketColumn`. */
+  label?: RowLabel;
+  /** The repo, when the label took it out of the name and the task spans several. */
+  repoTag?: string;
   onResult: Props['onResult'];
 }): React.JSX.Element {
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -170,8 +183,15 @@ export function RepoRow({
           counts, and the key `removeRepoFromTask` and `partitionAgents` are
           held by — a local holding the short form would eventually reach one
           of them, and the drift check would then never match anything. */}
+      {label && <TicketChip id={label.ticket} />}
+      {/* A worktree that is just the repo would say its name twice. */}
+      {repoTag && label?.name !== repoTag && (
+        <span className="task-pr-repo" title={repo.repo}>
+          {repoTag}
+        </span>
+      )}
       <span className="task-repo-name" title={repo.name}>
-        {worktreeShortName(repo.name, slug)}
+        {label?.name ?? worktreeShortName(repo.name, slug)}
       </span>
       {/* Before the state token, not after it: the token is what has to land
           on the row gutter, and these are what used to push it off. */}
@@ -309,6 +329,7 @@ export function PrRow({
   stack,
   railed,
   blocked,
+  label,
   onResult,
 }: {
   pr: TaskPr;
@@ -329,6 +350,8 @@ export function PrRow({
   railed?: boolean;
   /** Whether any row in this list is waiting on its base — see `.task-pr-base`. */
   blocked?: boolean;
+  /** The row's ticket and short title, when the task carries the ticket column — see `ticketColumn`. */
+  label?: RowLabel;
   onResult: Props['onResult'];
 }): React.JSX.Element {
   // A layer above the bottom is explained by its rung, so the `via` mark would be
@@ -381,6 +404,7 @@ export function PrRow({
       >
         {CHECK_GLYPH[landed ? 'none' : (pr.checks ?? 'none')]}
       </span>
+      {label && <TicketChip id={label.ticket} />}
       <span className="pr-number">#{pr.number}</span>
       {/* One column, held open even for a row that is in no stack — see
           `.task-pr-rung`. The glyph marks a layer sitting on the one above it;
@@ -408,7 +432,7 @@ export function PrRow({
        * both looked broken next to the number.
        */}
       <span className="task-pr-title" title={pr.title}>
-        {pr.title}
+        {label?.name ?? pr.title}
       </span>
       {/*
        * One state, not two. `draft needs review` was rendering as a single
@@ -525,7 +549,23 @@ export function TaskCard({
     onResult(result.detail, result.ok);
   };
 
+  /*
+   * The ticket column, when the task's rows work more than one ticket.
+   *
+   * Asked once over worktrees and pull requests together, and handed to every
+   * row as its label, so the three lists either all carry it or none does. With
+   * it, a repo tag stands in for the repo the worktree names lose.
+   */
+  const ticketCol = ticketColumn(task.repos, prs ?? []);
+  const repoTagsByWorktree = ticketCol ? worktreeRepoTags(task.repos) : {};
   const { taskLevel, byRepo } = partitionAgents(task, session?.agents ?? []);
+  const repoByName = new Map(task.repos.map((repo) => [repo.name, repo]));
+  /** An agent's worktree as its ticket and repo; at the task root, an empty slot. */
+  const agentLabel = (where?: string): RowLabel | undefined => {
+    if (!ticketCol) return undefined;
+    const repo = where === undefined ? undefined : repoByName.get(where);
+    return repo ? { ticket: worktreeLabel(repo, task.slug).ticket, name: worktreeRepo(repo) } : { name: '' };
+  };
   /*
    * Every agent in the task, in one block above the worktrees.
    *
@@ -826,7 +866,7 @@ export function TaskCard({
       {!folded && agents.length > 0 && (
         <div className="agents">
           {agents.map(({ agent, where }) => (
-            <AgentRow key={agent.key} agent={agent} where={where} onResult={onResult} />
+            <AgentRow key={agent.key} agent={agent} where={where} whereLabel={agentLabel(where)} onResult={onResult} />
           ))}
         </div>
       )}
@@ -842,6 +882,8 @@ export function TaskCard({
               session={task.session}
               editor={editor}
               base={baseFor(prs, repo)}
+              label={ticketCol ? worktreeLabel(repo, task.slug) : undefined}
+              repoTag={repoTagsByWorktree[repo.name]}
               onResult={onResult}
             />
           ))}
@@ -885,6 +927,7 @@ export function TaskCard({
                   stack={row}
                   railed={railed}
                   blocked={blocked}
+                  label={ticketCol ? prLabel(row.pr) : undefined}
                   onResult={onResult}
                 />
               )),
@@ -895,6 +938,7 @@ export function TaskCard({
                   repoTag={repoTags[`${pr.repo}#${pr.number}`]}
                   railed={railed}
                   blocked={blocked}
+                  label={ticketCol ? prLabel(pr) : undefined}
                   onResult={onResult}
                 />
               )),

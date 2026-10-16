@@ -1,6 +1,7 @@
 import { isDone } from './deployState.ts';
 import { taskRungs } from './taskStatus.ts';
 import { isMerged, prKey } from './taskView.ts';
+import { prTicketId, ticketIdOf } from './naming.ts';
 import type { DeployFact } from './deployState.ts';
 import type { FleetAgent } from './fleet.ts';
 import type { Task } from './task.ts';
@@ -21,26 +22,6 @@ import type { TaskStatus } from './taskStatus.ts';
  * task's slug or branch — the same id the branch carries to GitHub, which is how
  * Notion links the pull request back to the ticket without being told.
  */
-
-/**
- * The ticket a task works, off its slug or its branch.
- *
- * Case-insensitive, and returned upper-case: fw branches carry `dev-1735`
- * because `slugify` lowers everything, while Notion and every pull request seen
- * linked so far write `DEV-1735`. Bounded on the left, so a word that merely
- * ends in `dev` (`kdev-2`) is not read as a ticket.
- */
-export function ticketIdOf(text: string): string | undefined {
-  return ticketIdsIn(text)[0];
-}
-
-/**
- * Every ticket id in a run of text, in order, by the same rule as `ticketIdOf` —
- * so a `Blocked by` line and a branch name can never disagree on what an id is.
- */
-export function ticketIdsIn(text: string): string[] {
-  return [...text.matchAll(/(?:^|[^a-z0-9])dev-(\d+)/gi)].map((match) => `DEV-${match[1]}`);
-}
 
 /**
  * One entry of a ticket's `**Blocked by:**` line.
@@ -223,7 +204,7 @@ export function readMerged(rows: readonly MergedRow[] | undefined): Merged {
   const byTicket = new Map<string, MergedRow[]>();
   for (const row of rows ?? []) {
     byPr.set(prKey(row.repo, row.number), row);
-    const id = ticketIdOf(row.branch ?? '') ?? ticketIdOf(row.title);
+    const id = prTicketId(row);
     if (id) byTicket.set(id, [...(byTicket.get(id) ?? []), row]);
   }
   return { byPr, byTicket };
