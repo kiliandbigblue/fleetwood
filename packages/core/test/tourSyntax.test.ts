@@ -32,9 +32,17 @@ test('each row gets its own side of the file, a comment across lines coloured as
   assert.notEqual(colorOf(tokens[4], 'func'), comment);
 });
 
-test('a language Shiki is not given, or a file too long to colour, stays plain', async () => {
+test('a language Shiki is not given, or a file too long to colour (generated code), stays plain', async () => {
   const [file] = parseDiff(['diff --git a/x.txt b/x.txt', '--- a/x.txt', '+++ b/x.txt', '@@ -1 +1 @@', '-a', '+b'].join('\n'));
   assert.deepEqual(await rowTokens(file!), [[['a']], [['b']]]);
-  const long = Array.from({ length: 2001 }, (_, i) => `x := ${i}`);
+  const long = Array.from({ length: 20_001 }, (_, i) => `x := ${i}`);
   assert.deepEqual(await highlight('long.go', long), long.map((line) => [[line]]));
+});
+
+test('a file longer than a chunk is coloured through the cut', async () => {
+  const lines = [...Array.from({ length: 199 }, (_, i) => `x := ${i}`), '/* opened before the cut', 'closed after it */', 'func f() {}'];
+  const tokens = await highlight('a.go', lines);
+  assert.equal(tokens.length, lines.length);
+  assert.equal(colorOf(tokens[200], 'closed'), colorOf(tokens[199], 'opened'));
+  assert.notEqual(colorOf(tokens[201], 'func'), colorOf(tokens[199], 'opened'));
 });

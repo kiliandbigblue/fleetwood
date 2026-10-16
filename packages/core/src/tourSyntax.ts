@@ -1,6 +1,6 @@
 import { setImmediate } from 'node:timers/promises';
 import { createHighlighterCore } from 'shiki/core';
-import type { HighlighterCore } from 'shiki/core';
+import type { GrammarState, HighlighterCore, ThemedToken } from 'shiki/core';
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
 import type { FileDiff } from './tourDiff.ts';
 
@@ -21,9 +21,11 @@ const LANGS: Record<string, string> = {
   rs: 'rust', swift: 'swift', graphql: 'graphql', gql: 'graphql', dockerfile: 'dockerfile', makefile: 'make',
 };
 
-// Whole files are tokenized, synchronously, in the app's main process: past
-// this a file stays plain rather than hold the app up (~0.2ms a line).
-const MAX_LINES = 2000;
+// Tokenizing is synchronous, in the app's main process, at ~0.2ms a line: a
+// file goes CHUNK lines at a time with a turn of the event loop between, so
+// the app keeps answering. Past MAX_LINES (generated code) a file stays plain.
+const CHUNK = 200;
+const MAX_LINES = 20_000;
 
 let highlighter: Promise<HighlighterCore> | undefined;
 
@@ -45,6 +47,11 @@ const load = (): Promise<HighlighterCore> =>
     engine: createJavaScriptRegexEngine(),
   }));
 
+const token = (t: ThemedToken): Token => {
+  const color = t.color?.toLowerCase();
+  return color && color !== PLAIN ? [t.content, color] : [t.content];
+};
+
 function langOf(path: string): string | undefined {
   const name = (path.split('/').pop() ?? '').toLowerCase();
   return LANGS[name.includes('.') ? (name.split('.').pop() ?? '') : name];
@@ -61,15 +68,19 @@ export async function highlight(path: string, lines: string[]): Promise<Token[][
   try {
     const hl = await load();
     if (!hl.getLoadedLanguages().includes(lang)) return plain;
-    // Tokenizing blocks; a turn of the event loop between files keeps the app answering.
-    await setImmediate();
-    // A minified line is left plain past 2000 columns, as VS Code leaves it.
-    return hl.codeToTokensBase(lines.join('\n'), { lang, theme: THEME, tokenizeMaxLineLength: 2000 }).map((line) =>
-      line.map((t): Token => {
-        const color = t.color?.toLowerCase();
-        return color && color !== PLAIN ? [t.content, color] : [t.content];
-      }),
-    );
+    const out: Token[][] = [];
+    let grammarState: GrammarState | undefined;
+    for (let i = 0; i < lines.length; i += CHUNK) {
+      await setImmediate();
+      // Each chunk starts in the state the last one ended in: a comment open across the cut stays one.
+      // A minified line is left plain past 2000 columns, as VS Code leaves it.
+      const chunk = hl.codeToTokensBase(lines.slice(i, i + CHUNK).join('\n'), {
+        lang, theme: THEME, tokenizeMaxLineLength: 2000, grammarState,
+      });
+      grammarState = hl.getLastGrammarState(chunk);
+      for (const line of chunk) out.push(line.map(token));
+    }
+    return out;
   } catch {
     return plain;
   }
