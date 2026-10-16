@@ -547,6 +547,10 @@ test('a worktree row says its ticket and the rest of its name', () => {
     name: 'atlas',
   });
   assert.deepEqual(worktreeLabel(worktree('atlas'), 'pick-dev-1844'), { ticket: undefined, name: 'atlas' });
+  // The task's own branch reads as its repo, so it never twins a layer of the same ticket.
+  const slug = 'pick-dev-1874-available-pick-carts';
+  assert.equal(worktreeLabel(worktree(`atlas-${slug}`), slug).name, 'atlas');
+  assert.equal(worktreeLabel(worktree('atlas-dev-1874-available-pick-carts-s-c'), slug).name, 'available-pick-carts-s-c');
 });
 
 test('a pull request row keeps a title that is a sentence', () => {

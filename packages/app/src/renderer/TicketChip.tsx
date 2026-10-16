@@ -10,11 +10,13 @@ import { ticketVar } from './planHue.ts';
  * A row with no id keeps the slot with a dim dash, so the gap reads as "no
  * ticket" rather than as a layout fault.
  */
-export function TicketChip({ id }: { id?: string }): React.JSX.Element {
+export function TicketChip({ id, blank }: { id?: string; blank?: boolean }): React.JSX.Element {
   if (!id) {
+    // `blank` for an agent at the task root: it works the task's ticket, not
+    // none, so it holds the slot without the dash that would say otherwise.
     return (
-      <span className="ticket-chip none" title="no ticket in this branch">
-        —
+      <span className="ticket-chip none" title={blank ? undefined : 'no ticket in this branch'}>
+        {blank ? '' : '—'}
       </span>
     );
   }

@@ -332,11 +332,14 @@ export interface RowLabel {
 }
 
 export function worktreeLabel(repo: TaskRepo, taskSlug: string): RowLabel {
+  // The worktree on the task's own branch is the repo and the heading's words,
+  // and reads as the repo, as it always has. Stripping only to the id instead
+  // left it saying the heading again — beside a stack layer of the same ticket
+  // that says nearly the same, so two rows of one repo read as twins.
+  const short = worktreeShortName(repo.name, taskSlug);
   return {
     ticket: ticketIdOf(repo.name),
-    // No id to take off, and the name is the repo and the task's branch — which
-    // is what `worktreeShortName` is already for.
-    name: withoutTicketPrefix(repo.name) ?? worktreeShortName(repo.name, taskSlug),
+    name: short !== repo.name ? short : (withoutTicketPrefix(repo.name) ?? repo.name),
   };
 }
 

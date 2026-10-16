@@ -16,6 +16,8 @@ import { AGENT_STATUS_LABEL, agentLabel, grantsLastingPermission, PROVENANCE_MAR
 export interface AgentSlots {
   ticket?: string;
   repo?: string;
+  /** At the task root: no worktree, so the slots are held open and blank. */
+  atRoot: boolean;
 }
 
 interface Props {
@@ -97,7 +99,7 @@ export function AgentRow({ agent, where, slots, onResult }: Props): React.JSX.El
         </span>
         {/* Ticket and repo lead, in the slots the worktree rows below use, so
             one column of ids runs down the whole card; the tool follows. */}
-        {slots && <TicketChip id={slots.ticket} />}
+        {slots && <TicketChip id={slots.ticket} blank={slots.atRoot} />}
         {slots?.repo !== undefined && (
           <span className={`task-pr-repo${slots.repo ? '' : ' none'}`} title={where && `working in ${where}`}>
             {slots.repo}

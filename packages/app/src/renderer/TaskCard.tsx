@@ -575,6 +575,7 @@ export function TaskCard({
     return {
       ticket: repo && worktreeLabel(repo, task.slug).ticket,
       repo: hasRepoTags ? (repo ? worktreeRepo(repo) : '') : undefined,
+      atRoot: repo === undefined,
     };
   };
   /*
