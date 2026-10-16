@@ -147,10 +147,15 @@ Rules for the sections:
 - Neutral. Say what the code does, how the parts connect and what each part is
   for in the change. Never judge it, never guess the author's motives, never
   point at risks or things to check.
-- Order the sections by signal: contracts first (protos, schemas, migrations,
-  types), then the core of the change (the logic that makes it do what it
-  does), then the parts that support it (wiring, config, call sites), so the
-  reader meets the shape of the change, then its heart, then what plugs it in.
+- One section per thing the change does, never one per file, package or layer.
+  A move or an extraction is one section: the removed code, the added code and
+  the call sites repointed to it, so the reader sees it arrive unchanged.
+  Split a section only when it is too big to read in one pass.
+- Order by signal, both the sections and the changes inside each: contracts
+  first (protos, schemas, migrations, types), then the core of the change (the
+  logic that makes it do what it does), then what plugs it in (wiring, config,
+  call sites), so the reader meets the shape of the change, then its heart,
+  then what plugs it in.
 - Put tests in the section of the code they test, not in their own section.
 - Put generated or mechanical changes (generated code, mocks, lockfiles,
   renames, formatting-only edits) in one last section with "mechanical": true,
