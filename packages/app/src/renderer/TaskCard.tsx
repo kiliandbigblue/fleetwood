@@ -14,7 +14,7 @@ import {
   prSummary,
   repoSummary,
   splitPrs,
-  ticketColumn,
+  cardTickets,
   VIA_LABEL,
   worktreeLabel,
   worktreeRepo,
@@ -25,6 +25,7 @@ import { hasDriftedOffBranch, worktreeShortName } from '@fleetwood/core/naming';
 import { STAGE } from '@fleetwood/core/plan';
 import { AddRepo } from './AddRepo.tsx';
 import { AgentRow } from './AgentRow.tsx';
+import type { AgentSlots } from './AgentRow.tsx';
 import { Icon } from './Icon.tsx';
 import { CHECK_GLYPH, REVIEW_LABEL } from './PrList.tsx';
 import { CardMenu } from './CardMenu.tsx';
@@ -164,7 +165,7 @@ export function RepoRow({
    * below off the commit graph, and uses the trunk when there is none.
    */
   base?: string;
-  /** The row's ticket and short name, when the task carries the ticket column — see `ticketColumn`. */
+  /** The row's ticket and short name, when the task carries the ticket column — see `cardTickets`. */
   label?: RowLabel;
   /** The repo, when the label took it out of the name and the task spans several. */
   repoTag?: string;
@@ -352,7 +353,7 @@ export function PrRow({
   railed?: boolean;
   /** Whether any row in this list is waiting on its base — see `.task-pr-base`. */
   blocked?: boolean;
-  /** The row's ticket and short title, when the task carries the ticket column — see `ticketColumn`. */
+  /** The row's ticket and short title, when the task carries the ticket column — see `cardTickets`. */
   label?: RowLabel;
   onResult: Props['onResult'];
 }): React.JSX.Element {
@@ -552,21 +553,29 @@ export function TaskCard({
   };
 
   /*
-   * The ticket column, when the task's rows work more than one ticket.
+   * The ticket column, whenever any row works a ticket — coloured from two.
    *
    * Asked once over worktrees and pull requests together, and handed to every
    * row as its label, so the three lists either all carry it or none does. With
    * it, a repo tag stands in for the repo the worktree names lose.
    */
-  const ticketCol = ticketColumn(task.repos, prs ?? []);
+  const tickets = cardTickets(task.repos, prs ?? []);
+  const ticketCol = tickets.length > 0;
   const repoTagsByWorktree = ticketCol ? worktreeRepoTags(task.repos) : {};
+  const hasRepoTags = Object.keys(repoTagsByWorktree).length > 0;
   const { taskLevel, byRepo } = partitionAgents(task, session?.agents ?? []);
   const repoByName = new Map(task.repos.map((repo) => [repo.name, repo]));
-  /** An agent's worktree as its ticket and repo; at the task root, an empty slot. */
-  const agentLabel = (where?: string): RowLabel | undefined => {
+  /**
+   * An agent's slots in the column: its worktree's ticket, and its repo when the
+   * card tags repos at all. At the task root both are held open, empty.
+   */
+  const agentSlots = (repoName?: string): AgentSlots | undefined => {
     if (!ticketCol) return undefined;
-    const repo = where === undefined ? undefined : repoByName.get(where);
-    return repo ? { ticket: worktreeLabel(repo, task.slug).ticket, name: worktreeRepo(repo) } : { name: '' };
+    const repo = repoName === undefined ? undefined : repoByName.get(repoName);
+    return {
+      ticket: repo && worktreeLabel(repo, task.slug).ticket,
+      repo: hasRepoTags ? (repo ? worktreeRepo(repo) : '') : undefined,
+    };
   };
   /*
    * Every agent in the task, in one block above the worktrees.
@@ -585,12 +594,12 @@ export function TaskCard({
    */
   const placed = [
     // At the task root first — they are the ones acting on the whole of it.
-    ...taskLevel.map((agent) => ({ agent, where: undefined as string | undefined })),
+    ...taskLevel.map((agent) => ({ agent, repo: undefined as string | undefined, where: undefined as string | undefined })),
     ...[...byRepo.entries()].flatMap(([repo, inRepo]) =>
       // Only when the task has worktrees to tell apart: on a one-repo task the
       // name repeats the only row under it, and at panel width it was the
       // worktree name that pushed the activity — the answer — off the row.
-      inRepo.map((agent) => ({ agent, where: task.repos.length > 1 ? repo : undefined })),
+      inRepo.map((agent) => ({ agent, repo, where: task.repos.length > 1 ? repo : undefined })),
     ),
   ];
   /*
@@ -704,17 +713,16 @@ export function TaskCard({
 
   return (
     <div
-      className={`card${needsYou ? ' attention' : ''}${dormant ? ' dormant' : ''}${here ? ' here' : ''}`}
+      className={`card${needsYou ? ' attention' : ''}${dormant ? ' dormant' : ''}${here ? ' here' : ''}${
+        tickets.length > 1 ? ' tickets-hued' : ''
+      }`}
       /* For the arranging keys, as on a session card — and only with a session,
          which is the one thing that can hold a place. */
       data-session={session?.name}
       data-session-id={session?.sessionId}
       style={
         ticketCol
-          ? ticketCardStyle(
-              [...task.repos.map((repo) => worktreeLabel(repo, task.slug).ticket), ...(prs ?? []).map((pr) => prLabel(pr).ticket)],
-              [...Object.values(repoTagsByWorktree), ...Object.values(repoTags)],
-            )
+          ? ticketCardStyle(tickets, [...Object.values(repoTagsByWorktree), ...Object.values(repoTags)])
           : undefined
       }
     >
@@ -875,8 +883,8 @@ export function TaskCard({
 
       {!folded && agents.length > 0 && (
         <div className="agents">
-          {agents.map(({ agent, where }) => (
-            <AgentRow key={agent.key} agent={agent} where={where} whereLabel={agentLabel(where)} onResult={onResult} />
+          {agents.map(({ agent, repo, where }) => (
+            <AgentRow key={agent.key} agent={agent} where={where} slots={agentSlots(repo)} onResult={onResult} />
           ))}
         </div>
       )}

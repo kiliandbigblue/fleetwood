@@ -345,16 +345,16 @@ export function prLabel(pr: TaskPr): RowLabel {
 }
 
 /**
- * Whether a task's rows carry the ticket column: only when they work at least
- * two tickets, since on a task working one the chip restates the heading on
- * every row.
+ * The tickets a task's rows work, distinct and sorted.
  *
- * One question over worktrees and pull requests together, so the lists cannot
- * disagree about whether the column is there.
+ * Read over worktrees and pull requests together, so the lists cannot disagree
+ * about the card: any ticket at all and every row carries the column — the id
+ * comes off the names either way, and a chip is where it went — and two or more
+ * and the chips take a colour each, since only then is there a match to make.
  */
-export function ticketColumn(repos: TaskRepo[], prs: TaskPr[]): boolean {
+export function cardTickets(repos: TaskRepo[], prs: TaskPr[]): string[] {
   const ids = [...repos.map((repo) => ticketIdOf(repo.name)), ...prs.map(prTicketId)];
-  return new Set(ids.filter((id) => id !== undefined)).size > 1;
+  return [...new Set(ids.filter((id) => id !== undefined))].sort();
 }
 
 /**

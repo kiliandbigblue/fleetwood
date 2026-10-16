@@ -12,7 +12,7 @@ import {
   prRepoTags,
   prSummary,
   repoSummary,
-  ticketColumn,
+  cardTickets,
   worktreeLabel,
   worktreeRepoTags,
 } from '../src/taskView.ts';
@@ -527,13 +527,13 @@ function worktree(name: string, repo?: string): TaskRepo {
   return { name, path: `/tasks/t/${name}`, repo, dirty: 0 };
 }
 
-test('the ticket column shows only when the rows work two tickets', () => {
-  const repos = [worktree('atlas-dev-1865-a'), worktree('atlas')];
-  assert.equal(ticketColumn(repos, [pr({ branch: 'feature/DEV-1866-b' })]), true);
+test("a card's tickets are its rows' ids, once each and in order", () => {
+  const repos = [worktree('atlas-dev-1866-a'), worktree('atlas')];
+  assert.deepEqual(cardTickets(repos, [pr({ branch: 'feature/DEV-1865-b' })]), ['DEV-1865', 'DEV-1866']);
   // One ticket however it is spelt, and a title's id counts as much as a branch's.
-  assert.equal(ticketColumn(repos, [pr({ branch: 'feature/DEV-1865-a' })]), false);
-  assert.equal(ticketColumn(repos, [pr({ branch: 'fix/typo', title: 'DEV-1867 c' })]), true);
-  assert.equal(ticketColumn([], []), false);
+  assert.deepEqual(cardTickets(repos, [pr({ branch: 'feature/DEV-1866-a' })]), ['DEV-1866']);
+  assert.deepEqual(cardTickets(repos, [pr({ branch: 'fix/typo', title: 'DEV-1867 c' })]), ['DEV-1866', 'DEV-1867']);
+  assert.deepEqual(cardTickets([], []), []);
 });
 
 test('a worktree row says its ticket and the rest of its name', () => {

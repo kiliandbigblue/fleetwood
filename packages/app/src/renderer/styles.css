@@ -3697,11 +3697,15 @@ button.activity:focus-visible {
   min-width: calc(9ch + 10px);
   padding: 0 4px;
   text-align: center;
-  color: oklch(from var(--accent) l c calc(h + var(--ticket-turn, 0)));
+  color: var(--soft);
   border: 1px solid var(--edge);
   border-radius: 3px;
   white-space: nowrap;
   flex: none;
+}
+/* Coloured only on a card with two tickets or more — see `ticketCardStyle`. */
+.tickets-hued .ticket-chip:not(.none) {
+  color: oklch(from var(--accent) l c calc(h + var(--ticket-turn, 0)));
 }
 .ticket-chip.none,
 .task-pr-repo.none {

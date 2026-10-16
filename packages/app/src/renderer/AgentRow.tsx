@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import type { FleetAgent } from '@fleetwood/core';
-import type { RowLabel } from '@fleetwood/core/taskView';
 // The leaf module, not the barrel: importing a value from `@fleetwood/core`
 // pulls tmux, `fs` and `child_process` into the renderer bundle — which is the
 // reason the formatter lives apart from the reader in the first place.
@@ -8,6 +7,16 @@ import { describeContext, formatContextTokens } from '@fleetwood/core/contextFor
 import { duration, send } from './api.ts';
 import { TicketChip } from './TicketChip.tsx';
 import { AGENT_STATUS_LABEL, agentLabel, grantsLastingPermission, PROVENANCE_MARK } from './fleetSignals.ts';
+
+/**
+ * An agent's slots in the ticket column. Present means the card carries it; a
+ * missing ticket shows the slot's dash, and `repo` is `''` for a held-open
+ * slot and absent when the card tags no repos.
+ */
+export interface AgentSlots {
+  ticket?: string;
+  repo?: string;
+}
 
 interface Props {
   agent: FleetAgent;
@@ -21,11 +30,10 @@ interface Props {
   where?: string;
   /**
    * The worktree said as its ticket and repo instead of its full name, when the
-   * task's rows carry the ticket column — see `ticketColumn`. The full name
-   * stays in the tooltip. An agent at the task root gets an empty one, which
-   * holds the slot so the column still lines up.
+   * task's rows carry the ticket column — see `cardTickets`. The full name
+   * stays in the tooltip.
    */
-  whereLabel?: RowLabel;
+  slots?: AgentSlots;
   onResult: (message: string, ok: boolean) => void;
 }
 
@@ -42,7 +50,7 @@ function killNote(agent: FleetAgent): string {
   return 'close this agent — its pane, scrollback and session stay';
 }
 
-export function AgentRow({ agent, where, whereLabel, onResult }: Props): React.JSX.Element {
+export function AgentRow({ agent, where, slots, onResult }: Props): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [confirmingKill, setConfirmingKill] = useState(false);
 
@@ -89,14 +97,14 @@ export function AgentRow({ agent, where, whereLabel, onResult }: Props): React.J
         </span>
         {/* Ticket and repo lead, in the slots the worktree rows below use, so
             one column of ids runs down the whole card; the tool follows. */}
-        {whereLabel && <TicketChip id={whereLabel.ticket} />}
-        {whereLabel && (
-          <span className={`task-pr-repo${whereLabel.name ? '' : ' none'}`} title={where && `working in ${where}`}>
-            {whereLabel.name}
+        {slots && <TicketChip id={slots.ticket} />}
+        {slots?.repo !== undefined && (
+          <span className={`task-pr-repo${slots.repo ? '' : ' none'}`} title={where && `working in ${where}`}>
+            {slots.repo}
           </span>
         )}
         <span className={`tool tool-${agent.tool}`}>{agent.tool}</span>
-        {where && !whereLabel && (
+        {where && !slots && (
           <span className="agent-where" title={`working in ${where}`}>
             {where}
           </span>
