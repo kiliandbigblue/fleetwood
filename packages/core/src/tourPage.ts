@@ -473,8 +473,8 @@ var ctxOpen = {};         // "section:path:start" -> context ref unfolded
 var ctxAll = {};          // section -> every context ref listed, not just the first few
 var leansOpen = {};       // section -> its context refs unfolded under the summary
 var railOpen = false;     // the full § list is open over the code
-var pinned = false;       // the list docked beside the code, kept open; per browser
-try { pinned = localStorage.getItem('fw-review-pinned') === '1'; } catch (e) {}
+var pinned = true;        // the list docked beside the code, kept open; per browser
+try { pinned = localStorage.getItem('fw-review-pinned') !== '0'; } catch (e) {}
 var treeShut = {};        // folder -> folded in the file tree
 var treeFilter = '';      // what the file tree is filtered on
 var treeAt = null;        // the file last picked in the tree
@@ -534,7 +534,8 @@ var ICONS = {
   copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h9"/>',
   close: '<path d="M6 6l12 12M18 6 6 18"/>',
   list: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
-  pin: '<path d="M12 16v5M8 3h8l-1 6 3 3v2H6v-2l3-3Z"/>',
+  undock: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/>',
+  dock: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m14 9 3 3-3 3"/>',
   folder: '<path d="M2.5 6A1.5 1.5 0 0 1 4 4.5h5.2l2 2.5H20A1.5 1.5 0 0 1 21.5 8.5v10A1.5 1.5 0 0 1 20 20H4a1.5 1.5 0 0 1-1.5-1.5Z"/>',
   filediff: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 7v6M9 10h6M9 16.5h6"/>',
   fileadded: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 8.5v7M8.5 12h7"/>',
@@ -788,7 +789,7 @@ function renderRail() {
   var steps = VIEWS[view].steps();
   var panel = h('div', { class: 'rail-panel', id: 'rail-panel' }, h('div', { class: 'rail-head' },
     h('button', { class: 'ghost pin', title: pinned ? 'Let the list close (L)' : 'Keep the list open (L)', 'aria-label': 'Keep the list open',
-      'aria-pressed': String(pinned), onclick: togglePin }, icon('pin')),
+      'aria-pressed': String(pinned), onclick: togglePin }, icon(pinned ? 'undock' : 'dock')),
     h('div', { class: 'repo', text: data.repo || data.title }),
     h('div', { class: 'base' }, icon('branch'), h('span', {}, data.unstaged ? 'unstaged, against ' : 'against '), h('span', { class: 'ref', text: data.against || '' })),
     segmented('What to review', 'scope', !!data.unstaged, [
