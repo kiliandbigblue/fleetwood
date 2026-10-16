@@ -13,6 +13,8 @@ import type { FileDiff } from './tourDiff.ts';
 import { RECAP_SCHEMA, checkRecap, plainDiff, recapPrompt } from './tourRecap.ts';
 import type { CheckedRecap, Recap } from './tourRecap.ts';
 import { tourPage } from './tourPage.ts';
+import { highlight, rowTokens } from './tourSyntax.ts';
+import type { Token } from './tourSyntax.ts';
 
 export const TOURS_DIR = join(FW_HOME, 'tours');
 
@@ -93,9 +95,20 @@ export interface TourOptions {
 
 interface Open extends TourOptions {
   key: string;
+  /** The snapshot the review is of. */
+  tree: string;
   files: FileDiff[];
   /** The recap's cut, once it is ready: the files are fixed per key, so it never changes. */
   checked?: CheckedRecap;
+  /** Each file's rows as tokens by path, started with the review: the page polls while the recap builds. */
+  tokens: Promise<Map<string, Token[][]>>;
+  /** Snapshot files the refs read, with their tokens, by path. The snapshot never changes. */
+  snapshot: Map<string, Promise<Snippet>>;
+}
+
+interface Snippet {
+  lines: string[];
+  tokens: Token[][];
 }
 
 const tours = new Map<string, Open>();
@@ -219,7 +232,7 @@ async function prepare(options: TourOptions): Promise<Open> {
   const key = `${from.slice(0, 12)}-${tree.slice(0, 12)}`;
   const files = await wholeDiff(options.cwd, from, tree);
   if (files.length === 0) throw new Error(`nothing to review in ${basename(options.cwd)} against ${against(options)}`);
-  const tour: Open = { ...options, key, files };
+  const tour: Open = { ...options, key, tree, files, tokens: tokenize(files), snapshot: new Map() };
   tours.set(key, tour);
 
   const kept = await loadState(key);
@@ -279,12 +292,33 @@ judge, do not suggest changes. Be brief: a short paragraph, plain text.`;
   await save(tour.key);
 }
 
+/** One file after another: each blocks while it is tokenized, and yields before the next. */
+async function tokenize(files: FileDiff[]): Promise<Map<string, Token[][]>> {
+  const tokens = new Map<string, Token[][]>();
+  for (const file of files) tokens.set(file.path, await rowTokens(file));
+  return tokens;
+}
+
+/** A file of the snapshot, whole and tokenized, read once per review. */
+function snapshotFile(tour: Open, path: string): Promise<Snippet> {
+  let file = tour.snapshot.get(path);
+  if (!file) {
+    file = run('git', ['show', `${tour.tree}:${path}`], { cwd: tour.cwd }).then(async (out) => {
+      if (out.code !== 0) return { lines: [], tokens: [] };
+      const lines = out.stdout.split('\n');
+      return { lines, tokens: await highlight(path, lines) };
+    });
+    tour.snapshot.set(path, file);
+  }
+  return file;
+}
+
 /** Resolve a ref's lines from the snapshot, so it shows the code the review is about. */
-async function refLines(tour: Open, state: TourState, path: string, start: number, end: number): Promise<string[]> {
-  const out = await run('git', ['show', `${state.tree}:${path}`], { cwd: tour.cwd });
-  if (out.code !== 0) return [];
-  const lines = out.stdout.split('\n');
-  return lines.slice(Math.max(0, start - 1), Math.min(lines.length, end));
+async function refLines(tour: Open, path: string, start: number, end: number): Promise<Snippet> {
+  const file = await snapshotFile(tour, path);
+  const from = Math.max(0, start - 1);
+  const to = Math.min(file.lines.length, end);
+  return { lines: file.lines.slice(from, to), tokens: file.tokens.slice(from, to) };
 }
 
 /**
@@ -293,8 +327,12 @@ async function refLines(tour: Open, state: TourState, path: string, start: numbe
  */
 async function pageData(tour: Open, state: TourState): Promise<unknown> {
   const checked = checkedOf(tour, state);
+  const tokens = await tour.tokens;
   const files = Object.fromEntries(
-    tour.files.map((f) => [f.path, { rows: f.rows, owners: checked?.owners[f.path] ?? [], status: f.status, oldPath: f.oldPath }]),
+    tour.files.map((f) => [
+      f.path,
+      { rows: f.rows, tokens: tokens.get(f.path), owners: checked?.owners[f.path] ?? [], status: f.status, oldPath: f.oldPath },
+    ]),
   );
   const base = {
     title: `${basename(tour.cwd)} vs ${against(tour)}`,
@@ -316,7 +354,7 @@ async function pageData(tour: Open, state: TourState): Promise<unknown> {
     checked.sections.map(async (section) => ({
       ...section,
       refs: await Promise.all(
-        section.refs.map(async (ref) => ({ ...ref, lines: await refLines(tour, state, ref.path, ref.start, ref.end) })),
+        section.refs.map(async (ref) => ({ ...ref, ...(await refLines(tour, ref.path, ref.start, ref.end)) })),
       ),
     })),
   );

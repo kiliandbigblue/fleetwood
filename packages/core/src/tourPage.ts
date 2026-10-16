@@ -1,4 +1,5 @@
 import type { Palette } from './theme.ts';
+import { PLAIN } from './tourSyntax.ts';
 
 /** GitHub Dark default (Primer): the review reads like a pull request on github.com, whatever the panel's theme. */
 const GITHUB_DARK: Palette = {
@@ -302,15 +303,8 @@ button.gap:hover .gx { background: #1f6feb; color: #ffffff; }
 .fold > summary .count { color: var(--dim); }
 .fold > .file:first-of-type { margin-top: var(--s3); }
 
-/* syntax, GitHub dark's */
-.code, .snippet { color: var(--text); }
-.k { color: #ff7b72; }
-.s { color: #a5d6ff; }
-.m { color: #79c0ff; }
-.f { color: #d2a8ff; }
-.y { color: #ffa657; }
-.c { color: #8b949e; }
-.p { color: var(--text); }
+/* syntax: Shiki's GitHub Dark default colours each token inline; this is its plain text */
+.code, .snippet { color: ${PLAIN}; }
 
 /* building / error */
 .wait { padding: var(--s6); max-width: 760px; }
@@ -584,84 +578,18 @@ function toast(text) {
 }
 
 /* ── syntax ── */
-var KW = {
-  go: 'break case chan const continue default defer else fallthrough for func go goto if import interface map package range return select struct switch type var nil true false iota',
-  ts: 'abstract as async await break case catch class const continue debugger default delete do else enum export extends false finally for from function get if implements import in instanceof interface keyof let new null of private protected public readonly return set static super switch this throw true try type typeof undefined var void while with yield',
-  py: 'and as assert async await break class continue def del elif else except False finally for from global if import in is lambda None nonlocal not or pass raise return True try while with yield self',
-  proto: 'syntax package import option message enum service rpc returns repeated optional oneof map reserved stream true false',
-  sql: 'select from where and or not insert into values update set delete create table alter add drop index on join left right inner outer group by order having limit offset as null is in exists primary key references default unique constraint begin commit returning case when then else end',
-  sh: 'if then else elif fi for while do done case esac in function return export local echo exit',
-  yaml: 'true false null yes no'
-};
-var KWSET = {};
-for (var lang in KW) { KWSET[lang] = {}; KW[lang].split(' ').forEach(function (w) { KWSET[lang][w.toLowerCase()] = true; }); }
-
-function langOf(path) {
-  var ext = (path.split('.').pop() || '').toLowerCase();
-  if (ext === 'go') return 'go';
-  if (/^(ts|tsx|js|jsx|mjs|cjs|json)$/.test(ext)) return 'ts';
-  if (ext === 'py') return 'py';
-  if (ext === 'proto') return 'proto';
-  if (ext === 'sql') return 'sql';
-  if (/^(sh|bash|zsh)$/.test(ext)) return 'sh';
-  if (/^(ya?ml|toml)$/.test(ext)) return 'yaml';
-  return null;
-}
-
 var BQ = '\x60';
-var TOKEN = new RegExp([
-  '(\\/\\/.*$|\\/\\*.*?(?:\\*\\/|$)|--\\s.*$)',          // 1 comment (line or same-line block, SQL)
-  '(#.*$)',                                               // 2 hash comment
-  '("(?:[^"\\\\]|\\\\.)*"?|\'(?:[^\'\\\\]|\\\\.)*\'?|' + BQ + '[^' + BQ + ']*' + BQ + '?)', // 3 string
-  '(\\b\\d[\\d_]*(?:\\.\\d+)?(?:e[+-]?\\d+)?\\b|\\b0x[0-9a-f]+\\b)', // 4 number
-  '([A-Za-z_$][\\w$]*)',                                  // 5 identifier
-  '([{}()\\[\\];,.:=<>!&|+\\-*/%^?]+)'                     // 6 punctuation
-].join('|'), 'gi');
 
-function tokens(text, lang) {
-  if (!lang) return [{ t: text, c: '' }];
-  var out = [];
-  var last = 0;
-  var hash = lang === 'py' || lang === 'sh' || lang === 'yaml';
-  TOKEN.lastIndex = 0;
-  var m;
-  while ((m = TOKEN.exec(text))) {
-    if (m.index > last) out.push({ t: text.slice(last, m.index), c: '' });
-    // '#' and '-- ' only open a comment in the languages that have them;
-    // elsewhere the mark is punctuation and the rest of the line is code.
-    var stray = (m[2] && !hash) || (m[1] && m[1].slice(0, 2) === '--' && lang !== 'sql');
-    if (stray) {
-      var mark = m[2] ? '#' : '--';
-      out.push({ t: mark, c: 'p' });
-      TOKEN.lastIndex = m.index + mark.length;
-      last = TOKEN.lastIndex;
-      continue;
-    }
-    var c = '';
-    if (m[1] || m[2]) c = 'c';
-    else if (m[3]) c = 's';
-    else if (m[4]) c = 'm';
-    else if (m[5]) {
-      var w = m[5];
-      var next = /^\s*\(/.test(text.slice(TOKEN.lastIndex));
-      if (KWSET[lang][lang === 'sql' ? w.toLowerCase() : w]) c = 'k';
-      else if (next) c = 'f';
-      else if (/^[A-Z]/.test(w) && lang !== 'sql') c = 'y';
-    } else if (m[6]) c = 'p';
-    out.push({ t: m[0], c: c });
-    last = TOKEN.lastIndex;
-    if (m[0].length === 0) TOKEN.lastIndex++;
-  }
-  if (last < text.length) out.push({ t: text.slice(last), c: '' });
-  return out;
-}
-
-/** Paint a line: syntax tokens, with [a, b) marked as the changed words. */
-function paint(text, lang, a, b) {
+/**
+ * Paint a line: its tokens, [text, colour] as Shiki gave them in GitHub Dark
+ * default, with [a, b) marked as the changed words.
+ */
+function paint(toks, a, b) {
   var frag = document.createDocumentFragment();
   var pos = 0;
-  tokens(text, lang).forEach(function (tok) {
-    var start = pos, end = pos + tok.t.length;
+  toks.forEach(function (tok) {
+    var t = tok[0], color = tok[1];
+    var start = pos, end = pos + t.length;
     pos = end;
     var cuts = [start, end];
     if (a != null && a > start && a < end) cuts.push(a);
@@ -670,10 +598,10 @@ function paint(text, lang, a, b) {
     for (var i = 0; i < cuts.length - 1; i++) {
       var s = cuts[i], e = cuts[i + 1];
       if (e <= s) continue;
-      var piece = tok.t.slice(s - start, e - start);
-      var cls = tok.c;
-      if (a != null && s >= a && e <= b) cls = (cls ? cls + ' ' : '') + 'w';
-      frag.append(cls ? h('span', { class: cls, text: piece }) : document.createTextNode(piece));
+      var piece = t.slice(s - start, e - start);
+      var changed = a != null && s >= a && e <= b;
+      if (!changed && !color) { frag.append(document.createTextNode(piece)); continue; }
+      frag.append(h('span', { class: changed ? 'w' : null, style: color ? 'color:' + color : null, text: piece }));
     }
   });
   return frag;
@@ -1205,7 +1133,7 @@ function statsEl(adds, dels) {
 function fileEl(sf, at) {
   var file = data.files[sf.path];
   var rows = file.rows;
-  var lang = langOf(sf.path);
+  var toks = file.tokens;
   var whole = unfolded[sf.path];
   // Generated code can run to thousands of rows: drawn only when asked, or the page hangs.
   var hidden = at != null && data.sections[at].mechanical && !diffOpen[sf.path] && !whole;
@@ -1251,13 +1179,13 @@ function fileEl(sf, at) {
     if (cursor && cursor.path === sf.path && cursor.row === i) cls += ' cursor';
     var m = marks[i];
     var sign = h('span', { class: 'sign', text: r.kind === ' ' ? '' : r.kind === '+' ? '+' : '−' });
-    var src = h('span', { class: 'src' }, paint(r.text, lang, m ? m[0] : null, m ? m[1] : null));
+    var src = h('span', { class: 'src' }, paint(toks[i], m ? m[0] : null, m ? m[1] : null));
     var cells;
     if (!split) cells = [h('span', { class: 'no', text: r.old == null ? '' : r.old }), h('span', { class: 'no', text: r.new == null ? '' : r.new }), sign, src];
     else if (side) cells = [h('span', { class: 'no', text: side === 'old' ? r.old : r.new }), sign, src];
     // A kept line is the same text on both sides, so one row holds both.
     else cells = [h('span', { class: 'no', text: r.old }), h('span', { class: 'sign' }), src,
-      h('span', { class: 'no', text: r.new }), h('span', { class: 'sign' }), h('span', { class: 'src' }, paint(r.text, lang))];
+      h('span', { class: 'no', text: r.new }), h('span', { class: 'sign' }), h('span', { class: 'src' }, paint(toks[i]))];
     if (split) cls += side ? ' half' : ' both';
     return h('div', { class: cls, 'data-path': sf.path, 'data-row': i, onclick: function () { setCursor(sf.path, i, false); if (lineComments(sf.path, i).length) setDrawer(true); } },
       dotFor(sf.path, i),
@@ -1373,7 +1301,6 @@ function fillThread(list) {
 
 var CTX_SHOWN = 5;
 function ctxEl(ref) {
-  var lang = langOf(ref.path);
   var key = current + ':' + ref.path + ':' + ref.start;
   var gone = !ref.lines.length;
   // The range the snapshot has: a ref past the end of its file comes back short.
@@ -1395,8 +1322,8 @@ function ctxEl(ref) {
   if (gone) return h('div', { class: 'ctx' }, h('div', { class: 'head' }, h('span'), label));
   return h('details', { class: 'ctx', open: !!ctxOpen[key], ontoggle: function (e) { ctxOpen[key] = e.target.open; } },
     h('summary', { class: 'head' }, icon('chevron'), label, copy),
-    h('div', { class: 'snippet' }, ref.lines.map(function (text, i) {
-      return h('div', {}, h('span', { class: 'no', text: ref.start + i }), h('span', { class: 'src' }, paint(text, lang)));
+    h('div', { class: 'snippet' }, ref.tokens.map(function (toks, i) {
+      return h('div', {}, h('span', { class: 'no', text: ref.start + i }), h('span', { class: 'src' }, paint(toks)));
     })));
 }
 
