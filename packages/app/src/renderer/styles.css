@@ -3685,23 +3685,27 @@ button.activity:focus-visible {
 }
 
 /*
- * A row's ticket id — see `TicketChip`. A fixed width, so an empty slot holds
- * the column on a row with no id; hued like a plan, from the theme's accent.
+ * A row's ticket id — see `TicketChip`. The repo tag's box, with only the text
+ * hued: a bordered colour on every row was the loudest thing on the card, over
+ * the failing checks it sits beside. The hue is the accent's turned by the
+ * card's `--ticket-<id>`, so lightness and chroma stay the theme's. Wide enough
+ * for a five-digit id with room inside the border.
  */
 .ticket-chip {
-  --ticket: oklch(from var(--accent) l c var(--ticket-h));
   font-family: var(--mono);
   font-size: var(--fs-micro);
-  width: 9ch;
+  min-width: calc(9ch + 10px);
+  padding: 0 4px;
   text-align: center;
-  color: var(--ticket);
-  border: 1px solid color-mix(in oklch, var(--ticket) 45%, transparent);
+  color: oklch(from var(--accent) l c calc(h + var(--ticket-turn, 0)));
+  border: 1px solid var(--edge);
   border-radius: 3px;
   white-space: nowrap;
-  overflow: hidden;
   flex: none;
 }
-.ticket-chip:empty {
+.ticket-chip.none,
+.task-pr-repo.none {
+  color: var(--dim);
   border-color: transparent;
 }
 
@@ -3716,6 +3720,8 @@ button.activity:focus-visible {
 .task-pr-repo {
   font-family: var(--mono);
   font-size: var(--fs-micro);
+  /* The longest tag on the card, when a task card sets it — see `ticketCardStyle`. */
+  min-width: calc(var(--repo-ch, 0) * 1ch + 10px);
   padding: 0 4px;
   border: 1px solid var(--edge);
   border-radius: 3px;

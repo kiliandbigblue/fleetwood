@@ -20,3 +20,33 @@ function hash(text: string): number {
   for (const char of text) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193) >>> 0;
   return hash;
 }
+
+/** The custom property a ticket's turn is kept in on its card. */
+export function ticketVar(id: string): string {
+  return `--ticket-${id}`;
+}
+
+/**
+ * The card-wide half of the ticket column, as custom properties on the card.
+ *
+ * Hues by rank, not by hash. A hash gave sibling tickets — which have
+ * consecutive ids, the normal shape of a task — the same colour two pairs at a
+ * time (1865 and 1867 two degrees apart), so the colour promised a match it
+ * did not keep. Matching only ever happens inside one card, so spacing the
+ * card's own tickets evenly round the wheel is all the stability it needs. The
+ * first is turned by nothing, so the lowest id — usually the task's own —
+ * wears the accent its heading link does.
+ *
+ * Also the repo tag's width, from the longest one on the card, so the names
+ * after it start on one line whichever repo a row is in.
+ */
+export function ticketCardStyle(ids: (string | undefined)[], repoTags: string[]): Record<string, number> {
+  const tickets = [...new Set(ids.filter((id) => id !== undefined))].sort();
+  const style: Record<string, number> = {
+    '--repo-ch': Math.max(0, ...repoTags.map((tag) => tag.length)),
+  };
+  tickets.forEach((id, rank) => {
+    style[ticketVar(id)] = (rank * 360) / tickets.length;
+  });
+  return style;
+}

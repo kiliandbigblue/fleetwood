@@ -33,6 +33,7 @@ import type { MenuItem } from './CardMenu.tsx';
 import { Slug } from './Slug.tsx';
 import { TaskNotes } from './TaskNotes.tsx';
 import { TicketChip } from './TicketChip.tsx';
+import { ticketCardStyle } from './planHue.ts';
 import { send } from './api.ts';
 import { blockedPane, byUrgency, leadNote, liveSeverity, needsYouLabel, prHeadline } from './fleetSignals.ts';
 
@@ -184,14 +185,15 @@ export function RepoRow({
           held by — a local holding the short form would eventually reach one
           of them, and the drift check would then never match anything. */}
       {label && <TicketChip id={label.ticket} />}
-      {/* A worktree that is just the repo would say its name twice. */}
-      {repoTag && label?.name !== repoTag && (
+      {repoTag && (
         <span className="task-pr-repo" title={repo.repo}>
           {repoTag}
         </span>
       )}
+      {/* A worktree that is just the repo would say its name twice; the tag
+          keeps its column and the name goes. */}
       <span className="task-repo-name" title={repo.name}>
-        {label?.name ?? worktreeShortName(repo.name, slug)}
+        {repoTag && label?.name === repoTag ? '' : (label?.name ?? worktreeShortName(repo.name, slug))}
       </span>
       {/* Before the state token, not after it: the token is what has to land
           on the row gutter, and these are what used to push it off. */}
@@ -707,6 +709,14 @@ export function TaskCard({
          which is the one thing that can hold a place. */
       data-session={session?.name}
       data-session-id={session?.sessionId}
+      style={
+        ticketCol
+          ? ticketCardStyle(
+              [...task.repos.map((repo) => worktreeLabel(repo, task.slug).ticket), ...(prs ?? []).map((pr) => prLabel(pr).ticket)],
+              [...Object.values(repoTagsByWorktree), ...Object.values(repoTags)],
+            )
+          : undefined
+      }
     >
       <div
         className="card-head"

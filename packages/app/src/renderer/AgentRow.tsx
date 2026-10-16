@@ -87,11 +87,18 @@ export function AgentRow({ agent, where, whereLabel, onResult }: Props): React.J
           {statusLabel}
           {inferred ? `, ${inferred.note}` : ''},
         </span>
-        <span className={`tool tool-${agent.tool}`}>{agent.tool}</span>
+        {/* Ticket and repo lead, in the slots the worktree rows below use, so
+            one column of ids runs down the whole card; the tool follows. */}
         {whereLabel && <TicketChip id={whereLabel.ticket} />}
-        {where && (
+        {whereLabel && (
+          <span className={`task-pr-repo${whereLabel.name ? '' : ' none'}`} title={where && `working in ${where}`}>
+            {whereLabel.name}
+          </span>
+        )}
+        <span className={`tool tool-${agent.tool}`}>{agent.tool}</span>
+        {where && !whereLabel && (
           <span className="agent-where" title={`working in ${where}`}>
-            {whereLabel?.name || where}
+            {where}
           </span>
         )}
         {agent.nested && (
